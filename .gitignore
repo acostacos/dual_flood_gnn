@@ -172,3 +172,14 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# VS Code
+.vscode/
+
+# Data
+data/datasets/
+logs/
+saved_models/
+saved_metrics/
+slurm_logs/
+slurm-*.out

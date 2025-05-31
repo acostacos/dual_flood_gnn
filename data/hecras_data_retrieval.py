@@ -1,24 +1,8 @@
 import numpy as np
-import h5py
 
 from datetime import datetime
-from typing import List, Any
-
-def read_hdf_file_as_numpy(filepath: str, property_path: str, separator: str = '.') -> np.ndarray:
-    with h5py.File(filepath, 'r') as hec:
-        data = get_property_from_path(hec, property_path, separator)
-        np_data = np.array(data)
-    return np_data
-
-def get_property_from_path(dict: dict, dict_path: str, separator: str = '.') -> Any:
-    keys = dict_path.split(sep=separator)
-    d = dict
-    for key in keys:
-        if key in d:
-            d = d[key]
-        else:
-            raise KeyError(f'Key {key} not found in dictionary for path {dict_path}')
-    return d
+from typing import List
+from utils.file_utils import read_hdf_file_as_numpy
 
 def get_event_timesteps(filepath: str) -> List[datetime]:
     property_path = 'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Time Date Stamp'
@@ -45,19 +29,29 @@ def get_roughness(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.
     return data.astype(dtype)
 
 def get_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
-    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Cumulative Precipitation Depth'
-    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
-    data = data.astype(dtype)
+    try:
+        property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Cumulative Precipitation Depth'
+        data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+        data = data.astype(dtype)
 
-    # Convert cumulative rainfall to interval rainfall
-    first_ts_rainfall = np.zeros((1, data.shape[1]), dtype=np.float32)
-    intervals = np.diff(data, axis=0)
-    data = np.concatenate((first_ts_rainfall, intervals), axis=0)
+        # Convert cumulative rainfall to interval rainfall
+        first_ts_rainfall = np.zeros((1, data.shape[1]), dtype=np.float32)
+        intervals = np.diff(data, axis=0)
+        data = np.concatenate((first_ts_rainfall, intervals), axis=0)
+    except KeyError:
+        # Rainfall data not available in the file
+        water_level = get_water_level(filepath, perimeter_name)
+        data = np.zeros_like(water_level, dtype=dtype)
 
     return data
 
 def get_water_level(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Water Surface'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
+def get_water_volume(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Volume'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
@@ -93,5 +87,10 @@ def get_face_length(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: n
 
 def get_velocity(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Face Velocity'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
+def get_face_flow(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Face Flow'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)

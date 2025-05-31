@@ -1,10 +1,6 @@
 import numpy as np
-import geopandas as gpd
 
-def read_shp_file_as_numpy(filepath: str, columns: str | list) -> np.ndarray:
-    file = gpd.read_file(filepath)
-    np_data = file[columns].to_numpy()
-    return np_data
+from utils.file_utils import read_shp_file_as_numpy
 
 def get_edge_index(filepath: str) -> np.ndarray:
     columns = ['from_node', 'to_node']

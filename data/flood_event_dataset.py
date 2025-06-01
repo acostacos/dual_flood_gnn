@@ -29,12 +29,14 @@ class FloodEventDataset(Dataset):
                  edges_shp_file: str,
                  previous_timesteps: int = 2,
                  normalize: bool = True,
+                 warmup_timesteps: Optional[int] = None,
                  timesteps_from_peak: Optional[int] = None,
                  debug: bool = False,
                  logger: Logger = None,
                  transform=None,
                  pre_transform=None,
-                 pre_filter=None):
+                 pre_filter=None,
+                 force_reload: bool = False):
         self.log_func = print
         if logger is not None and hasattr(logger, 'log'):
             self.log_func = logger.log
@@ -47,6 +49,7 @@ class FloodEventDataset(Dataset):
         # Dataset configurations
         self.normalize = normalize
         self.previous_timesteps = previous_timesteps
+        self.warmup_timesteps = warmup_timesteps
         self.timesteps_from_peak = timesteps_from_peak
 
         # Dataset variables
@@ -58,7 +61,7 @@ class FloodEventDataset(Dataset):
         self.total_train_timesteps = 0
         self.feature_stats = {}
 
-        super().__init__(root_dir, transform, pre_transform, pre_filter, log=debug)
+        super().__init__(root_dir, transform, pre_transform, pre_filter, log=debug, force_reload=force_reload)
 
         if len(self.feature_stats) == 0:
             self.feature_stats = self.load_feature_stats()
@@ -77,7 +80,7 @@ class FloodEventDataset(Dataset):
                 *dynamic_node_files, *dynamic_edge_files]
 
     def download(self):
-        # Data must be downloaded manually and placed in the raw_dir
+        # Data must be downloaded manually and placed in the raw dir
         pass
 
     def process(self):
@@ -214,7 +217,10 @@ class FloodEventDataset(Dataset):
         event_num_timesteps = []
         current_total_ts = 0
         for hec_ras_path in self.raw_paths[2:]:
-            num_timesteps = len(get_event_timesteps(hec_ras_path))
+            timesteps = get_event_timesteps(hec_ras_path)
+            if self.warmup_timesteps is not None:
+                timesteps = timesteps[self.warmup_timesteps:]
+            num_timesteps = len(timesteps)
             event_num_timesteps.append(num_timesteps)
 
             event_total_training_ts = num_timesteps - 1  # Last timestep is used for labels
@@ -332,13 +338,17 @@ class FloodEventDataset(Dataset):
         all_event_data = []
         for hec_ras_path in self.raw_paths[2:]:
             event_data = retrieval_func(hec_ras_path)
+
+            if self.warmup_timesteps is not None:
+                event_data = event_data[self.warmup_timesteps:]
+
             all_event_data.append(event_data)
         all_event_data = np.concatenate(all_event_data, axis=0)
         return all_event_data
 
     def _get_features(self, feature_list: List[str], feature_retrieval_map: Dict[str, Callable]) -> List:
         features = []
-        for feature in feature_list: # Order in feature list determines the order of features in tensor
+        for feature in feature_list: # Order in feature list determines the order of features in Tensor
             if feature not in feature_retrieval_map:
                 continue
 

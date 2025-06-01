@@ -104,8 +104,6 @@ class FloodEventDataset(Dataset):
         torch.save(static_edges, self.processed_paths[4])
         self.log_func(f'Saved static edge features to {self.processed_paths[4]}')
 
-        print(edge_index.shape, static_nodes.shape, static_edges.shape)
-
         start_idx = 0
         for i, num_ts in enumerate(event_num_timesteps):
             run_id = self.hec_ras_run_ids[i]
@@ -118,8 +116,6 @@ class FloodEventDataset(Dataset):
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].clone()
             torch.save(event_dynamic_edges, self.processed_paths[i + len(self.hec_ras_run_ids) + 5])
             self.log_func(f'Saved dynamic node features for event {run_id} to {self.processed_paths[i + 5]}')
-
-            print(event_dynamic_nodes.shape, event_dynamic_edges.shape)
 
             start_idx = end_idx
 

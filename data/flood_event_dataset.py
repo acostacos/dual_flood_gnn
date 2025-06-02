@@ -52,15 +52,17 @@ class FloodEventDataset(Dataset):
         self.outflow_boundary_nodes = outflow_boundary_nodes
         self.normalize = normalize
         self.spin_up_timesteps = spin_up_timesteps
+        self.timesteps_from_peak = timesteps_from_peak
 
         # Dataset variables
         self.num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
         self.num_dynamic_node_features = len(FloodEventDataset.DYNAMIC_NODE_FEATURES)
         self.num_static_edge_features = len(FloodEventDataset.STATIC_EDGE_FEATURES)
         self.num_dynamic_edge_features = len(FloodEventDataset.DYNAMIC_EDGE_FEATURES)
+        self.feature_stats = {}
+        self.event_peak_idx = None
         self.event_start_idx = []
         self.total_train_timesteps = 0
-        self.feature_stats = {}
 
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
@@ -84,6 +86,9 @@ class FloodEventDataset(Dataset):
 
     def process(self):
         self.log_func('Processing Flood Event Dataset...')
+
+        if self.timesteps_from_peak is not None:
+            self.event_peak_idx = self._get_event_peak_timestep()
 
         self.event_start_idx, self.total_train_timesteps, event_num_timesteps = self._get_event_properties()
         edge_index = self._get_edge_index()
@@ -138,10 +143,10 @@ class FloodEventDataset(Dataset):
 
             start_idx = end_idx
 
-        self.save_event_stats()
-        self.log_func(f'Saved event stats to {self.processed_paths[0]}')
         self.save_feature_stats()
         self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
+        self.save_event_stats()
+        self.log_func(f'Saved event stats to {self.processed_paths[0]}')
 
     def len(self):
         return self.total_train_timesteps
@@ -176,10 +181,12 @@ class FloodEventDataset(Dataset):
         # Add boundary conditions
         boundary_static_nodes = np.zeros((len(boundary_nodes), self.num_static_node_features),
                                          dtype=static_nodes.dtype)
+        boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
 
         boundary_static_edges = np.zeros((boundary_edges.shape[1], self.num_static_edge_features),
                                          dtype=static_edges.dtype)
+        boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
         static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
 
         dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
@@ -196,7 +203,13 @@ class FloodEventDataset(Dataset):
 
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
-        data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_features, y=label_nodes, y_edge=label_edges)
+        data = Data(x=node_features,
+                    edge_index=edge_index,
+                    edge_attr=edge_features,
+                    y=label_nodes,
+                    y_edge=label_edges,
+                    boundary_nodes=boundary_nodes_idx,
+                    boundary_edges=boundary_edges_idx)
 
         return data
 
@@ -249,14 +262,25 @@ class FloodEventDataset(Dataset):
 
         return hec_ras_files, hec_ras_run_ids
     
+    def _get_event_peak_timestep(self) -> List[int]:
+        event_peak_idx = []
+        for hec_ras_path in self.raw_paths[2:]:
+            water_volume = get_water_volume(hec_ras_path)
+            total_water_volume = water_volume.sum(axis=1)
+            peak_idx = np.argmax(total_water_volume)
+            event_peak_idx.append(peak_idx)
+        assert len(event_peak_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and peak indices.'
+        assert np.all((np.array(event_peak_idx) - self.timesteps_from_peak) >= 0), 'Timesteps from peak exceed available timesteps.'
+
+        return event_peak_idx
+    
     def _get_event_properties(self) -> Tuple[List[int], int, List[int]]:
         event_start_idx = []
         event_num_timesteps = []
         current_total_ts = 0
-        for hec_ras_path in self.raw_paths[2:]:
+        for i, hec_ras_path in enumerate(self.raw_paths[2:]):
             timesteps = get_event_timesteps(hec_ras_path)
-            if self.spin_up_timesteps is not None:
-                timesteps = timesteps[self.spin_up_timesteps:]
+            timesteps = self._trim_timesteps_within_bounds(timesteps, i)
             num_timesteps = len(timesteps)
             event_num_timesteps.append(num_timesteps)
 
@@ -266,6 +290,17 @@ class FloodEventDataset(Dataset):
         assert len(event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
 
         return event_start_idx, current_total_ts, event_num_timesteps
+    
+    def _trim_timesteps_within_bounds(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
+        start = self.spin_up_timesteps if self.spin_up_timesteps is not None else 0
+
+        end = None
+        if self.timesteps_from_peak is not None:
+            event_peak = self.event_peak_idx[event_idx]
+            end = event_peak + self.timesteps_from_peak
+
+        return dynamic_data[start:end]
+
 
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])
@@ -429,12 +464,9 @@ class FloodEventDataset(Dataset):
 
     def _get_dynamic_from_all_events(self, retrieval_func: Callable) -> ndarray:
         all_event_data = []
-        for hec_ras_path in self.raw_paths[2:]:
+        for i, hec_ras_path in enumerate(self.raw_paths[2:]):
             event_data = retrieval_func(hec_ras_path)
-
-            if self.spin_up_timesteps is not None:
-                event_data = event_data[self.spin_up_timesteps:]
-
+            event_data = self._trim_timesteps_within_bounds(event_data, i)
             all_event_data.append(event_data)
         all_event_data = np.concatenate(all_event_data, axis=0)
         return all_event_data

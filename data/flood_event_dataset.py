@@ -5,13 +5,14 @@ import pandas as pd
 
 from torch import Tensor
 from torch_geometric.data import Dataset, Data
+from torch_geometric.utils import to_undirected
 from typing import Callable, Tuple, List, Dict, Optional
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
 
-from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_roughness, get_rainfall,\
-    get_water_level, get_water_volume, get_edge_direction_x, get_edge_direction_y, get_face_length,\
-    get_velocity, get_face_flow
+from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_min_cell_elevation, get_roughness,\
+    get_rainfall, get_water_level, get_water_volume, get_edge_direction_x, get_edge_direction_y, \
+    get_face_length, get_velocity, get_face_flow
 from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length, get_edge_slope
 
 class FloodEventDataset(Dataset):
@@ -28,8 +29,10 @@ class FloodEventDataset(Dataset):
                  nodes_shp_file: str,
                  edges_shp_file: str,
                  previous_timesteps: int = 2,
+                 inflow_boundary_edges: List[int] = [],
+                 outflow_boundary_nodes: List[int] = [],
                  normalize: bool = True,
-                 warmup_timesteps: Optional[int] = None,
+                 spin_up_timesteps: Optional[int] = None,
                  timesteps_from_peak: Optional[int] = None,
                  debug: bool = False,
                  logger: Logger = None,
@@ -47,10 +50,11 @@ class FloodEventDataset(Dataset):
         self.edges_shp_file = edges_shp_file
 
         # Dataset configurations
-        self.normalize = normalize
         self.previous_timesteps = previous_timesteps
-        self.warmup_timesteps = warmup_timesteps
-        self.timesteps_from_peak = timesteps_from_peak
+        self.inflow_boundary_edges = inflow_boundary_edges
+        self.outflow_boundary_nodes = outflow_boundary_nodes
+        self.normalize = normalize
+        self.spin_up_timesteps = spin_up_timesteps
 
         # Dataset variables
         self.num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
@@ -93,12 +97,73 @@ class FloodEventDataset(Dataset):
         static_edges = self._get_static_edge_features()
         dynamic_edges = self._get_dynamic_edge_features()
 
-        if self.timesteps_from_peak is not None:
-            # Trim the data from the peak water level
-            peak_water_depth_ts = dynamic_nodes['water_depth'].sum(axis=1).argmax()
-            last_ts = peak_water_depth_ts + self.timesteps_from_peak
-            dynamic_nodes = self._trim_features_from_peak_water_depth(dynamic_nodes, last_ts)
-            dynamic_edges = self._trim_features_from_peak_water_depth(dynamic_edges, last_ts)
+        # =========================
+        # Ghost cells
+        min_elevation = torch.from_numpy(get_min_cell_elevation(self.raw_paths[2]))
+        ghost_cells = torch.where(torch.isnan(min_elevation))[0]
+        ghost_edges_mask = torch.any(torch.isin(edge_index, ghost_cells), axis=0)
+        ghost_edges = edge_index[:, ghost_edges_mask]
+
+        # Boundary Conditions
+        inflow_boundary_nodes = torch.unique(edge_index[:, self.inflow_boundary_edges])
+        boundary_nodes = torch.concat([inflow_boundary_nodes, torch.Tensor(self.outflow_boundary_nodes)])
+        # Filter boundary nodes to only include ghost cells
+        boundary_nodes = boundary_nodes[torch.isin(boundary_nodes, ghost_cells)]
+        boundary_edges_mask = torch.any(torch.isin(edge_index, boundary_nodes), dim=0)
+        boundary_edges = edge_index[:, boundary_edges_mask]
+
+        new_boundary_nodes = torch.arange(ghost_cells[0], (ghost_cells[0] + len(boundary_nodes)))
+        new_boundary_edges = boundary_edges.clone()
+        boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
+        for old_value, new_value in boundary_nodes_mapping.items():
+            new_boundary_edges[new_boundary_edges == old_value] = new_value
+
+        # Static nodes
+        num_nodes, num_static_node_feat = static_nodes.shape
+        num_boundary_nodes, = new_boundary_nodes.shape
+        ghost_cells_mask = torch.isin(torch.arange(num_nodes), ghost_cells)
+        static_nodes = static_nodes[~ghost_cells_mask, :]
+        boundary_static_nodes = torch.zeros((num_boundary_nodes, num_static_node_feat), dtype=static_nodes.dtype)
+        static_nodes = torch.cat([static_nodes, boundary_static_nodes], dim=0)
+
+        # Static edges
+        _, num_static_edge_feat = static_edges.shape
+        _, num_boundary_edges = new_boundary_edges.shape
+        static_edges = static_edges[~ghost_edges_mask, :]
+        boundary_static_edges = torch.zeros((num_boundary_edges, num_static_edge_feat), dtype=static_edges.dtype)
+        static_edges = torch.cat([static_edges, boundary_static_edges], dim=0)
+
+        # Dynamic nodes
+        num_ts, num_nodes, num_dynamic_node_feat = dynamic_nodes.shape
+        num_boundary_nodes, = new_boundary_nodes.shape
+        t_outflow_boundary_nodes = torch.Tensor(self.outflow_boundary_nodes)
+        ghost_cells_mask = torch.isin(torch.arange(num_nodes), ghost_cells)
+        outflow_boundary_nodes_mask = torch.isin(torch.arange(num_nodes), t_outflow_boundary_nodes)
+        outflow_dynamic_nodes = dynamic_nodes[:, outflow_boundary_nodes_mask, :].clone()
+        # Boundary of rainfall should be zero -> only volume is used for boundary conditions
+        outflow_dynamic_nodes[:, :, FloodEventDataset.DYNAMIC_NODE_FEATURES.index('rainfall')] = 0.0
+        dynamic_nodes = dynamic_nodes[:, ~ghost_cells_mask, :]
+        boundary_dynamic_nodes = torch.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
+        outflow_dynamic_nodes_mask = torch.isin(boundary_nodes, t_outflow_boundary_nodes)
+        boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, :] = outflow_dynamic_nodes
+        dynamic_nodes = torch.cat([dynamic_nodes, boundary_dynamic_nodes], dim=1)
+
+        # Dynamic edges
+        num_ts, num_edges, num_dynamic_edge_feat = dynamic_edges.shape
+        _, num_boundary_edges = new_boundary_edges.shape
+        inflow_edge_index = edge_index[:, self.inflow_boundary_edges]
+        inflow_boundary_edges_mask = torch.all(edge_index == inflow_edge_index, dim=0)
+        inflow_dynamic_edges = dynamic_edges[:, inflow_boundary_edges_mask, :].clone()
+        dynamic_edges = dynamic_edges[:, ~ghost_edges_mask, :]
+        boundary_dynamic_edges = torch.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
+        inflow_dynamic_edges_mask = torch.all(boundary_edges == inflow_edge_index, dim=0)
+        boundary_dynamic_edges[:, inflow_dynamic_edges_mask, :] = inflow_dynamic_edges
+        dynamic_edges = torch.cat([dynamic_edges, boundary_dynamic_edges], dim=1)
+
+        edge_index = edge_index[:, ~ghost_edges_mask]
+        edge_index = torch.cat([edge_index, new_boundary_edges], dim=1)
+
+        # =========================
 
         torch.save(edge_index, self.processed_paths[2])
         self.log_func(f'Saved edge index to {self.processed_paths[2]}')
@@ -218,8 +283,8 @@ class FloodEventDataset(Dataset):
         current_total_ts = 0
         for hec_ras_path in self.raw_paths[2:]:
             timesteps = get_event_timesteps(hec_ras_path)
-            if self.warmup_timesteps is not None:
-                timesteps = timesteps[self.warmup_timesteps:]
+            if self.spin_up_timesteps is not None:
+                timesteps = timesteps[self.spin_up_timesteps:]
             num_timesteps = len(timesteps)
             event_num_timesteps.append(num_timesteps)
 
@@ -230,24 +295,6 @@ class FloodEventDataset(Dataset):
         assert len(event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
 
         return edge_index, event_start_idx, current_total_ts, event_num_timesteps
-
-    def _trim_features_from_peak_water_depth(self, feature_data: Dict[str, np.ndarray], last_ts: int) -> Dict[str, np.ndarray]:
-        for feature, data in feature_data.items():
-            if self.normalize:
-                data = self._denormalize_features(feature, data)
-
-            data = data[:last_ts]
-            self.feature_stats[feature] = {
-                'mean': data.mean().item(),
-                'std': data.std().item(),
-            }
-
-            if self.normalize:
-                data = self._normalize_features(data)
-
-            feature_data[feature] = data
-
-        return feature_data
 
     def _get_timestep_data(self, static_features: Tensor, dynamic_features: Tensor, timestep_idx: int) -> Tensor:
         """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""
@@ -339,8 +386,8 @@ class FloodEventDataset(Dataset):
         for hec_ras_path in self.raw_paths[2:]:
             event_data = retrieval_func(hec_ras_path)
 
-            if self.warmup_timesteps is not None:
-                event_data = event_data[self.warmup_timesteps:]
+            if self.spin_up_timesteps is not None:
+                event_data = event_data[self.spin_up_timesteps:]
 
             all_event_data.append(event_data)
         all_event_data = np.concatenate(all_event_data, axis=0)

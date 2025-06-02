@@ -23,6 +23,11 @@ def get_cell_area(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
+def get_min_cell_elevation(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Cells Minimum Elevation'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
 def get_roughness(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f"Geometry.2D Flow Areas.{perimeter_name}.Cells Center Manning's n"
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)

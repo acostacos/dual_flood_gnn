@@ -6,7 +6,6 @@ import pandas as pd
 from numpy import ndarray
 from torch import Tensor
 from torch_geometric.data import Dataset, Data
-from torch_geometric.utils import to_undirected
 from typing import Callable, Tuple, List, Dict, Optional
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
@@ -99,6 +98,7 @@ class FloodEventDataset(Dataset):
         bc_info = self._create_boundary_conditions(ghost_nodes, edge_index, dynamic_nodes, dynamic_edges)
         new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges = bc_info
 
+        # Delete ghost nodes
         static_nodes = np.delete(static_nodes, ghost_nodes, axis=0)
         dynamic_nodes = np.delete(dynamic_nodes, ghost_nodes, axis=1)
 
@@ -106,6 +106,9 @@ class FloodEventDataset(Dataset):
         static_edges = np.delete(static_edges, boundary_edges_idx, axis=0)
         dynamic_edges = np.delete(dynamic_edges, boundary_edges_idx, axis=1)
         edge_index = np.delete(edge_index, boundary_edges_idx, axis=1)
+
+        # Convert to undirected with flipped edge features
+        edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
 
         np.savez_compressed(self.processed_paths[2],
                             edge_index=edge_index,
@@ -314,7 +317,27 @@ class FloodEventDataset(Dataset):
         inflow_dynamic_edges_mask = np.isin(boundary_edges_idx, self.inflow_boundary_edges)
         boundary_dynamic_edges[:, inflow_dynamic_edges_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
 
+        # Ensure boundary edges are pointing away from the ghost nodes
+        to_boundary = np.isin(new_boundary_edges[1], new_boundary_nodes)
+        flipped_to_boundary = new_boundary_edges[:, to_boundary]
+        flipped_to_boundary[[0, 1], :] = flipped_to_boundary[[1, 0], :]
+        new_boundary_edges = np.concat([new_boundary_edges[:, ~to_boundary], flipped_to_boundary], axis=1)
+        # Flip the dynamic edge features accordingly
+        boundary_dynamic_edges[:, to_boundary, :] *= -1
+
         return new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges
+
+    def _to_undirected_flipped(self, edge_index: ndarray, static_edges: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
+        # Convert to undirected with flipped edge features
+        row, col = edge_index[0], edge_index[1]
+        row, col = np.concat([row, col], axis=0), np.concat([col, row], axis=0)
+        edge_index = np.stack([row, col], axis=0)
+
+        static_edges = np.concat([static_edges, static_edges], axis=0)
+        flipped_dynamic_edges = dynamic_edges * -1
+        dynamic_edges = np.concat([dynamic_edges, flipped_dynamic_edges], axis=1)
+
+        return edge_index, static_edges, dynamic_edges
 
     def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
         """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""

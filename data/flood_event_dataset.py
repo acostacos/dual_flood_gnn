@@ -86,85 +86,34 @@ class FloodEventDataset(Dataset):
     def process(self):
         self.log_func('Processing Flood Event Dataset...')
 
-        global_properties = self._get_global_properties()
-        edge_index, self.event_start_idx, self.total_train_timesteps, event_num_timesteps = global_properties
+        self.event_start_idx, self.total_train_timesteps, event_num_timesteps = self._get_event_properties()
+        edge_index = self._get_edge_index()
+
         static_nodes = self._get_static_node_features()
         dynamic_nodes = self._get_dynamic_node_features()
         static_edges = self._get_static_edge_features()
         dynamic_edges = self._get_dynamic_edge_features()
 
-        # =========================
-        # Ghost cells
-        min_elevation = get_min_cell_elevation(self.raw_paths[2])
-        ghost_cells = np.where(np.isnan(min_elevation))[0]
-        ghost_edges_mask = np.any(np.isin(edge_index, ghost_cells), axis=0)
-        ghost_edges = edge_index[:, ghost_edges_mask]
+        ghost_nodes = self._get_ghost_nodes()
 
-        # Boundary Conditions
-        inflow_boundary_nodes = np.unique(edge_index[:, self.inflow_boundary_edges])
-        boundary_nodes = np.concat([inflow_boundary_nodes, np.array(self.outflow_boundary_nodes)])
-        # Filter boundary nodes to only include ghost cells
-        boundary_nodes = boundary_nodes[np.isin(boundary_nodes, ghost_cells)]
-        boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
-        boundary_edges = edge_index[:, boundary_edges_mask]
+        bc_info = self._create_boundary_conditions(ghost_nodes, edge_index, dynamic_nodes, dynamic_edges)
+        new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges = bc_info
 
-        new_boundary_nodes = np.arange(ghost_cells[0], (ghost_cells[0] + len(boundary_nodes)))
-        new_boundary_edges = boundary_edges.copy()
-        boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
-        for old_value, new_value in boundary_nodes_mapping.items():
-            new_boundary_edges[new_boundary_edges == old_value] = new_value
+        static_nodes = np.delete(static_nodes, ghost_nodes, axis=0)
+        dynamic_nodes = np.delete(dynamic_nodes, ghost_nodes, axis=1)
 
-        # Static nodes
-        num_nodes, num_static_node_feat = static_nodes.shape
-        num_boundary_nodes, = new_boundary_nodes.shape
-        ghost_cells_mask = np.isin(np.arange(num_nodes), ghost_cells)
-        static_nodes = static_nodes[~ghost_cells_mask, :]
-        boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat), dtype=static_nodes.dtype)
-        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
+        boundary_edges_idx = np.any(np.isin(edge_index, ghost_nodes), axis=0).nonzero()[0]
+        static_edges = np.delete(static_edges, boundary_edges_idx, axis=0)
+        dynamic_edges = np.delete(dynamic_edges, boundary_edges_idx, axis=1)
+        edge_index = np.delete(edge_index, boundary_edges_idx, axis=1)
 
-        # Static edges
-        _, num_static_edge_feat = static_edges.shape
-        _, num_boundary_edges = new_boundary_edges.shape
-        static_edges = static_edges[~ghost_edges_mask, :]
-        boundary_static_edges = np.zeros((num_boundary_edges, num_static_edge_feat), dtype=static_edges.dtype)
-        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
-
-        # Dynamic nodes
-        num_ts, num_nodes, num_dynamic_node_feat = dynamic_nodes.shape
-        num_boundary_nodes, = new_boundary_nodes.shape
-        t_outflow_boundary_nodes = np.array(self.outflow_boundary_nodes)
-        ghost_cells_mask = np.isin(np.arange(num_nodes), ghost_cells)
-        outflow_boundary_nodes_mask = np.isin(np.arange(num_nodes), t_outflow_boundary_nodes)
-        outflow_dynamic_nodes = dynamic_nodes[:, outflow_boundary_nodes_mask, :].copy()
-        # Boundary of rainfall should be zero -> only volume is used for boundary conditions
-        # Set all NOT water volume features to zero
-        outflow_dynamic_nodes[:, :, FloodEventDataset.DYNAMIC_NODE_FEATURES.index('rainfall')] = 0.0
-        dynamic_nodes = dynamic_nodes[:, ~ghost_cells_mask, :]
-        boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
-        outflow_dynamic_nodes_mask = np.isin(boundary_nodes, t_outflow_boundary_nodes)
-        boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, :] = outflow_dynamic_nodes
-        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
-
-        # Dynamic edges
-        num_ts, num_edges, num_dynamic_edge_feat = dynamic_edges.shape
-        _, num_boundary_edges = new_boundary_edges.shape
-        inflow_edge_index = edge_index[:, self.inflow_boundary_edges]
-        inflow_boundary_edges_mask = np.all(edge_index == inflow_edge_index, axis=0)
-        inflow_dynamic_edges = dynamic_edges[:, inflow_boundary_edges_mask, :].copy()
-        # Set all NOT water flow features to zero
-        dynamic_edges = dynamic_edges[:, ~ghost_edges_mask, :]
-        boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
-        inflow_dynamic_edges_mask = np.all(boundary_edges == inflow_edge_index, axis=0)
-        boundary_dynamic_edges[:, inflow_dynamic_edges_mask, :] = inflow_dynamic_edges
-        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
-
-        edge_index = edge_index[:, ~ghost_edges_mask]
-        edge_index = np.concat([edge_index, new_boundary_edges], axis=1)
-
-        # =========================
-
-        np.savez_compressed(self.processed_paths[2], edge_index=edge_index, static_nodes=static_nodes, static_edges=static_edges)
-        self.log_func(f'Saved edge index, static node features, and static edge features to {self.processed_paths[2]}')
+        np.savez_compressed(self.processed_paths[2],
+                            edge_index=edge_index,
+                            static_nodes=static_nodes,
+                            static_edges=static_edges,
+                            boundary_nodes=new_boundary_nodes,
+                            boundary_edges=new_boundary_edges)
+        self.log_func(f'Saved constant values to {self.processed_paths[2]}')
 
         start_idx = 0
         for i, num_ts in enumerate(event_num_timesteps):
@@ -173,10 +122,16 @@ class FloodEventDataset(Dataset):
 
             event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
+            event_bc_dynamic_nodes = boundary_dynamic_nodes[start_idx:end_idx].copy()
+            event_bc_dynamic_edges = boundary_dynamic_edges[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 3]
-            np.savez_compressed(save_path, dynamic_nodes=event_dynamic_nodes, dynamic_edges=event_dynamic_edges)
-            self.log_func(f'Saved dynamic node features and dynamic edge features for event {run_id} to {save_path}')
+            np.savez_compressed(save_path,
+                                dynamic_nodes=event_dynamic_nodes,
+                                dynamic_edges=event_dynamic_edges,
+                                boundary_dynamic_nodes=event_bc_dynamic_nodes,
+                                boundary_dynamic_edges=event_bc_dynamic_edges)
+            self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
 
@@ -189,10 +144,13 @@ class FloodEventDataset(Dataset):
         return self.total_train_timesteps
 
     def get(self, idx):
+        # Load constant data
         constant_values = np.load(self.processed_paths[2])
         edge_index = constant_values['edge_index']
         static_nodes = constant_values['static_nodes']
         static_edges = constant_values['static_edges']
+        boundary_nodes = constant_values['boundary_nodes']
+        boundary_edges = constant_values['boundary_edges']
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_train_timesteps:
@@ -204,12 +162,29 @@ class FloodEventDataset(Dataset):
             start_idx = si
         event_idx = self.event_start_idx.index(start_idx)
 
-        # Create Data object for timestep
+        # Load dynamic data
         dynamic_values_path = self.processed_paths[event_idx + 3]
         dynamic_values = np.load(dynamic_values_path)
         dynamic_nodes = dynamic_values['dynamic_nodes']
         dynamic_edges = dynamic_values['dynamic_edges']
+        boundary_dynamic_nodes = dynamic_values['boundary_dynamic_nodes']
+        boundary_dynamic_edges = dynamic_values['boundary_dynamic_edges']
 
+        # Add boundary conditions
+        boundary_static_nodes = np.zeros((len(boundary_nodes), self.num_static_node_features),
+                                         dtype=static_nodes.dtype)
+        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
+
+        boundary_static_edges = np.zeros((boundary_edges.shape[1], self.num_static_edge_features),
+                                         dtype=static_edges.dtype)
+        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
+
+        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
+        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
+
+        edge_index = np.concat([edge_index, boundary_edges], axis=1)
+
+        # Create Data object for timestep
         edge_index = torch.from_numpy(edge_index)
         within_event_idx = idx - start_idx
 
@@ -270,10 +245,8 @@ class FloodEventDataset(Dataset):
             hec_ras_files.append(hec_ras_path)
 
         return hec_ras_files, hec_ras_run_ids
-
-    def _get_global_properties(self) -> Tuple[ndarray, List[int], int, List[int]]:
-        edge_index = get_edge_index(self.raw_paths[1])
-
+    
+    def _get_event_properties(self) -> Tuple[List[int], int, List[int]]:
         event_start_idx = []
         event_num_timesteps = []
         current_total_ts = 0
@@ -287,10 +260,61 @@ class FloodEventDataset(Dataset):
             event_total_training_ts = num_timesteps - 1  # Last timestep is used for labels
             event_start_idx.append(current_total_ts)
             current_total_ts += event_total_training_ts
-
         assert len(event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
 
-        return edge_index, event_start_idx, current_total_ts, event_num_timesteps
+        return event_start_idx, current_total_ts, event_num_timesteps
+
+    def _get_edge_index(self) -> ndarray:
+        edge_index = get_edge_index(self.raw_paths[1])
+        return edge_index
+
+    def _get_ghost_nodes(self) -> ndarray:
+        min_elevation = get_min_cell_elevation(self.raw_paths[2])
+        ghost_nodes = np.where(np.isnan(min_elevation))[0]
+        return ghost_nodes
+
+    def _create_boundary_conditions(self,
+                                    ghost_nodes: ndarray,
+                                    edge_index: ndarray,
+                                    dynamic_nodes: ndarray,
+                                    dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
+        inflow_boundary_nodes = np.unique(edge_index[:, self.inflow_boundary_edges])
+        inflow_boundary_nodes = inflow_boundary_nodes[np.isin(inflow_boundary_nodes, ghost_nodes)]
+        boundary_nodes = np.concat([inflow_boundary_nodes, np.array(self.outflow_boundary_nodes)])
+
+        boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
+        boundary_edges = edge_index[:, boundary_edges_mask]
+        boundary_edges_idx = boundary_edges_mask.nonzero()[0]
+
+        # Reassign new indices to the boundary nodes taking into account the removal of ghost nodes
+        # Ghost nodes are assumed to be the last nodes in the node feature matrix
+        new_boundary_nodes = np.arange(ghost_nodes[0], (ghost_nodes[0] + len(boundary_nodes)))
+        new_boundary_edges = boundary_edges.copy()
+        boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
+        for old_value, new_value in boundary_nodes_mapping.items():
+            new_boundary_edges[new_boundary_edges == old_value] = new_value
+
+        # Node boundary conditions = Outflow Water Volume
+        outflow_dynamic_nodes = dynamic_nodes[:, self.outflow_boundary_nodes, :].copy()
+        num_ts, _, num_dynamic_node_feat = dynamic_nodes.shape
+        num_boundary_nodes = len(new_boundary_nodes)
+        boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
+
+        target_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
+        outflow_dynamic_nodes_mask = np.isin(boundary_nodes, self.outflow_boundary_nodes)
+        boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
+
+        # Edge boundary conditions = Inflow Water Flow
+        inflow_dynamic_edges = dynamic_edges[:, self.inflow_boundary_edges, :].copy()
+        num_ts, _, num_dynamic_edge_feat = dynamic_edges.shape
+        num_boundary_edges = len(boundary_edges_idx)
+        boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
+
+        target_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
+        inflow_dynamic_edges_mask = np.isin(boundary_edges_idx, self.inflow_boundary_edges)
+        boundary_dynamic_edges[:, inflow_dynamic_edges_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
+
+        return new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges
 
     def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
         """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""

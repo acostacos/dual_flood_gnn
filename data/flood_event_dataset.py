@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import pandas as pd
 
+from numpy import ndarray
 from torch import Tensor
 from torch_geometric.data import Dataset, Data
 from torch_geometric.utils import to_undirected
@@ -36,9 +37,6 @@ class FloodEventDataset(Dataset):
                  timesteps_from_peak: Optional[int] = None,
                  debug: bool = False,
                  logger: Logger = None,
-                 transform=None,
-                 pre_transform=None,
-                 pre_filter=None,
                  force_reload: bool = False):
         self.log_func = print
         if logger is not None and hasattr(logger, 'log'):
@@ -65,7 +63,7 @@ class FloodEventDataset(Dataset):
         self.total_train_timesteps = 0
         self.feature_stats = {}
 
-        super().__init__(root_dir, transform, pre_transform, pre_filter, log=debug, force_reload=force_reload)
+        super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
         if len(self.feature_stats) == 0:
             self.feature_stats = self.load_feature_stats()
@@ -78,10 +76,8 @@ class FloodEventDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        dynamic_node_files = [f'dynamic_node_event_{run_id}.pt' for run_id in self.hec_ras_run_ids]
-        dynamic_edge_files = [f'dynamic_edge_event_{run_id}.pt' for run_id in self.hec_ras_run_ids]
-        return ['event_stats.yaml', 'features_stats.yaml', 'edge_index.pt', 'static_node.pt', 'static_edge.pt',
-                *dynamic_node_files, *dynamic_edge_files]
+        dynamic_files = [f'dynamic_values_event_{run_id}.npz' for run_id in self.hec_ras_run_ids]
+        return ['event_stats.yaml', 'features_stats.yaml', 'constant_values.npz', *dynamic_files]
 
     def download(self):
         # Data must be downloaded manually and placed in the raw dir
@@ -99,21 +95,21 @@ class FloodEventDataset(Dataset):
 
         # =========================
         # Ghost cells
-        min_elevation = torch.from_numpy(get_min_cell_elevation(self.raw_paths[2]))
-        ghost_cells = torch.where(torch.isnan(min_elevation))[0]
-        ghost_edges_mask = torch.any(torch.isin(edge_index, ghost_cells), axis=0)
+        min_elevation = get_min_cell_elevation(self.raw_paths[2])
+        ghost_cells = np.where(np.isnan(min_elevation))[0]
+        ghost_edges_mask = np.any(np.isin(edge_index, ghost_cells), axis=0)
         ghost_edges = edge_index[:, ghost_edges_mask]
 
         # Boundary Conditions
-        inflow_boundary_nodes = torch.unique(edge_index[:, self.inflow_boundary_edges])
-        boundary_nodes = torch.concat([inflow_boundary_nodes, torch.Tensor(self.outflow_boundary_nodes)])
+        inflow_boundary_nodes = np.unique(edge_index[:, self.inflow_boundary_edges])
+        boundary_nodes = np.concat([inflow_boundary_nodes, np.array(self.outflow_boundary_nodes)])
         # Filter boundary nodes to only include ghost cells
-        boundary_nodes = boundary_nodes[torch.isin(boundary_nodes, ghost_cells)]
-        boundary_edges_mask = torch.any(torch.isin(edge_index, boundary_nodes), dim=0)
+        boundary_nodes = boundary_nodes[np.isin(boundary_nodes, ghost_cells)]
+        boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
         boundary_edges = edge_index[:, boundary_edges_mask]
 
-        new_boundary_nodes = torch.arange(ghost_cells[0], (ghost_cells[0] + len(boundary_nodes)))
-        new_boundary_edges = boundary_edges.clone()
+        new_boundary_nodes = np.arange(ghost_cells[0], (ghost_cells[0] + len(boundary_nodes)))
+        new_boundary_edges = boundary_edges.copy()
         boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
         for old_value, new_value in boundary_nodes_mapping.items():
             new_boundary_edges[new_boundary_edges == old_value] = new_value
@@ -121,69 +117,66 @@ class FloodEventDataset(Dataset):
         # Static nodes
         num_nodes, num_static_node_feat = static_nodes.shape
         num_boundary_nodes, = new_boundary_nodes.shape
-        ghost_cells_mask = torch.isin(torch.arange(num_nodes), ghost_cells)
+        ghost_cells_mask = np.isin(np.arange(num_nodes), ghost_cells)
         static_nodes = static_nodes[~ghost_cells_mask, :]
-        boundary_static_nodes = torch.zeros((num_boundary_nodes, num_static_node_feat), dtype=static_nodes.dtype)
-        static_nodes = torch.cat([static_nodes, boundary_static_nodes], dim=0)
+        boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat), dtype=static_nodes.dtype)
+        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
 
         # Static edges
         _, num_static_edge_feat = static_edges.shape
         _, num_boundary_edges = new_boundary_edges.shape
         static_edges = static_edges[~ghost_edges_mask, :]
-        boundary_static_edges = torch.zeros((num_boundary_edges, num_static_edge_feat), dtype=static_edges.dtype)
-        static_edges = torch.cat([static_edges, boundary_static_edges], dim=0)
+        boundary_static_edges = np.zeros((num_boundary_edges, num_static_edge_feat), dtype=static_edges.dtype)
+        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
 
         # Dynamic nodes
         num_ts, num_nodes, num_dynamic_node_feat = dynamic_nodes.shape
         num_boundary_nodes, = new_boundary_nodes.shape
-        t_outflow_boundary_nodes = torch.Tensor(self.outflow_boundary_nodes)
-        ghost_cells_mask = torch.isin(torch.arange(num_nodes), ghost_cells)
-        outflow_boundary_nodes_mask = torch.isin(torch.arange(num_nodes), t_outflow_boundary_nodes)
-        outflow_dynamic_nodes = dynamic_nodes[:, outflow_boundary_nodes_mask, :].clone()
+        t_outflow_boundary_nodes = np.array(self.outflow_boundary_nodes)
+        ghost_cells_mask = np.isin(np.arange(num_nodes), ghost_cells)
+        outflow_boundary_nodes_mask = np.isin(np.arange(num_nodes), t_outflow_boundary_nodes)
+        outflow_dynamic_nodes = dynamic_nodes[:, outflow_boundary_nodes_mask, :].copy()
         # Boundary of rainfall should be zero -> only volume is used for boundary conditions
+        # Set all NOT water volume features to zero
         outflow_dynamic_nodes[:, :, FloodEventDataset.DYNAMIC_NODE_FEATURES.index('rainfall')] = 0.0
         dynamic_nodes = dynamic_nodes[:, ~ghost_cells_mask, :]
-        boundary_dynamic_nodes = torch.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
-        outflow_dynamic_nodes_mask = torch.isin(boundary_nodes, t_outflow_boundary_nodes)
+        boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
+        outflow_dynamic_nodes_mask = np.isin(boundary_nodes, t_outflow_boundary_nodes)
         boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, :] = outflow_dynamic_nodes
-        dynamic_nodes = torch.cat([dynamic_nodes, boundary_dynamic_nodes], dim=1)
+        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
 
         # Dynamic edges
         num_ts, num_edges, num_dynamic_edge_feat = dynamic_edges.shape
         _, num_boundary_edges = new_boundary_edges.shape
         inflow_edge_index = edge_index[:, self.inflow_boundary_edges]
-        inflow_boundary_edges_mask = torch.all(edge_index == inflow_edge_index, dim=0)
-        inflow_dynamic_edges = dynamic_edges[:, inflow_boundary_edges_mask, :].clone()
+        inflow_boundary_edges_mask = np.all(edge_index == inflow_edge_index, axis=0)
+        inflow_dynamic_edges = dynamic_edges[:, inflow_boundary_edges_mask, :].copy()
+        # Set all NOT water flow features to zero
         dynamic_edges = dynamic_edges[:, ~ghost_edges_mask, :]
-        boundary_dynamic_edges = torch.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
-        inflow_dynamic_edges_mask = torch.all(boundary_edges == inflow_edge_index, dim=0)
+        boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
+        inflow_dynamic_edges_mask = np.all(boundary_edges == inflow_edge_index, axis=0)
         boundary_dynamic_edges[:, inflow_dynamic_edges_mask, :] = inflow_dynamic_edges
-        dynamic_edges = torch.cat([dynamic_edges, boundary_dynamic_edges], dim=1)
+        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
 
         edge_index = edge_index[:, ~ghost_edges_mask]
-        edge_index = torch.cat([edge_index, new_boundary_edges], dim=1)
+        edge_index = np.concat([edge_index, new_boundary_edges], axis=1)
 
         # =========================
 
-        torch.save(edge_index, self.processed_paths[2])
-        self.log_func(f'Saved edge index to {self.processed_paths[2]}')
-        torch.save(static_nodes, self.processed_paths[3])
-        self.log_func(f'Saved static node features to {self.processed_paths[3]}')
-        torch.save(static_edges, self.processed_paths[4])
-        self.log_func(f'Saved static edge features to {self.processed_paths[4]}')
+        np.savez_compressed(self.processed_paths[2], edge_index=edge_index, static_nodes=static_nodes, static_edges=static_edges)
+        self.log_func(f'Saved edge index, static node features, and static edge features to {self.processed_paths[2]}')
 
         start_idx = 0
         for i, num_ts in enumerate(event_num_timesteps):
             run_id = self.hec_ras_run_ids[i]
             end_idx = start_idx + num_ts
 
-            event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].clone()
-            torch.save(event_dynamic_nodes, self.processed_paths[i+5])
-            self.log_func(f'Saved dynamic node features for event {run_id} to {self.processed_paths[i + 5]}')
+            event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
+            event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
 
-            event_dynamic_edges = dynamic_edges[start_idx:end_idx].clone()
-            torch.save(event_dynamic_edges, self.processed_paths[i + len(self.hec_ras_run_ids) + 5])
-            self.log_func(f'Saved dynamic node features for event {run_id} to {self.processed_paths[i + 5]}')
+            save_path = self.processed_paths[i + 3]
+            np.savez_compressed(save_path, dynamic_nodes=event_dynamic_nodes, dynamic_edges=event_dynamic_edges)
+            self.log_func(f'Saved dynamic node features and dynamic edge features for event {run_id} to {save_path}')
 
             start_idx = end_idx
 
@@ -196,9 +189,10 @@ class FloodEventDataset(Dataset):
         return self.total_train_timesteps
 
     def get(self, idx):
-        edge_index = torch.load(self.processed_paths[2], weights_only=True)
-        static_nodes = torch.load(self.processed_paths[3], weights_only=True)
-        static_edges = torch.load(self.processed_paths[4], weights_only=True)
+        constant_values = np.load(self.processed_paths[2])
+        edge_index = constant_values['edge_index']
+        static_nodes = constant_values['static_nodes']
+        static_edges = constant_values['static_edges']
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_train_timesteps:
@@ -211,9 +205,12 @@ class FloodEventDataset(Dataset):
         event_idx = self.event_start_idx.index(start_idx)
 
         # Create Data object for timestep
-        dynamic_nodes = torch.load(self.processed_paths[event_idx + 5], weights_only=True)
-        dynamic_edges = torch.load(self.processed_paths[event_idx + len(self.hec_ras_run_ids) + 5], weights_only=True)
+        dynamic_values_path = self.processed_paths[event_idx + 3]
+        dynamic_values = np.load(dynamic_values_path)
+        dynamic_nodes = dynamic_values['dynamic_nodes']
+        dynamic_edges = dynamic_values['dynamic_edges']
 
+        edge_index = torch.from_numpy(edge_index)
         within_event_idx = idx - start_idx
 
         node_features = self._get_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
@@ -274,9 +271,8 @@ class FloodEventDataset(Dataset):
 
         return hec_ras_files, hec_ras_run_ids
 
-    def _get_global_properties(self) -> Tuple[Tensor, List[int], int, List[int]]:
+    def _get_global_properties(self) -> Tuple[ndarray, List[int], int, List[int]]:
         edge_index = get_edge_index(self.raw_paths[1])
-        edge_index = torch.from_numpy(edge_index)
 
         event_start_idx = []
         event_num_timesteps = []
@@ -296,36 +292,39 @@ class FloodEventDataset(Dataset):
 
         return edge_index, event_start_idx, current_total_ts, event_num_timesteps
 
-    def _get_timestep_data(self, static_features: Tensor, dynamic_features: Tensor, timestep_idx: int) -> Tensor:
+    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
         """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""
         _, num_elems, num_dyn_features = dynamic_features.shape
         if timestep_idx < self.previous_timesteps:
             # Pad with zeros if not enough previous timesteps are available
-            padding = torch.zeros((self.previous_timesteps - timestep_idx, num_elems, num_dyn_features), dtype=dynamic_features.dtype)
-            ts_dynamic_features = torch.cat([padding, dynamic_features[:timestep_idx+1, :, :]], dim=0)
+            padding = np.zeros((self.previous_timesteps - timestep_idx, num_elems, num_dyn_features), dtype=dynamic_features.dtype)
+            ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
         else:
             ts_dynamic_features = dynamic_features[timestep_idx-self.previous_timesteps:timestep_idx+1, :, :]
 
         # (num_elems, num_timesteps * num_dynamic_features)
-        ts_dynamic_features = ts_dynamic_features.transpose(0, 1).reshape(num_elems, -1)
+        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2).reshape(num_elems, -1)
 
-        return torch.cat([static_features, ts_dynamic_features], dim=1)
+        ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
+        return torch.from_numpy(ts_data)
 
-    def _get_timestep_labels(self, node_dynamic_features: Tensor, edge_dynamic_features: Tensor, timestep_idx: int) -> Tuple[Tensor, Tensor]:
+    def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
         # Target feature must be the last feature in the dynamic features
         label_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
         # (num_nodes, 1)
         label_nodes = node_dynamic_features[timestep_idx+1, :, label_nodes_idx][:, None]
+        label_nodes = torch.from_numpy(label_nodes)
 
         label_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
         # (num_nodes, 1)
         label_edges = edge_dynamic_features[timestep_idx+1, :, label_edges_idx][:, None]
+        label_edges = torch.from_numpy(label_edges)
 
         return label_nodes, label_edges
 
     # =========== Feature Retrieval Methods ===========
 
-    def _get_static_node_features(self) -> Tensor:
+    def _get_static_node_features(self) -> ndarray:
         STATIC_NODE_RETRIEVAL_MAP = {
             "area": lambda: get_cell_area(self.raw_paths[2]),
             "roughness": lambda: get_roughness(self.raw_paths[2]),
@@ -335,9 +334,9 @@ class FloodEventDataset(Dataset):
         static_features = self._get_features(feature_list=FloodEventDataset.STATIC_NODE_FEATURES,
                                   feature_retrieval_map=STATIC_NODE_RETRIEVAL_MAP)
         static_features = np.array(static_features).transpose()
-        return torch.from_numpy(static_features)
+        return static_features
 
-    def _get_static_edge_features(self) -> Tensor:
+    def _get_static_edge_features(self) -> ndarray:
         STATIC_EDGE_RETRIEVAL_MAP = {
             "direction_x": lambda: get_edge_direction_x(self.raw_paths[2]),
             "direction_y": lambda: get_edge_direction_y(self.raw_paths[2]),
@@ -349,9 +348,9 @@ class FloodEventDataset(Dataset):
         static_features = self._get_features(feature_list=FloodEventDataset.STATIC_EDGE_FEATURES,
                                   feature_retrieval_map=STATIC_EDGE_RETRIEVAL_MAP)
         static_features = np.array(static_features).transpose()
-        return torch.from_numpy(static_features)
+        return static_features
 
-    def _get_dynamic_node_features(self) -> Tensor:
+    def _get_dynamic_node_features(self) -> ndarray:
         def get_water_depth():
             """Get water depth from water level and elevation"""
             water_level = get_water_level(self.raw_paths[0])
@@ -368,9 +367,9 @@ class FloodEventDataset(Dataset):
         dynamic_features = self._get_features(feature_list=FloodEventDataset.DYNAMIC_NODE_FEATURES,
                                   feature_retrieval_map=DYNAMIC_NODE_RETRIEVAL_MAP)
         dynamic_features = np.array(dynamic_features).transpose(1, 2, 0)
-        return torch.from_numpy(dynamic_features)
+        return dynamic_features
 
-    def _get_dynamic_edge_features(self) -> Tensor:
+    def _get_dynamic_edge_features(self) -> ndarray:
         DYNAMIC_EDGE_RETRIEVAL_MAP = {
             "velocity": lambda: self._get_dynamic_from_all_events(get_velocity),
             "face_flow": lambda: self._get_dynamic_from_all_events(get_face_flow),
@@ -379,9 +378,9 @@ class FloodEventDataset(Dataset):
         dynamic_features = self._get_features(feature_list=FloodEventDataset.DYNAMIC_EDGE_FEATURES,
                                   feature_retrieval_map=DYNAMIC_EDGE_RETRIEVAL_MAP)
         dynamic_features = np.array(dynamic_features).transpose(1, 2, 0)
-        return torch.from_numpy(dynamic_features)
+        return dynamic_features
 
-    def _get_dynamic_from_all_events(self, retrieval_func: Callable) -> np.ndarray:
+    def _get_dynamic_from_all_events(self, retrieval_func: Callable) -> ndarray:
         all_event_data = []
         for hec_ras_path in self.raw_paths[2:]:
             event_data = retrieval_func(hec_ras_path)
@@ -395,11 +394,11 @@ class FloodEventDataset(Dataset):
 
     def _get_features(self, feature_list: List[str], feature_retrieval_map: Dict[str, Callable]) -> List:
         features = []
-        for feature in feature_list: # Order in feature list determines the order of features in Tensor
+        for feature in feature_list: # Order in feature list determines the order of features in the output
             if feature not in feature_retrieval_map:
                 continue
 
-            feature_data: np.ndarray = feature_retrieval_map[feature]()
+            feature_data: ndarray = feature_retrieval_map[feature]()
             self.feature_stats[feature] = {
                 'mean': feature_data.mean().item(),
                 'std': feature_data.std().item(),
@@ -412,12 +411,12 @@ class FloodEventDataset(Dataset):
 
         return features
 
-    def _normalize_features(self, feature_data: np.ndarray) -> np.ndarray:
+    def _normalize_features(self, feature_data: ndarray) -> ndarray:
         """Z-score normalization of features"""
         EPS = 1e-7 # Prevent division by zero
         return (feature_data - feature_data.mean()) / (feature_data.std() + EPS)
 
-    def _denormalize_features(self, feature: str, feature_data: np.ndarray) -> np.ndarray:
+    def _denormalize_features(self, feature: str, feature_data: ndarray) -> ndarray:
         """Z-score denormalization of features"""
         if feature not in self.feature_stats:
             raise ValueError(f'Feature {feature} not found in feature stats.')

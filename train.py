@@ -74,7 +74,7 @@ def main():
             'device': args.device,
         }
         model_config = {**model_params, **base_model_params}
-        model = model_factory(args.model, model_config)
+        model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')
         logger.log(f'Using model configuration: {model_config}')
 

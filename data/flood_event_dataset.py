@@ -28,6 +28,8 @@ class FloodEventDataset(Dataset):
                  dataset_summary_file: str,
                  nodes_shp_file: str,
                  edges_shp_file: str,
+                 event_stats_file: str = 'event_stats.yaml',
+                 features_stats_file: str = 'features_stats.yaml',
                  previous_timesteps: int = 2,
                  inflow_boundary_edges: List[int] = [],
                  outflow_boundary_nodes: List[int] = [],
@@ -35,7 +37,7 @@ class FloodEventDataset(Dataset):
                  spin_up_timesteps: Optional[int] = None,
                  timesteps_from_peak: Optional[int] = None,
                  debug: bool = False,
-                 logger: Logger = None,
+                 logger: Optional[Logger] = None,
                  force_reload: bool = False):
         self.log_func = print
         if logger is not None and hasattr(logger, 'log'):
@@ -45,6 +47,8 @@ class FloodEventDataset(Dataset):
         self.hec_ras_files, self.hec_ras_run_ids = self._get_hecras_files_from_summary(root_dir, dataset_summary_file)
         self.nodes_shp_file = nodes_shp_file
         self.edges_shp_file = edges_shp_file
+        self.event_stats_file = event_stats_file
+        self.features_stats_file = features_stats_file
 
         # Dataset configurations
         self.previous_timesteps = previous_timesteps
@@ -59,17 +63,17 @@ class FloodEventDataset(Dataset):
         self.num_dynamic_node_features = len(FloodEventDataset.DYNAMIC_NODE_FEATURES)
         self.num_static_edge_features = len(FloodEventDataset.STATIC_EDGE_FEATURES)
         self.num_dynamic_edge_features = len(FloodEventDataset.DYNAMIC_EDGE_FEATURES)
-        self.feature_stats = {}
         self.event_peak_idx = None
         self.event_start_idx = []
         self.total_train_timesteps = 0
+        self.feature_stats = {}
 
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
-        if len(self.feature_stats) == 0:
-            self.feature_stats = self.load_feature_stats()
         if len(self.event_start_idx) == 0 or self.total_train_timesteps == 0:
             self.event_start_idx, self.total_train_timesteps = self.load_event_stats()
+        if len(self.feature_stats) == 0:
+            self.feature_stats = self.load_feature_stats()
 
     @property
     def raw_file_names(self):
@@ -78,7 +82,7 @@ class FloodEventDataset(Dataset):
     @property
     def processed_file_names(self):
         dynamic_files = [f'dynamic_values_event_{run_id}.npz' for run_id in self.hec_ras_run_ids]
-        return ['event_stats.yaml', 'features_stats.yaml', 'constant_values.npz', *dynamic_files]
+        return [self.event_stats_file, self.features_stats_file, 'constant_values.npz', *dynamic_files]
 
     def download(self):
         # Data must be downloaded manually and placed in the raw dir
@@ -115,12 +119,12 @@ class FloodEventDataset(Dataset):
         # Convert to undirected with flipped edge features
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
 
-        np.savez_compressed(self.processed_paths[2],
-                            edge_index=edge_index,
-                            static_nodes=static_nodes,
-                            static_edges=static_edges,
-                            boundary_nodes=new_boundary_nodes,
-                            boundary_edges=new_boundary_edges)
+        np.savez(self.processed_paths[2],
+                 edge_index=edge_index,
+                 static_nodes=static_nodes,
+                 static_edges=static_edges,
+                 boundary_nodes=new_boundary_nodes,
+                 boundary_edges=new_boundary_edges)
         self.log_func(f'Saved constant values to {self.processed_paths[2]}')
 
         start_idx = 0
@@ -134,19 +138,19 @@ class FloodEventDataset(Dataset):
             event_bc_dynamic_edges = boundary_dynamic_edges[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 3]
-            np.savez_compressed(save_path,
-                                dynamic_nodes=event_dynamic_nodes,
-                                dynamic_edges=event_dynamic_edges,
-                                boundary_dynamic_nodes=event_bc_dynamic_nodes,
-                                boundary_dynamic_edges=event_bc_dynamic_edges)
+            np.savez(save_path,
+                     dynamic_nodes=event_dynamic_nodes,
+                     dynamic_edges=event_dynamic_edges,
+                     boundary_dynamic_nodes=event_bc_dynamic_nodes,
+                     boundary_dynamic_edges=event_bc_dynamic_edges)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
 
-        self.save_feature_stats()
-        self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
         self.save_event_stats()
         self.log_func(f'Saved event stats to {self.processed_paths[0]}')
+        self.save_feature_stats()
+        self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
 
     def len(self):
         return self.total_train_timesteps

@@ -107,10 +107,10 @@ class FloodEventDataset(Dataset):
         static_nodes = np.delete(static_nodes, ghost_nodes, axis=0)
         dynamic_nodes = np.delete(dynamic_nodes, ghost_nodes, axis=1)
 
-        boundary_edges_idx = np.any(np.isin(edge_index, ghost_nodes), axis=0).nonzero()[0]
-        static_edges = np.delete(static_edges, boundary_edges_idx, axis=0)
-        dynamic_edges = np.delete(dynamic_edges, boundary_edges_idx, axis=1)
-        edge_index = np.delete(edge_index, boundary_edges_idx, axis=1)
+        ghost_edges_idx = np.any(np.isin(edge_index, ghost_nodes), axis=0).nonzero()[0]
+        static_edges = np.delete(static_edges, ghost_edges_idx, axis=0)
+        dynamic_edges = np.delete(dynamic_edges, ghost_edges_idx, axis=1)
+        edge_index = np.delete(edge_index, ghost_edges_idx, axis=1)
 
         # Convert to undirected with flipped edge features
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)

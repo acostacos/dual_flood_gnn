@@ -1,0 +1,49 @@
+dataset_parameters:
+  root_dir: 'data/datasets'
+  dataset_summary_file: 'train.csv'
+  nodes_shp_file: 'Geometry/updated_cell_centers.shp'
+  edges_shp_file: 'Geometry/links.shp'
+  spin_up_timesteps: 2880
+  timesteps_from_peak: 720
+  inflow_boundary_edges:
+  - 1849
+  outflow_boundary_nodes:
+  - 1253
+  - 1129
+
+training_parameters:
+  log_path: 'logs/training.log'   # Path to save training logs
+  model_dir: 'saved_models'       # Directory to save trained models
+  stats_dir: 'training_stats'     # Directory to save training statistics
+  num_epochs      : 1             # Number of epochs
+  batch_size      : 1             # Batch size
+  learning_rate   : 0.007         # learning rate
+  weight_decay    : 0             # weight decay
+
+model_parameters:
+  GCN:
+    hidden_features: 32
+    num_layers: 2
+    activation: 'prelu'
+    residual: True
+    encoder_layers: 2
+    encoder_activation: 'prelu'
+    decoder_layers: 2
+    decoder_activation: 'prelu'
+
+  GAT:
+    hidden_features: 32
+    use_edge_features: False
+    num_layers: 2
+    activation: 'prelu'
+    residual: True
+    num_heads: 1
+    dropout: 0.0
+    add_self_loops: True
+    negative_slope: 0.2
+    attn_bias: True
+    attn_residual: True
+    encoder_layers: 2
+    encoder_activation: 'prelu'
+    decoder_layers: 2
+    decoder_activation: 'prelu'

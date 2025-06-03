@@ -1,7 +1,7 @@
 dataset_parameters:
   storage_mode: 'memory'                                # 'memory' or 'disk'
-  root_dir: 'data/datasets'
-  dataset_summary_file: 'train.csv'
+  root_dir: 'data/datasets/train'
+  dataset_summary_file: 'dummy_train.csv'
   nodes_shp_file: 'Geometry/updated_cell_centers.shp'
   edges_shp_file: 'Geometry/links.shp'
   spin_up_timesteps: 2880

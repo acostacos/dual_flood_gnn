@@ -52,20 +52,24 @@ def main():
         train_dataset_parameters = dataset_parameters['training']
         root_dir = train_dataset_parameters['root_dir']
         dataset_summary_file = train_dataset_parameters['dataset_summary_file']
+        dataset_config = {
+            'root_dir': root_dir,
+            'dataset_summary_file': dataset_summary_file,
+            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
+            'edges_shp_file': dataset_parameters['edges_shp_file'],
+            'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
+            'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
+            'inflow_boundary_edges': dataset_parameters['inflow_boundary_edges'],
+        }
+        logger.log(f'Using dataset configuration: {dataset_config}')
 
         storage_mode = dataset_parameters['storage_mode']
         dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
         dataset = dataset_class(
-            root_dir=root_dir,
-            dataset_summary_file=dataset_summary_file,
-            nodes_shp_file=dataset_parameters['nodes_shp_file'],
-            edges_shp_file=dataset_parameters['edges_shp_file'],
-            spin_up_timesteps=dataset_parameters['spin_up_timesteps'],
-            timesteps_from_peak=dataset_parameters['timesteps_from_peak'],
-            inflow_boundary_edges=dataset_parameters['inflow_boundary_edges'],
-            outflow_boundary_nodes=dataset_parameters['outflow_boundary_nodes'],
+            **dataset_config,
             # force_reload=True,
         )
+        logger.log(f'Loaded dataset with {len(dataset)} samples')
         dataloader = DataLoader(dataset, batch_size=train_config['batch_size'])
 
         # Model

@@ -49,11 +49,15 @@ def main():
 
         # Dataset
         dataset_parameters = config['dataset_parameters']
+        train_dataset_parameters = dataset_parameters['training']
+        root_dir = train_dataset_parameters['root_dir']
+        dataset_summary_file = train_dataset_parameters['dataset_summary_file']
+
         storage_mode = dataset_parameters['storage_mode']
         dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
         dataset = dataset_class(
-            root_dir=dataset_parameters['root_dir'],
-            dataset_summary_file=dataset_parameters['dataset_summary_file'],
+            root_dir=root_dir,
+            dataset_summary_file=dataset_summary_file,
             nodes_shp_file=dataset_parameters['nodes_shp_file'],
             edges_shp_file=dataset_parameters['edges_shp_file'],
             spin_up_timesteps=dataset_parameters['spin_up_timesteps'],

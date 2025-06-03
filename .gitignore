@@ -179,7 +179,11 @@ cython_debug/
 # Data
 data/datasets/
 logs/
+training_stats/
 saved_models/
 saved_metrics/
 slurm_logs/
 slurm-*.out
+
+# Extra
+_personal_tests.ipynb

@@ -2,11 +2,10 @@ import numpy as np
 import os
 import traceback
 import torch
-import yaml
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import FloodEventDataset
+from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import GAT, GCN
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
@@ -16,8 +15,8 @@ torch.serialization.add_safe_globals([datetime])
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
-    parser.add_argument("--config", type=str, help='Path to training config file')
-    parser.add_argument("--model", type=str, help='Model to use for training')
+    parser.add_argument("--config", type=str, required=True, help='Path to training config file')
+    parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
@@ -31,14 +30,14 @@ def model_factory(model_name: str, **kwargs) -> torch.nn.Module:
     raise ValueError(f'Invalid model name: {model_name}')
 
 def main():
+    args = parse_args()
+    config = file_utils.read_yaml_file(args.config)
+
+    train_config = config['training_parameters']
+    log_path = train_config['log_path']
+    logger = Logger(log_path=log_path)
+
     try:
-        args = parse_args()
-        config = file_utils.read_yaml_file(args.config)
-
-        train_config = config['training_parameters']
-        log_path = train_config['log_path']
-
-        logger = Logger(log_path=log_path)
         logger.log('================================================')
 
         if args.seed is not None:
@@ -50,7 +49,9 @@ def main():
 
         # Dataset
         dataset_parameters = config['dataset_parameters']
-        dataset = FloodEventDataset(
+        storage_mode = dataset_parameters['storage_mode']
+        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
+        dataset = dataset_class(
             root_dir=dataset_parameters['root_dir'],
             dataset_summary_file=dataset_parameters['dataset_summary_file'],
             nodes_shp_file=dataset_parameters['nodes_shp_file'],
@@ -129,14 +130,11 @@ def main():
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
 
-            model_path = os.path.join(args.model_dir, f'{args.model}_{curr_date_str}.pt')
+            model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}.pt')
             torch.save(model.state_dict(), model_path)
             logger.log(f'Saved model to: {model_path}')
 
         logger.log('================================================')
-
-    except yaml.YAMLError as e:
-        logger.log(f'Error loading config YAML file. Error: {e}')
     except Exception:
         logger.log(f'Unexpected error:\n{traceback.format_exc()}')
 

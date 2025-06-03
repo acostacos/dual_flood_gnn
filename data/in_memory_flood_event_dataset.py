@@ -2,10 +2,12 @@ import os
 import torch
 import numpy as np
 import pandas as pd
+import gc
 
 from numpy import ndarray
+from tqdm import tqdm
 from torch import Tensor
-from torch_geometric.data import Dataset, Data
+from torch_geometric.data import InMemoryDataset, Data
 from typing import Callable, Tuple, List, Dict, Optional
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
@@ -15,7 +17,7 @@ from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_min_c
     get_face_length, get_velocity, get_face_flow
 from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length, get_edge_slope
 
-class FloodEventDataset(Dataset):
+class InMemoryFloodEventDataset(InMemoryDataset):
     STATIC_NODE_FEATURES = ['area', 'roughness', 'elevation']
     DYNAMIC_NODE_FEATURES = ['rainfall', 'water_volume'] # Not included: 'water_depth'
     STATIC_EDGE_FEATURES = ['face_length', 'length', 'slope']
@@ -59,16 +61,17 @@ class FloodEventDataset(Dataset):
         self.timesteps_from_peak = timesteps_from_peak
 
         # Dataset variables
-        self.num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
-        self.num_dynamic_node_features = len(FloodEventDataset.DYNAMIC_NODE_FEATURES)
-        self.num_static_edge_features = len(FloodEventDataset.STATIC_EDGE_FEATURES)
-        self.num_dynamic_edge_features = len(FloodEventDataset.DYNAMIC_EDGE_FEATURES)
+        self.num_static_node_features = len(InMemoryFloodEventDataset.STATIC_NODE_FEATURES)
+        self.num_dynamic_node_features = len(InMemoryFloodEventDataset.DYNAMIC_NODE_FEATURES)
+        self.num_static_edge_features = len(InMemoryFloodEventDataset.STATIC_EDGE_FEATURES)
+        self.num_dynamic_edge_features = len(InMemoryFloodEventDataset.DYNAMIC_EDGE_FEATURES)
         self.event_peak_idx = None
         self.event_start_idx = []
         self.total_train_timesteps = 0
         self.feature_stats = {}
 
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
+        self.load(self.processed_paths[2])
 
         if len(self.event_start_idx) == 0 or self.total_train_timesteps == 0:
             self.event_start_idx, self.total_train_timesteps = self.load_event_stats()
@@ -81,8 +84,7 @@ class FloodEventDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        dynamic_files = [f'dynamic_values_event_{run_id}.npz' for run_id in self.hec_ras_run_ids]
-        return [self.event_stats_file, self.features_stats_file, 'constant_values.npz', *dynamic_files]
+        return [self.event_stats_file, self.features_stats_file, 'complete_data.pt']
 
     def download(self):
         # Data must be downloaded manually and placed in the raw dir
@@ -119,105 +121,78 @@ class FloodEventDataset(Dataset):
         # Convert to undirected with flipped edge features
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
 
-        np.savez(self.processed_paths[2],
-                 edge_index=edge_index,
-                 static_nodes=static_nodes,
-                 static_edges=static_edges,
-                 boundary_nodes=new_boundary_nodes,
-                 boundary_edges=new_boundary_edges)
-        self.log_func(f'Saved constant values to {self.processed_paths[2]}')
+        # Convert to PyTorch Tensors
+        static_nodes = torch.from_numpy(static_nodes)
+        boundary_nodes_idx = torch.arange(static_nodes.shape[0], static_nodes.shape[0] + len(new_boundary_nodes))
+        boundary_static_nodes = torch.zeros((len(new_boundary_nodes), self.num_static_node_features),
+                                        dtype=static_nodes.dtype)
+        static_nodes = torch.cat([static_nodes, boundary_static_nodes], axis=0)
 
-        start_idx = 0
-        for i, num_ts in enumerate(event_num_timesteps):
-            run_id = self.hec_ras_run_ids[i]
-            end_idx = start_idx + num_ts
+        static_edges = torch.from_numpy(static_edges)
+        boundary_edges_idx = torch.arange(static_edges.shape[0], static_edges.shape[0] + new_boundary_edges.shape[1])
+        boundary_static_edges = torch.zeros((new_boundary_edges.shape[1], self.num_static_edge_features),
+                                        dtype=static_edges.dtype)
+        static_edges = torch.cat([static_edges, boundary_static_edges], axis=0)
 
-            event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
-            event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
-            event_bc_dynamic_nodes = boundary_dynamic_nodes[start_idx:end_idx].copy()
-            event_bc_dynamic_edges = boundary_dynamic_edges[start_idx:end_idx].copy()
+        dynamic_nodes = torch.from_numpy(dynamic_nodes)
+        boundary_dynamic_nodes = torch.from_numpy(boundary_dynamic_nodes)
+        dynamic_nodes = torch.cat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
 
-            save_path = self.processed_paths[i + 3]
-            np.savez(save_path,
-                     dynamic_nodes=event_dynamic_nodes,
-                     dynamic_edges=event_dynamic_edges,
-                     boundary_dynamic_nodes=event_bc_dynamic_nodes,
-                     boundary_dynamic_edges=event_bc_dynamic_edges)
-            self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
+        dynamic_edges = torch.from_numpy(dynamic_edges)
+        boundary_dynamic_edges = torch.from_numpy(boundary_dynamic_edges)
+        dynamic_edges = torch.cat([dynamic_edges, boundary_dynamic_edges], axis=1)
 
-            start_idx = end_idx
+        edge_index = np.concat([edge_index, new_boundary_edges], axis=1)
+        edge_index = torch.from_numpy(edge_index)
+
+        gc.collect()
+
+        # Create dataset
+        data_list = []
+        progress_bar = tqdm(range(self.total_train_timesteps), desc='Processing timesteps')
+        for idx in progress_bar:
+            # Find the event this index belongs to using the start indices
+            start_idx = 0
+            for si in self.event_start_idx:
+                if idx < si:
+                    break
+                start_idx = si
+            event_idx = self.event_start_idx.index(start_idx)
+            start_idx = self.event_start_idx[event_idx]
+            end_idx = start_idx + event_num_timesteps[event_idx]
+
+            event_dynamic_nodes = dynamic_nodes[start_idx:end_idx]
+            event_dynamic_edges = dynamic_edges[start_idx:end_idx]
+
+            # Create Data object for timestep
+            within_event_idx = idx - start_idx
+
+            node_features = self._get_timestep_data(static_nodes, event_dynamic_nodes, within_event_idx)
+            edge_features = self._get_timestep_data(static_edges, event_dynamic_edges, within_event_idx)
+
+            label_nodes, label_edges = self._get_timestep_labels(event_dynamic_nodes, event_dynamic_edges, within_event_idx)
+
+            data = Data(x=node_features,
+                        edge_index=edge_index,
+                        edge_attr=edge_features,
+                        y=label_nodes,
+                        y_edge=label_edges,
+                        boundary_nodes=boundary_nodes_idx,
+                        boundary_edges=boundary_edges_idx)
+            data_list.append(data)
+
+        if self.pre_filter is not None:
+            data_list = [data for data in data_list if self.pre_filter(data)]
+
+        if self.pre_transform is not None:
+            data_list = [self.pre_transform(data) for data in data_list]
+
+        self.save(data_list, self.processed_paths[2])
 
         self.save_event_stats()
         self.log_func(f'Saved event stats to {self.processed_paths[0]}')
         self.save_feature_stats()
         self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
-
-    def len(self):
-        return self.total_train_timesteps
-
-    def get(self, idx):
-        # Load constant data
-        constant_values = np.load(self.processed_paths[2])
-        edge_index = constant_values['edge_index']
-        static_nodes = constant_values['static_nodes']
-        static_edges = constant_values['static_edges']
-        boundary_nodes = constant_values['boundary_nodes']
-        boundary_edges = constant_values['boundary_edges']
-
-        # Find the event this index belongs to using the start indices
-        if idx < 0 or idx >= self.total_train_timesteps:
-            raise IndexError(f'Index {idx} out of bounds for dataset with {self.total_train_timesteps} timesteps.')
-        start_idx = 0
-        for si in self.event_start_idx:
-            if idx < si:
-                break
-            start_idx = si
-        event_idx = self.event_start_idx.index(start_idx)
-
-        # Load dynamic data
-        dynamic_values_path = self.processed_paths[event_idx + 3]
-        dynamic_values = np.load(dynamic_values_path)
-        dynamic_nodes = dynamic_values['dynamic_nodes']
-        dynamic_edges = dynamic_values['dynamic_edges']
-        boundary_dynamic_nodes = dynamic_values['boundary_dynamic_nodes']
-        boundary_dynamic_edges = dynamic_values['boundary_dynamic_edges']
-
-        # Add boundary conditions
-        boundary_static_nodes = np.zeros((len(boundary_nodes), self.num_static_node_features),
-                                         dtype=static_nodes.dtype)
-        boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
-        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
-
-        boundary_static_edges = np.zeros((boundary_edges.shape[1], self.num_static_edge_features),
-                                         dtype=static_edges.dtype)
-        boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
-        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
-
-        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
-        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
-
-        edge_index = np.concat([edge_index, boundary_edges], axis=1)
-
-        # Create Data object for timestep
-        boundary_nodes_idx = torch.from_numpy(boundary_nodes_idx)
-        boundary_edges_idx = torch.from_numpy(boundary_edges_idx)
-        edge_index = torch.from_numpy(edge_index)
-        within_event_idx = idx - start_idx
-
-        node_features = self._get_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-        edge_features = self._get_timestep_data(static_edges, dynamic_edges, within_event_idx)
-
-        label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
-
-        data = Data(x=node_features,
-                    edge_index=edge_index,
-                    edge_attr=edge_features,
-                    y=label_nodes,
-                    y_edge=label_edges,
-                    boundary_nodes=boundary_nodes_idx,
-                    boundary_edges=boundary_edges_idx)
-
-        return data
 
     def load_event_stats(self) -> Tuple[List[int], int]:
         if not os.path.exists(self.processed_paths[0]):
@@ -344,7 +319,7 @@ class FloodEventDataset(Dataset):
         num_boundary_nodes = len(new_boundary_nodes)
         boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
 
-        target_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
+        target_nodes_idx = InMemoryFloodEventDataset.DYNAMIC_NODE_FEATURES.index(InMemoryFloodEventDataset.NODE_TARGET_FEATURE)
         outflow_dynamic_nodes_mask = np.isin(boundary_nodes, self.outflow_boundary_nodes)
         boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
 
@@ -354,7 +329,7 @@ class FloodEventDataset(Dataset):
         num_boundary_edges = len(boundary_edges_idx)
         boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
 
-        target_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
+        target_edges_idx = InMemoryFloodEventDataset.DYNAMIC_EDGE_FEATURES.index(InMemoryFloodEventDataset.EDGE_TARGET_FEATURE)
         inflow_dynamic_edges_mask = np.isin(boundary_edges_idx, self.inflow_boundary_edges)
         boundary_dynamic_edges[:, inflow_dynamic_edges_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
 
@@ -380,33 +355,31 @@ class FloodEventDataset(Dataset):
 
         return edge_index, static_edges, dynamic_edges
 
-    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+    def _get_timestep_data(self, static_features: Tensor, dynamic_features: Tensor, timestep_idx: int) -> Tensor:
         """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""
         _, num_elems, num_dyn_features = dynamic_features.shape
         if timestep_idx < self.previous_timesteps:
             # Pad with zeros if not enough previous timesteps are available
-            padding = np.zeros((self.previous_timesteps - timestep_idx, num_elems, num_dyn_features), dtype=dynamic_features.dtype)
-            ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
+            padding = torch.zeros((self.previous_timesteps - timestep_idx, num_elems, num_dyn_features), dtype=dynamic_features.dtype)
+            ts_dynamic_features = torch.cat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
         else:
             ts_dynamic_features = dynamic_features[timestep_idx-self.previous_timesteps:timestep_idx+1, :, :]
 
         # (num_elems, num_timesteps * num_dynamic_features)
-        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2).reshape(num_elems, -1)
+        ts_dynamic_features = ts_dynamic_features.transpose(0, 1).reshape(num_elems, -1)
 
-        ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
-        return torch.from_numpy(ts_data)
+        ts_data = torch.cat([static_features, ts_dynamic_features], axis=1)
+        return ts_data
 
-    def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
+    def _get_timestep_labels(self, node_dynamic_features: Tensor, edge_dynamic_features: Tensor, timestep_idx: int) -> Tuple[Tensor, Tensor]:
         # Target feature must be the last feature in the dynamic features
-        label_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
+        label_nodes_idx = InMemoryFloodEventDataset.DYNAMIC_NODE_FEATURES.index(InMemoryFloodEventDataset.NODE_TARGET_FEATURE)
         # (num_nodes, 1)
         label_nodes = node_dynamic_features[timestep_idx+1, :, label_nodes_idx][:, None]
-        label_nodes = torch.from_numpy(label_nodes)
 
-        label_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
+        label_edges_idx = InMemoryFloodEventDataset.DYNAMIC_EDGE_FEATURES.index(InMemoryFloodEventDataset.EDGE_TARGET_FEATURE)
         # (num_nodes, 1)
         label_edges = edge_dynamic_features[timestep_idx+1, :, label_edges_idx][:, None]
-        label_edges = torch.from_numpy(label_edges)
 
         return label_nodes, label_edges
 
@@ -419,7 +392,7 @@ class FloodEventDataset(Dataset):
             "elevation": lambda: get_cell_elevation(self.raw_paths[0]),
         }
 
-        static_features = self._get_features(feature_list=FloodEventDataset.STATIC_NODE_FEATURES,
+        static_features = self._get_features(feature_list=InMemoryFloodEventDataset.STATIC_NODE_FEATURES,
                                   feature_retrieval_map=STATIC_NODE_RETRIEVAL_MAP)
         static_features = np.array(static_features).transpose()
         return static_features
@@ -433,7 +406,7 @@ class FloodEventDataset(Dataset):
             "slope": lambda: get_edge_slope(self.raw_paths[1]),
         }
 
-        static_features = self._get_features(feature_list=FloodEventDataset.STATIC_EDGE_FEATURES,
+        static_features = self._get_features(feature_list=InMemoryFloodEventDataset.STATIC_EDGE_FEATURES,
                                   feature_retrieval_map=STATIC_EDGE_RETRIEVAL_MAP)
         static_features = np.array(static_features).transpose()
         return static_features
@@ -452,7 +425,7 @@ class FloodEventDataset(Dataset):
             "water_volume": lambda: self._get_dynamic_from_all_events(get_water_volume),
         }
 
-        dynamic_features = self._get_features(feature_list=FloodEventDataset.DYNAMIC_NODE_FEATURES,
+        dynamic_features = self._get_features(feature_list=InMemoryFloodEventDataset.DYNAMIC_NODE_FEATURES,
                                   feature_retrieval_map=DYNAMIC_NODE_RETRIEVAL_MAP)
         dynamic_features = np.array(dynamic_features).transpose(1, 2, 0)
         return dynamic_features
@@ -463,7 +436,7 @@ class FloodEventDataset(Dataset):
             "face_flow": lambda: self._get_dynamic_from_all_events(get_face_flow),
         }
 
-        dynamic_features = self._get_features(feature_list=FloodEventDataset.DYNAMIC_EDGE_FEATURES,
+        dynamic_features = self._get_features(feature_list=InMemoryFloodEventDataset.DYNAMIC_EDGE_FEATURES,
                                   feature_retrieval_map=DYNAMIC_EDGE_RETRIEVAL_MAP)
         dynamic_features = np.array(dynamic_features).transpose(1, 2, 0)
         return dynamic_features

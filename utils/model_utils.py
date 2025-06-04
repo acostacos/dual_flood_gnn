@@ -3,8 +3,8 @@ from torch.nn import Module, Sequential, Linear, PReLU, ReLU
 from torch_geometric.nn import GCNConv, Sequential as PygSequential
 
 def make_mlp(input_size: int, output_size: int, hidden_size: int = None,
-             num_layers: int = 1, activation: str = None, bias: bool = True,
-             device: str = 'cpu') -> Module:
+             num_layers: int = 1, activation: str = None, skip_last_activation: bool = True,
+             bias: bool = True, device: str = 'cpu') -> Module:
     if num_layers == 1:
         return LinearLayer(input_size, output_size, activation, bias, device)
 
@@ -13,7 +13,8 @@ def make_mlp(input_size: int, output_size: int, hidden_size: int = None,
     layers.append(LinearLayer(input_size, hidden_size, activation, bias, device)) # Input Layer
     for _ in range(num_layers-2):
         layers.append(LinearLayer(hidden_size, hidden_size, activation, bias, device)) # Hidden Layers
-    layers.append(LinearLayer(hidden_size, output_size, activation, bias, device)) # Output Layer
+    last_activation = None if skip_last_activation else activation
+    layers.append(LinearLayer(hidden_size, output_size, last_activation, bias, device)) # Output Layer
     return Sequential(*layers)
 
 def make_gnn(input_size: int, output_size: int, hidden_size: int = None,

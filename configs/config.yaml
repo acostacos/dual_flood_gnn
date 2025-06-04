@@ -2,6 +2,11 @@ dataset_parameters:
   storage_mode: 'memory'                                # 'memory' or 'disk'
   nodes_shp_file: 'Geometry/updated_cell_centers.shp'
   edges_shp_file: 'Geometry/links.shp'
+  event_stats_file: 'event_stats.yaml'
+  features_stats_file: 'features_stats.yaml'
+
+  previous_timesteps: 2
+  normalize: True
   spin_up_timesteps: 2880
   timesteps_from_peak: 720
   inflow_boundary_edges:
@@ -29,7 +34,7 @@ training_parameters:
 
 testing_parameters:
   log_path: null                                        # Path to save testing logs
-  stats_dir: 'testing_stats'                            # Directory to save testing statistics
+  output_dir: 'saved_metrics'                           # Directory to save testing results
 
 model_parameters:
   GCN:

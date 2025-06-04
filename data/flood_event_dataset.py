@@ -31,11 +31,11 @@ class FloodEventDataset(Dataset):
                  event_stats_file: str = 'event_stats.yaml',
                  features_stats_file: str = 'features_stats.yaml',
                  previous_timesteps: int = 2,
-                 inflow_boundary_edges: List[int] = [],
-                 outflow_boundary_nodes: List[int] = [],
                  normalize: bool = True,
                  spin_up_timesteps: Optional[int] = None,
                  timesteps_from_peak: Optional[int] = None,
+                 inflow_boundary_edges: List[int] = [],
+                 outflow_boundary_nodes: List[int] = [],
                  debug: bool = False,
                  logger: Optional[Logger] = None,
                  force_reload: bool = False):
@@ -52,11 +52,11 @@ class FloodEventDataset(Dataset):
 
         # Dataset configurations
         self.previous_timesteps = previous_timesteps
-        self.inflow_boundary_edges = inflow_boundary_edges
-        self.outflow_boundary_nodes = outflow_boundary_nodes
         self.normalize = normalize
         self.spin_up_timesteps = spin_up_timesteps
         self.timesteps_from_peak = timesteps_from_peak
+        self.inflow_boundary_edges = inflow_boundary_edges
+        self.outflow_boundary_nodes = outflow_boundary_nodes
 
         # Dataset variables
         self.num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
@@ -267,7 +267,7 @@ class FloodEventDataset(Dataset):
             hec_ras_files.append(hec_ras_path)
 
         return hec_ras_files, hec_ras_run_ids
-    
+
     def _get_event_peak_timestep(self) -> List[int]:
         event_peak_idx = []
         for hec_ras_path in self.raw_paths[2:]:
@@ -279,7 +279,7 @@ class FloodEventDataset(Dataset):
         assert np.all((np.array(event_peak_idx) - self.timesteps_from_peak) >= 0), 'Timesteps from peak exceed available timesteps.'
 
         return event_peak_idx
-    
+
     def _get_event_properties(self) -> Tuple[List[int], int, List[int]]:
         event_start_idx = []
         event_num_timesteps = []
@@ -296,7 +296,7 @@ class FloodEventDataset(Dataset):
         assert len(event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
 
         return event_start_idx, current_total_ts, event_num_timesteps
-    
+
     def _trim_timesteps_within_bounds(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
         start = self.spin_up_timesteps if self.spin_up_timesteps is not None else 0
 
@@ -306,7 +306,6 @@ class FloodEventDataset(Dataset):
             end = event_peak + self.timesteps_from_peak
 
         return dynamic_data[start:end]
-
 
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])

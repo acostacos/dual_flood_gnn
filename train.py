@@ -57,6 +57,10 @@ def main():
             'dataset_summary_file': dataset_summary_file,
             'nodes_shp_file': dataset_parameters['nodes_shp_file'],
             'edges_shp_file': dataset_parameters['edges_shp_file'],
+            'event_stats_file': dataset_parameters['event_stats_file'],
+            'features_stats_file': dataset_parameters['features_stats_file'],
+            'previous_timesteps': dataset_parameters['previous_timesteps'],
+            'normalize': dataset_parameters['normalize'],
             'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
             'inflow_boundary_edges': dataset_parameters['inflow_boundary_edges'],
@@ -68,6 +72,8 @@ def main():
         dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
         dataset = dataset_class(
             **dataset_config,
+            debug=args.debug,
+            logger=logger,
             # force_reload=True,
         )
         logger.log(f'Loaded dataset with {len(dataset)} samples')

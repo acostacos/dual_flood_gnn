@@ -23,13 +23,15 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         boundary_edges = constant_values['boundary_edges']
 
         # Add static boundary conditions
-        boundary_static_nodes = np.zeros((len(boundary_nodes), self.num_static_node_features),
-                                        dtype=static_nodes.dtype)
+        boundary_static_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_NODE_FEATURES,
+                                                                        (len(boundary_nodes),),
+                                                                        dtype=static_nodes.dtype)
         boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
 
-        boundary_static_edges = np.zeros((boundary_edges.shape[1], self.num_static_edge_features),
-                                        dtype=static_edges.dtype)
+        boundary_static_edges = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_EDGE_FEATURES,
+                                                                        (boundary_edges.shape[1],),
+                                                                        dtype=static_edges.dtype)
         boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
         static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
 
@@ -70,8 +72,8 @@ class InMemoryFloodEventDataset(FloodEventDataset):
             # Create Data object for timestep
             within_event_idx = idx - start_idx
 
-            node_features = self._get_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-            edge_features = self._get_timestep_data(static_edges, dynamic_edges, within_event_idx)
+            node_features = self._get_timestep_data(static_nodes, dynamic_nodes, FloodEventDataset.DYNAMIC_NODE_FEATURES, within_event_idx)
+            edge_features = self._get_timestep_data(static_edges, dynamic_edges, FloodEventDataset.DYNAMIC_EDGE_FEATURES, within_event_idx)
 
             label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 

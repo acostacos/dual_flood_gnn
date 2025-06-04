@@ -146,8 +146,9 @@ class FloodEventDataset(Dataset):
 
         self.save_event_stats()
         self.log_func(f'Saved event stats to {self.processed_paths[0]}')
-        self.save_feature_stats()
-        self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
+        if self.mode == 'train':
+            self.save_feature_stats()
+            self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
 
     def len(self):
         return self.total_rollout_timesteps
@@ -180,13 +181,15 @@ class FloodEventDataset(Dataset):
         boundary_dynamic_edges = dynamic_values['boundary_dynamic_edges']
 
         # Add boundary conditions
-        boundary_static_nodes = np.zeros((len(boundary_nodes), self.num_static_node_features),
-                                         dtype=static_nodes.dtype)
+        boundary_static_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_NODE_FEATURES,
+                                                                        (len(boundary_nodes),),
+                                                                        dtype=static_nodes.dtype)
         boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
 
-        boundary_static_edges = np.zeros((boundary_edges.shape[1], self.num_static_edge_features),
-                                         dtype=static_edges.dtype)
+        boundary_static_edges = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_EDGE_FEATURES,
+                                                                        (boundary_edges.shape[1],),
+                                                                        dtype=static_edges.dtype)
         boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
         static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
 
@@ -201,8 +204,8 @@ class FloodEventDataset(Dataset):
         edge_index = torch.from_numpy(edge_index)
         within_event_idx = idx - start_idx
 
-        node_features = self._get_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-        edge_features = self._get_timestep_data(static_edges, dynamic_edges, within_event_idx)
+        node_features = self._get_timestep_data(static_nodes, dynamic_nodes, FloodEventDataset.DYNAMIC_NODE_FEATURES, within_event_idx)
+        edge_features = self._get_timestep_data(static_edges, dynamic_edges, FloodEventDataset.DYNAMIC_EDGE_FEATURES, within_event_idx)
 
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
@@ -336,11 +339,14 @@ class FloodEventDataset(Dataset):
         for old_value, new_value in boundary_nodes_mapping.items():
             new_boundary_edges[new_boundary_edges == old_value] = new_value
 
+        num_ts, _, _ = dynamic_nodes.shape
+
         # Node boundary conditions = Outflow Water Volume
         outflow_dynamic_nodes = dynamic_nodes[:, self.outflow_boundary_nodes, :].copy()
-        num_ts, _, num_dynamic_node_feat = dynamic_nodes.shape
         num_boundary_nodes = len(new_boundary_nodes)
-        boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
+        boundary_dynamic_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.DYNAMIC_NODE_FEATURES,
+                                                                         (num_ts, num_boundary_nodes),
+                                                                         dtype=dynamic_nodes.dtype)
 
         target_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
         outflow_dynamic_nodes_mask = np.isin(boundary_nodes, self.outflow_boundary_nodes)
@@ -348,9 +354,10 @@ class FloodEventDataset(Dataset):
 
         # Edge boundary conditions = Inflow Water Flow
         inflow_dynamic_edges = dynamic_edges[:, self.inflow_boundary_edges, :].copy()
-        num_ts, _, num_dynamic_edge_feat = dynamic_edges.shape
         num_boundary_edges = len(boundary_edges_idx)
-        boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
+        boundary_dynamic_edges = self._get_normalized_zeros_for_features(FloodEventDataset.DYNAMIC_EDGE_FEATURES,
+                                                                        (num_ts, num_boundary_edges),
+                                                                        dtype=dynamic_edges.dtype)
 
         target_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
         inflow_dynamic_edges_mask = np.isin(boundary_edges_idx, self.inflow_boundary_edges)
@@ -378,18 +385,21 @@ class FloodEventDataset(Dataset):
 
         return edge_index, static_edges, dynamic_edges
 
-    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
-        """Returns the data for a specific timestep in the format [static_features, previous_dynamic_features, current_dynamic_features]"""
-        _, num_elems, num_dyn_features = dynamic_features.shape
+    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, dynamic_feature_list: List[str], timestep_idx: int) -> Tensor:
+        """Returns the data for a specific timestep in the format [static_features, dynamic_features (previous, current)]"""
+        _, num_elems, _ = dynamic_features.shape
         if timestep_idx < self.previous_timesteps:
             # Pad with zeros if not enough previous timesteps are available
-            padding = np.zeros((self.previous_timesteps - timestep_idx, num_elems, num_dyn_features), dtype=dynamic_features.dtype)
+            padding = self._get_normalized_zeros_for_features(dynamic_feature_list,
+                                                              (self.previous_timesteps - timestep_idx, num_elems),
+                                                              dtype=dynamic_features.dtype)
             ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
         else:
             ts_dynamic_features = dynamic_features[timestep_idx-self.previous_timesteps:timestep_idx+1, :, :]
 
-        # (num_elems, num_timesteps * num_dynamic_features)
-        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2).reshape(num_elems, -1)
+        # (num_elems,  num_dynamic_features * num_timesteps)
+        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2)
+        ts_dynamic_features = np.reshape(ts_dynamic_features, shape=(num_elems, -1), order='F')
 
         ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
         return torch.from_numpy(ts_data)
@@ -497,6 +507,30 @@ class FloodEventDataset(Dataset):
             features.append(feature_data)
 
         return features
+
+    # Normalization Methods
+
+    def _get_normalized_zeros_for_features(self, features: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
+        normalized_arrays = []
+        shape = (*other_dims, 1)
+        for feature in features:
+             normalized_zeros = self._get_normalized_zeros(feature, shape, dtype)
+             normalized_arrays.append(normalized_zeros)
+        return np.concat(normalized_arrays, axis=-1)
+
+    def _get_normalized_zeros(self, feature: str, shape: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
+        zeros = np.zeros(shape, dtype=dtype)
+
+        if not self.normalize:
+            return zeros
+
+        if feature not in self.feature_stats:
+            raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
+
+        mean = self.feature_stats[feature]['mean']
+        std = self.feature_stats[feature]['std']
+        zeros = self._normalize_features(zeros, mean, std)
+        return zeros
 
     def _normalize_features(self, feature_data: ndarray, mean: float, std: float) -> ndarray:
         """Z-score normalization of features"""

@@ -2,7 +2,6 @@ import numpy as np
 import traceback
 import torch
 import os
-import yaml
 
 from argparse import ArgumentParser, Namespace
 from data import FloodEventDataset, InMemoryFloodEventDataset
@@ -91,18 +90,31 @@ def main():
         validation_stats = ValidationStats(logger=logger)
         validation_stats.start_validate()
 
+        # Get non-boundary nodes for filtering
+        non_boundary_nodes = torch.ones(dataset[0].x.shape[0], dtype=torch.bool)
+        non_boundary_nodes[dataset[0].boundary_nodes] = False
+
+        # Get cell area for theshold calculation
+        area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
+        area = dataset[0].x.clone()[:, area_nodes_idx]
+        denorm_area = dataset._denormalize_features('area', area)
+        denorm_area = denorm_area[non_boundary_nodes, None]
+        threshold_per_cell = denorm_area * 0.05 # 5% of cell area
+
         model.eval()
         with torch.no_grad():
             target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
-            sliding_window_length = 1 * (previous_timesteps+1)
-            sliding_window = dataset[0].x.clone()[:, target_nodes_idx:target_nodes_idx + sliding_window_length]
+            sliding_window_length = previous_timesteps + 1
+            start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
+            end_target_idx = start_target_idx + sliding_window_length
+            sliding_window = dataset[0].x.clone()[:, start_target_idx:end_target_idx]
             sliding_window = sliding_window.to(args.device)
 
             for graph in dataloader:
                 graph = graph.to(args.device)
 
                 # Override graph data with sliding window
-                graph.x[:, target_nodes_idx:target_nodes_idx + sliding_window_length] = sliding_window
+                graph.x[:, start_target_idx:end_target_idx] = sliding_window
 
                 pred = model(graph)
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
@@ -110,15 +122,19 @@ def main():
                 label = graph.y
                 if dataset.normalize:
                     pred = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, pred)
-                    target = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, target)
+                    label = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, label)
 
                 # Ensure water volume is non-negative
                 pred = torch.clip(pred, min=0)
-                target = torch.clip(target, min=0)
+                label = torch.clip(label, min=0)
+
+                # Filter boundary conditions for metric computation
+                pred = pred[non_boundary_nodes]
+                label = label[non_boundary_nodes]
 
                 validation_stats.update_stats_for_epoch(pred.cpu(),
                                                   label.cpu(),
-                                                  water_threshold=0.05)
+                                                  water_threshold=threshold_per_cell)
 
         validation_stats.end_validate()
         validation_stats.print_stats_summary()
@@ -131,12 +147,8 @@ def main():
 
             saved_metrics_path = os.path.join(output_dir, f'{args.model_path}_test_metrics.npz') if args.output_dir is not None else None
             validation_stats.save_stats(saved_metrics_path)
-            logger.log(f'Saved testing results to: {saved_metrics_path}')
 
         logger.log('================================================')
-
-    except yaml.YAMLError as e:
-        logger.log(f'Error loading config YAML file. Error: {e}')
     except Exception:
         logger.log(f'Unexpected error:\n{traceback.format_exc()}')
 

@@ -139,7 +139,6 @@ def main():
 
             saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats.npz')
             training_stats.save_stats(saved_metrics_path)
-            logger.log(f'Saved training stats to: {saved_metrics_path}')
 
         model_dir = train_config['model_dir']
         if model_dir is not None:

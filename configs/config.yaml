@@ -23,7 +23,7 @@ training_parameters:
   model_dir       : 'saved_models'                      # Directory to save trained models
   stats_dir       : 'training_stats'                    # Directory to save training statistics
   num_epochs      : 100                                 # Number of epochs
-  batch_size      : 64                                  # Batch size
+  batch_size      : 256                                 # Batch size
   learning_rate   : 0.0001                              # learning rate
   weight_decay    : 0                                   # weight decay
 

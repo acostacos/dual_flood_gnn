@@ -72,25 +72,25 @@ class ValidationStats:
     def print_stats_summary(self):
         if len(self.rmse_list) > 0:
             rmse_np = np.array(self.rmse_list)
-            self.log(f'Average RMSE: {rmse_np.mean():.4f}')
+            self.log(f'Average RMSE: {rmse_np.mean():.4e}')
         if len(self.rmse_flooded_list) > 0:
             rmse_flooded_np = np.array(self.rmse_flooded_list)
-            self.log(f'Average RMSE (flooded): {rmse_flooded_np.mean():.4f}')
+            self.log(f'Average RMSE (flooded): {rmse_flooded_np.mean():.4e}')
         if len(self.mae_list) > 0:
             mae_np = np.array(self.mae_list)
-            self.log(f'Average MAE: {mae_np.mean():.4f}')
+            self.log(f'Average MAE: {mae_np.mean():.4e}')
         if len(self.mae_flooded_list) > 0:
             mae_flooded_np = np.array(self.mae_flooded_list)
-            self.log(f'Average MAE (flooded): {mae_flooded_np.mean():.4f}')
+            self.log(f'Average MAE (flooded): {mae_flooded_np.mean():.4e}')
         if len(self.nse_list) > 0:
             nse_np = np.array(self.nse_list)
-            self.log(f'Average NSE: {nse_np.mean():.4f}')
+            self.log(f'Average NSE: {nse_np.mean():.4e}')
         if len(self.nse_flooded_list) > 0:
             nse_flooded_np = np.array(self.nse_flooded_list)
-            self.log(f'Average NSE (flooded): {nse_flooded_np.mean():.4f}')
+            self.log(f'Average NSE (flooded): {nse_flooded_np.mean():.4e}')
         if len(self.csi_list) > 0:
             csi_np = np.array(self.csi_list)
-            self.log(f'Average CSI: {csi_np.mean():.4f}')
+            self.log(f'Average CSI: {csi_np.mean():.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'Inference time for one timestep: {self.get_inference_time():.4f} seconds')

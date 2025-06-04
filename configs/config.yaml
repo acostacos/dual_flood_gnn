@@ -7,8 +7,8 @@ dataset_parameters:
 
   previous_timesteps: 2
   normalize: True
-  spin_up_timesteps: 2880
-  timesteps_from_peak: 720
+  spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each)
+  timesteps_from_peak: 720                              # Number of timesteps to consider from the peak (30 seconds each)
   inflow_boundary_edges:
   - 1849
   outflow_boundary_nodes:
@@ -35,6 +35,7 @@ training_parameters:
 testing_parameters:
   log_path: null                                        # Path to save testing logs
   output_dir: 'saved_metrics'                           # Directory to save testing results
+  rollout_timesteps: 120                                # Number of timesteps for the test rollout (30 seconds each)
 
 model_parameters:
   GCN:

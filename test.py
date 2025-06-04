@@ -67,7 +67,6 @@ def main():
             logger=logger,
             # force_reload=True,
         )
-        dataloader = DataLoader(dataset, batch_size=1) # Enforce batch size for autoregressive testing
 
         # Load model
         model_params = config['model_parameters'][args.model]
@@ -87,66 +86,75 @@ def main():
         logger.log(f'Using model configuration: {model_config}')
 
         # Testing
-        validation_stats = ValidationStats(logger=logger)
-        validation_stats.start_validate()
-
-        # Get non-boundary nodes for filtering
+        # Get non-boundary nodes and threshold for metric computation
         non_boundary_nodes = torch.ones(dataset[0].x.shape[0], dtype=torch.bool)
         non_boundary_nodes[dataset[0].boundary_nodes] = False
 
-        # Get cell area for theshold calculation
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
         area = dataset[0].x.clone()[:, area_nodes_idx]
         denorm_area = dataset._denormalize_features('area', area)
         denorm_area = denorm_area[non_boundary_nodes, None]
         threshold_per_cell = denorm_area * 0.05 # 5% of cell area
 
-        model.eval()
-        with torch.no_grad():
-            target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
-            sliding_window_length = previous_timesteps + 1
-            start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
-            end_target_idx = start_target_idx + sliding_window_length
-            sliding_window = dataset[0].x.clone()[:, start_target_idx:end_target_idx]
-            sliding_window = sliding_window.to(args.device)
+        # Get sliding window indices
+        target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
+        sliding_window_length = previous_timesteps + 1
+        start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
+        end_target_idx = start_target_idx + sliding_window_length
 
-            for graph in dataloader:
-                graph = graph.to(args.device)
+        rollout_timesteps = test_config['rollout_timesteps']
+        for i, run_id in enumerate(dataset.hec_ras_run_ids):
+            logger.log(f'Validating on run {i + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
+            validation_stats = ValidationStats(logger=logger)
+            validation_stats.start_validate()
 
-                # Override graph data with sliding window
-                graph.x[:, start_target_idx:end_target_idx] = sliding_window
+            model.eval()
+            with torch.no_grad():
+                sliding_window = dataset[0].x.clone()[:, start_target_idx:end_target_idx]
+                sliding_window = sliding_window.to(args.device)
 
-                pred = model(graph)
-                sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
+                event_start_idx = dataset.event_start_idx[i]
+                event_dataset = dataset[event_start_idx:(event_start_idx + rollout_timesteps)]
+                dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
+                for graph in dataloader:
+                    graph = graph.to(args.device)
 
-                label = graph.y
-                if dataset.normalize:
-                    pred = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, pred)
-                    label = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, label)
+                    # Override graph data with sliding window
+                    graph.x[:, start_target_idx:end_target_idx] = sliding_window
 
-                # Ensure water volume is non-negative
-                pred = torch.clip(pred, min=0)
-                label = torch.clip(label, min=0)
+                    pred = model(graph)
+                    sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
-                # Filter boundary conditions for metric computation
-                pred = pred[non_boundary_nodes]
-                label = label[non_boundary_nodes]
+                    label = graph.y
+                    if dataset.normalize:
+                        pred = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, pred)
+                        label = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, label)
 
-                validation_stats.update_stats_for_epoch(pred.cpu(),
-                                                  label.cpu(),
-                                                  water_threshold=threshold_per_cell)
+                    # Ensure water volume is non-negative
+                    pred = torch.clip(pred, min=0)
+                    label = torch.clip(label, min=0)
 
-        validation_stats.end_validate()
-        validation_stats.print_stats_summary()
+                    # Filter boundary conditions for metric computation
+                    pred = pred[non_boundary_nodes]
+                    label = label[non_boundary_nodes]
 
-        # Save validation stats
-        output_dir = test_config['output_dir']
-        if output_dir is not None:
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+                    validation_stats.update_stats_for_epoch(pred.cpu(),
+                                                    label.cpu(),
+                                                    water_threshold=threshold_per_cell)
 
-            saved_metrics_path = os.path.join(output_dir, f'{args.model_path}_test_metrics.npz') if args.output_dir is not None else None
-            validation_stats.save_stats(saved_metrics_path)
+            validation_stats.end_validate()
+            validation_stats.print_stats_summary()
+
+            # Save validation stats
+            output_dir = test_config['output_dir']
+            if output_dir is not None:
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+
+                # Get filename from model path
+                model_filename = os.path.splitext(os.path.basename(args.model_path))[0]  # Remove file extension
+                saved_metrics_path = os.path.join(output_dir, f'{model_filename}_{run_id}_test_metrics.npz') if output_dir is not None else None
+                validation_stats.save_stats(saved_metrics_path)
 
         logger.log('================================================')
     except Exception:

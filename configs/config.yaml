@@ -1,8 +1,8 @@
 dataset_parameters:
   storage_mode: 'memory'                                # 'memory' or 'disk'
+  root_dir: 'data/datasets'
   nodes_shp_file: 'Geometry/updated_cell_centers.shp'
   edges_shp_file: 'Geometry/links.shp'
-  event_stats_file: 'event_stats.yaml'
   features_stats_file: 'features_stats.yaml'
 
   previous_timesteps: 2
@@ -16,12 +16,12 @@ dataset_parameters:
   - 1129
 
   training:
-    root_dir: 'data/datasets/train'
     dataset_summary_file: 'train.csv'
-  
+    event_stats_file: 'train_event_stats.yaml'
+
   testing:
-    root_dir: 'data/datasets/test'
     dataset_summary_file: 'test.csv'
+    event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
   log_path        : null                                # Path to save training logs

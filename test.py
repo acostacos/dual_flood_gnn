@@ -1,40 +1,31 @@
 import numpy as np
-import os
 import traceback
 import torch
+import os
+import yaml
 
 from argparse import ArgumentParser, Namespace
-from datetime import datetime
 from data import FloodEventDataset, InMemoryFloodEventDataset
-from models import GAT, GCN
-from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
-from utils import TrainingStats, Logger, file_utils
-
-torch.serialization.add_safe_globals([datetime])
+from train import model_factory
+from utils import ValidationStats, Logger, file_utils
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
-    parser.add_argument("--model", type=str, required=True, help='Model to use for training')
+    parser.add_argument("--model", type=str, required=True, help='Model to use for validation')
+    parser.add_argument('--model_path', required=True, default=None, help='Path to trained model file')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
 
-def model_factory(model_name: str, **kwargs) -> torch.nn.Module:
-    if model_name == 'GCN':
-        return GCN(**kwargs)
-    if model_name == 'GAT':
-        return GAT(**kwargs)
-    raise ValueError(f'Invalid model name: {model_name}')
-
 def main():
     args = parse_args()
     config = file_utils.read_yaml_file(args.config)
 
-    train_config = config['training_parameters']
-    log_path = train_config['log_path']
+    test_config = config['testing_parameters']
+    log_path = test_config['log_path']
     logger = Logger(log_path=log_path)
 
     try:
@@ -49,11 +40,11 @@ def main():
 
         # Dataset
         dataset_parameters = config['dataset_parameters']
-        train_dataset_parameters = dataset_parameters['training']
-        dataset_summary_file = train_dataset_parameters['dataset_summary_file']
-        event_stats_file = train_dataset_parameters['event_stats_file']
+        test_dataset_parameters = dataset_parameters['testing']
+        dataset_summary_file = test_dataset_parameters['dataset_summary_file']
+        event_stats_file = test_dataset_parameters['event_stats_file']
         dataset_config = {
-            'mode': 'train',
+            'mode': 'test',
             'root_dir': dataset_parameters['root_dir'],
             'dataset_summary_file': dataset_summary_file,
             'nodes_shp_file': dataset_parameters['nodes_shp_file'],
@@ -77,80 +68,75 @@ def main():
             logger=logger,
             # force_reload=True,
         )
-        logger.log(f'Loaded dataset with {len(dataset)} samples')
-        dataloader = DataLoader(dataset, batch_size=train_config['batch_size'])
+        dataloader = DataLoader(dataset, batch_size=1) # Enforce batch size for autoregressive testing
 
-        # Model
+        # Load model
         model_params = config['model_parameters'][args.model]
+        previous_timesteps = dataset.previous_timesteps
         base_model_params = {
             'static_node_features': dataset.num_static_node_features,
             'dynamic_node_features': dataset.num_dynamic_node_features,
             'static_edge_features': dataset.num_static_edge_features,
             'dynamic_edge_features': dataset.num_dynamic_edge_features,
-            'previous_timesteps': dataset.previous_timesteps,
+            'previous_timesteps': previous_timesteps,
             'device': args.device,
         }
         model_config = {**model_params, **base_model_params}
         model = model_factory(args.model, **model_config)
-        logger.log(f'Using model: {args.model}')
+        model.load_state_dict(torch.load(args.model_path, weights_only=True))
+        logger.log(f'Using model checkpoint for {args.model}: {args.model_path}')
         logger.log(f'Using model configuration: {model_config}')
 
-        # Loss function and optimizer
-        criterion = MSELoss()
-        loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
-        logger.log(f"Using loss function: {loss_func_name}")
+        # Testing
+        validation_stats = ValidationStats(logger=logger)
+        validation_stats.start_validate()
 
-        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-        num_epochs = train_config['num_epochs']
+        model.eval()
+        with torch.no_grad():
+            target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
+            sliding_window_length = 1 * (previous_timesteps+1)
+            sliding_window = dataset[0].x.clone()[:, target_nodes_idx:target_nodes_idx + sliding_window_length]
+            sliding_window = sliding_window.to(args.device)
 
-        # Training
-        training_stats = TrainingStats(logger=logger)
-        training_stats.start_train()
-        for epoch in range(num_epochs):
-            model.train()
-            running_loss = 0.0
+            for graph in dataloader:
+                graph = graph.to(args.device)
 
-            for batch in dataloader:
-                optimizer.zero_grad()
+                # Override graph data with sliding window
+                graph.x[:, target_nodes_idx:target_nodes_idx + sliding_window_length] = sliding_window
 
-                batch = batch.to(args.device)
-                pred = model(batch)
+                pred = model(graph)
+                sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
-                label = batch.y
-                loss = criterion(pred, label)
-                loss.backward()
-                optimizer.step()
+                label = graph.y
+                if dataset.normalize:
+                    pred = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, pred)
+                    target = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, target)
 
-                running_loss += loss.item()
+                # Ensure water volume is non-negative
+                pred = torch.clip(pred, min=0)
+                target = torch.clip(target, min=0)
 
-            epoch_loss = running_loss / len(dataloader)
-            training_stats.add_loss(epoch_loss)
-            logger.log(f'Epoch [{epoch + 1}/{num_epochs}], Training Loss: {epoch_loss:.4e}')
+                validation_stats.update_stats_for_epoch(pred.cpu(),
+                                                  label.cpu(),
+                                                  water_threshold=0.05)
 
-        training_stats.end_train()
-        training_stats.print_stats_summary()
+        validation_stats.end_validate()
+        validation_stats.print_stats_summary()
 
-        # Save training stats and model
-        curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        stats_dir = train_config['stats_dir']
-        if stats_dir is not None:
-            if not os.path.exists(stats_dir):
-                os.makedirs(stats_dir)
+        # Save validation stats
+        output_dir = test_config['output_dir']
+        if output_dir is not None:
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
-            saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats.npz')
-            training_stats.save_stats(saved_metrics_path)
-            logger.log(f'Saved training stats to: {saved_metrics_path}')
-
-        model_dir = train_config['model_dir']
-        if model_dir is not None:
-            if not os.path.exists(model_dir):
-                os.makedirs(model_dir)
-
-            model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}.pt')
-            torch.save(model.state_dict(), model_path)
-            logger.log(f'Saved model to: {model_path}')
+            saved_metrics_path = os.path.join(output_dir, f'{args.model_path}_test_metrics.npz') if args.output_dir is not None else None
+            validation_stats.save_stats(saved_metrics_path)
+            logger.log(f'Saved testing results to: {saved_metrics_path}')
 
         logger.log('================================================')
+
+    except yaml.YAMLError as e:
+        logger.log(f'Error loading config YAML file. Error: {e}')
     except Exception:
         logger.log(f'Unexpected error:\n{traceback.format_exc()}')
 

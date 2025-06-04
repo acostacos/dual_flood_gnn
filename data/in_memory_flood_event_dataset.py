@@ -41,11 +41,11 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
         curr_event_idx = -1
         data_list = []
-        progress_bar = tqdm(range(self.total_train_timesteps), desc='Processing timesteps')
+        progress_bar = tqdm(range(self.total_rollout_timesteps), desc='Processing timesteps')
         for idx in progress_bar:
             # Find the event this index belongs to using the start indices
-            if idx < 0 or idx >= self.total_train_timesteps:
-                raise IndexError(f'Index {idx} out of bounds for dataset with {self.total_train_timesteps} timesteps.')
+            if idx < 0 or idx >= self.total_rollout_timesteps:
+                raise IndexError(f'Index {idx} out of bounds for dataset with {self.total_rollout_timesteps} timesteps.')
             start_idx = 0
             for si in self.event_start_idx:
                 if idx < si:

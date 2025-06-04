@@ -6,7 +6,7 @@ import pandas as pd
 from numpy import ndarray
 from torch import Tensor
 from torch_geometric.data import Dataset, Data
-from typing import Callable, Tuple, List, Dict, Optional
+from typing import Callable, Tuple, List, Literal, Dict, Optional
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
 
@@ -24,6 +24,7 @@ class FloodEventDataset(Dataset):
     EDGE_TARGET_FEATURE = DYNAMIC_EDGE_FEATURES[-1] # 'face_flow'
 
     def __init__(self,
+                 mode: Literal['train', 'test'],
                  root_dir: str,
                  dataset_summary_file: str,
                  nodes_shp_file: str,
@@ -51,6 +52,7 @@ class FloodEventDataset(Dataset):
         self.features_stats_file = features_stats_file
 
         # Dataset configurations
+        self.mode = mode
         self.previous_timesteps = previous_timesteps
         self.normalize = normalize
         self.spin_up_timesteps = spin_up_timesteps
@@ -64,16 +66,11 @@ class FloodEventDataset(Dataset):
         self.num_static_edge_features = len(FloodEventDataset.STATIC_EDGE_FEATURES)
         self.num_dynamic_edge_features = len(FloodEventDataset.DYNAMIC_EDGE_FEATURES)
         self.event_peak_idx = None
-        self.event_start_idx = []
-        self.total_train_timesteps = 0
-        self.feature_stats = {}
+        self.event_start_idx, self.total_rollout_timesteps = self.load_event_stats(root_dir, event_stats_file)
+        self.feature_stats = self.load_feature_stats(root_dir, features_stats_file)
 
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
-        if len(self.event_start_idx) == 0 or self.total_train_timesteps == 0:
-            self.event_start_idx, self.total_train_timesteps = self.load_event_stats()
-        if len(self.feature_stats) == 0:
-            self.feature_stats = self.load_feature_stats()
 
     @property
     def raw_file_names(self):
@@ -94,7 +91,7 @@ class FloodEventDataset(Dataset):
         if self.timesteps_from_peak is not None:
             self.event_peak_idx = self._get_event_peak_timestep()
 
-        self.event_start_idx, self.total_train_timesteps, event_num_timesteps = self._get_event_properties()
+        self.event_start_idx, self.total_rollout_timesteps, event_num_timesteps = self._get_event_properties()
         edge_index = self._get_edge_index()
 
         static_nodes = self._get_static_node_features()
@@ -153,7 +150,7 @@ class FloodEventDataset(Dataset):
         self.log_func(f'Saved feature stats to {self.processed_paths[1]}')
 
     def len(self):
-        return self.total_train_timesteps
+        return self.total_rollout_timesteps
 
     def get(self, idx):
         # Load constant data
@@ -165,8 +162,8 @@ class FloodEventDataset(Dataset):
         boundary_edges = constant_values['boundary_edges']
 
         # Find the event this index belongs to using the start indices
-        if idx < 0 or idx >= self.total_train_timesteps:
-            raise IndexError(f'Index {idx} out of bounds for dataset with {self.total_train_timesteps} timesteps.')
+        if idx < 0 or idx >= self.total_rollout_timesteps:
+            raise IndexError(f'Index {idx} out of bounds for dataset with {self.total_rollout_timesteps} timesteps.')
         start_idx = 0
         for si in self.event_start_idx:
             if idx < si:
@@ -219,27 +216,29 @@ class FloodEventDataset(Dataset):
 
         return data
 
-    def load_event_stats(self) -> Tuple[List[int], int]:
-        if not os.path.exists(self.processed_paths[0]):
-            return {}
+    def load_event_stats(self, root_dir: str, event_stats_file: str) -> Tuple[List[int], int]:
+        event_stats_path = os.path.join(root_dir, 'processed', event_stats_file)
+        if not os.path.exists(event_stats_path):
+            return [], 0
 
-        event_stats = read_yaml_file(self.processed_paths[0])
+        event_stats = read_yaml_file(event_stats_path)
         event_start_idx = event_stats['event_start_idx']
-        total_train_timesteps = event_stats['total_train_timesteps']
-        return event_start_idx, total_train_timesteps
+        total_rollout_timesteps = event_stats['total_rollout_timesteps']
+        return event_start_idx, total_rollout_timesteps
 
     def save_event_stats(self):
         event_stats = {
             'event_start_idx': self.event_start_idx,
-            'total_train_timesteps': self.total_train_timesteps,
+            'total_rollout_timesteps': self.total_rollout_timesteps,
         }
         save_to_yaml_file(self.processed_paths[0], event_stats)
 
-    def load_feature_stats(self) -> Dict:
-        if not os.path.exists(self.processed_paths[1]):
+    def load_feature_stats(self, root_dir: str, feature_stats_file: str) -> Dict:
+        feature_stats_path = os.path.join(root_dir, 'processed', feature_stats_file)
+        if not os.path.exists(feature_stats_path):
             return {}
 
-        feature_stats = read_yaml_file(self.processed_paths[1])
+        feature_stats = read_yaml_file(feature_stats_path)
         return feature_stats
 
     def save_feature_stats(self):
@@ -290,9 +289,9 @@ class FloodEventDataset(Dataset):
             num_timesteps = len(timesteps)
             event_num_timesteps.append(num_timesteps)
 
-            event_total_training_ts = num_timesteps - 1  # Last timestep is used for labels
+            event_total_rollout_ts = num_timesteps - 1  # Last timestep is used for labels
             event_start_idx.append(current_total_ts)
-            current_total_ts += event_total_training_ts
+            current_total_ts += event_total_rollout_ts
         assert len(event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
 
         return event_start_idx, current_total_ts, event_num_timesteps
@@ -483,22 +482,26 @@ class FloodEventDataset(Dataset):
                 continue
 
             feature_data: ndarray = feature_retrieval_map[feature]()
-            self.feature_stats[feature] = {
-                'mean': feature_data.mean().item(),
-                'std': feature_data.std().item(),
-            }
+            if self.mode == 'train':
+                # If test, use the precomputed feature stats
+                self.feature_stats[feature] = {
+                    'mean': feature_data.mean().item(),
+                    'std': feature_data.std().item(),
+                }
 
             if self.normalize:
-                feature_data = self._normalize_features(feature_data)
+                mean = self.feature_stats[feature]['mean']
+                std = self.feature_stats[feature]['std']
+                feature_data = self._normalize_features(feature_data, mean, std)
 
             features.append(feature_data)
 
         return features
 
-    def _normalize_features(self, feature_data: ndarray) -> ndarray:
+    def _normalize_features(self, feature_data: ndarray, mean: float, std: float) -> ndarray:
         """Z-score normalization of features"""
         EPS = 1e-7 # Prevent division by zero
-        return (feature_data - feature_data.mean()) / (feature_data.std() + EPS)
+        return (feature_data - mean) / (std + EPS)
 
     def _denormalize_features(self, feature: str, feature_data: ndarray) -> ndarray:
         """Z-score denormalization of features"""

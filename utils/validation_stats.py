@@ -23,7 +23,6 @@ class ValidationStats:
         self.rmse_flooded_list = []
         self.mae_flooded_list = []
         self.nse_flooded_list = []
-        self.csi_flooded_list = []
 
         self.log = print
         if logger is not None and hasattr(logger, 'log'):
@@ -62,10 +61,6 @@ class ValidationStats:
         self.mae_flooded_list.append(MAE(flooded_pred, flooded_target))
         self.nse_flooded_list.append(NSE(flooded_pred, flooded_target))
 
-        binary_flooded_pred = binary_pred[flooded_mask]
-        binary_flooded_target = binary_target[flooded_mask]
-        self.csi_flooded_list.append(CSI(binary_flooded_pred, binary_flooded_target))
-
     def convert_water_depth_to_binary(self, water_depth: Tensor, water_threshold: float) -> Tensor:
         return (water_depth > water_threshold)
 
@@ -96,9 +91,6 @@ class ValidationStats:
         if len(self.csi_list) > 0:
             csi_np = np.array(self.csi_list)
             self.log(f'Average CSI: {csi_np.mean():.4f}')
-        if len(self.csi_flooded_list) > 0:
-            csi_flooded_np = np.array(self.csi_flooded_list)
-            self.log(f'Average CSI (flooded): {csi_flooded_np.mean():.4f}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'Inference time for one timestep: {self.get_inference_time():.4f} seconds')
@@ -112,13 +104,12 @@ class ValidationStats:
             'pred': np.array(self.pred_list),
             'target': np.array(self.target_list),
             'rmse': np.array(self.rmse_list),
-            'mae': np.array(self.mae_list),
-            'nse': np.array(self.nse_list),
-            'csi': np.array(self.csi_list),
             'rmse_flooded': np.array(self.rmse_flooded_list),
+            'mae': np.array(self.mae_list),
             'mae_flooded': np.array(self.mae_flooded_list),
+            'nse': np.array(self.nse_list),
             'nse_flooded': np.array(self.nse_flooded_list),
-            'csi_flooded': np.array(self.csi_flooded_list)
+            'csi': np.array(self.csi_list),
         }
         np.savez(filepath, **stats)
 

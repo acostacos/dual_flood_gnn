@@ -92,7 +92,7 @@ def main():
 
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
         area = dataset[0].x.clone()[:, area_nodes_idx]
-        denorm_area = dataset._denormalize_features('area', area)
+        denorm_area = dataset._denormalize('area', area)
         denorm_area = denorm_area[non_boundary_nodes, None]
         threshold_per_cell = denorm_area * 0.05 # 5% of cell area
 
@@ -126,9 +126,9 @@ def main():
                     sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
                     label = graph.y
-                    if dataset.normalize:
-                        pred = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, pred)
-                        label = dataset._denormalize_features(dataset.NODE_TARGET_FEATURE, label)
+                    if dataset.is_normalized:
+                        pred = dataset._denormalize(dataset.NODE_TARGET_FEATURE, pred)
+                        label = dataset._denormalize(dataset.NODE_TARGET_FEATURE, label)
 
                     # Ensure water volume is non-negative
                     pred = torch.clip(pred, min=0)
@@ -153,7 +153,7 @@ def main():
 
                 # Get filename from model path
                 model_filename = os.path.splitext(os.path.basename(args.model_path))[0]  # Remove file extension
-                saved_metrics_path = os.path.join(output_dir, f'{model_filename}_{run_id}_test_metrics.npz') if output_dir is not None else None
+                saved_metrics_path = os.path.join(output_dir, f'{model_filename}_runid_{run_id}_test_metrics.npz') if output_dir is not None else None
                 validation_stats.save_stats(saved_metrics_path)
 
         logger.log('================================================')

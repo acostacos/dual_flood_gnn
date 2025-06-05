@@ -22,23 +22,8 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         boundary_nodes = constant_values['boundary_nodes']
         boundary_edges = constant_values['boundary_edges']
 
-        # Add static boundary conditions
-        boundary_static_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_NODE_FEATURES,
-                                                                        (len(boundary_nodes),),
-                                                                        dtype=static_nodes.dtype)
-        boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
-        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
-
-        boundary_static_edges = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_EDGE_FEATURES,
-                                                                        (boundary_edges.shape[1],),
-                                                                        dtype=static_edges.dtype)
-        boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
-        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
-
-        edge_index = np.concat([edge_index, boundary_edges], axis=1)
-
-        boundary_nodes_idx = torch.from_numpy(boundary_nodes_idx)
-        boundary_edges_idx = torch.from_numpy(boundary_edges_idx)
+        boundary_nodes = torch.from_numpy(boundary_nodes)
+        boundary_edges = torch.from_numpy(boundary_edges)
         edge_index = torch.from_numpy(edge_index)
 
         curr_event_idx = -1
@@ -61,13 +46,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                 dynamic_values = np.load(dynamic_values_path)
                 dynamic_nodes = dynamic_values['dynamic_nodes']
                 dynamic_edges = dynamic_values['dynamic_edges']
-                boundary_dynamic_nodes = dynamic_values['boundary_dynamic_nodes']
-                boundary_dynamic_edges = dynamic_values['boundary_dynamic_edges']
                 curr_event_idx = event_idx
-
-                # Add dynamic boundary conditions
-                dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
-                dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
 
             # Create Data object for timestep
             within_event_idx = idx - start_idx
@@ -82,8 +61,8 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                         edge_attr=edge_features,
                         y=label_nodes,
                         y_edge=label_edges,
-                        boundary_nodes=boundary_nodes_idx,
-                        boundary_edges=boundary_edges_idx)
+                        boundary_nodes=boundary_nodes,
+                        boundary_edges=boundary_edges)
             data_list.append(data)
 
         gc.collect()

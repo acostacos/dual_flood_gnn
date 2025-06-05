@@ -54,7 +54,7 @@ class FloodEventDataset(Dataset):
         # Dataset configurations
         self.mode = mode
         self.previous_timesteps = previous_timesteps
-        self.normalize = normalize
+        self.is_normalized = normalize
         self.spin_up_timesteps = spin_up_timesteps
         self.timesteps_from_peak = timesteps_from_peak
         self.inflow_boundary_edges = inflow_boundary_edges
@@ -102,19 +102,35 @@ class FloodEventDataset(Dataset):
         ghost_nodes = self._get_ghost_nodes()
 
         bc_info = self._create_boundary_conditions(ghost_nodes, edge_index, dynamic_nodes, dynamic_edges)
-        new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges = bc_info
+        new_boundary_nodes, new_boundary_edge_index, boundary_dynamic_nodes, boundary_dynamic_edges = bc_info
 
-        # Delete ghost nodes
-        static_nodes = np.delete(static_nodes, ghost_nodes, axis=0)
-        dynamic_nodes = np.delete(dynamic_nodes, ghost_nodes, axis=1)
-
-        ghost_edges_idx = np.any(np.isin(edge_index, ghost_nodes), axis=0).nonzero()[0]
-        static_edges = np.delete(static_edges, ghost_edges_idx, axis=0)
-        dynamic_edges = np.delete(dynamic_edges, ghost_edges_idx, axis=1)
-        edge_index = np.delete(edge_index, ghost_edges_idx, axis=1)
+        filtered_features = self._remove_ghost_nodes(ghost_nodes, static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index)
+        static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = filtered_features
 
         # Convert to undirected with flipped edge features
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
+
+        # Append boundary conditions to static and dynamic nodes/edges
+        boundary_static_nodes = np.zeros((len(new_boundary_nodes), self.num_static_node_features),
+                                        dtype=static_nodes.dtype)
+        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
+
+        boundary_static_edges = np.zeros((new_boundary_edge_index.shape[1], self.num_static_edge_features),
+                                         dtype=static_edges.dtype)
+        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
+
+        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
+        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
+
+        new_boundary_edges = np.arange(edge_index.shape[1], edge_index.shape[1] + new_boundary_edge_index.shape[1])
+        edge_index = np.concat([edge_index, new_boundary_edge_index], axis=1)
+
+        # Normlize features
+        if self.is_normalized:
+            static_nodes = self.normalize_feature_vector(FloodEventDataset.STATIC_NODE_FEATURES, static_nodes)
+            dynamic_nodes = self.normalize_feature_vector(FloodEventDataset.DYNAMIC_NODE_FEATURES, dynamic_nodes)
+            static_edges = self.normalize_feature_vector(FloodEventDataset.STATIC_EDGE_FEATURES, static_edges)
+            dynamic_edges = self.normalize_feature_vector(FloodEventDataset.DYNAMIC_EDGE_FEATURES, dynamic_edges)
 
         np.savez(self.processed_paths[2],
                  edge_index=edge_index,
@@ -131,15 +147,11 @@ class FloodEventDataset(Dataset):
 
             event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
-            event_bc_dynamic_nodes = boundary_dynamic_nodes[start_idx:end_idx].copy()
-            event_bc_dynamic_edges = boundary_dynamic_edges[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 3]
             np.savez(save_path,
                      dynamic_nodes=event_dynamic_nodes,
-                     dynamic_edges=event_dynamic_edges,
-                     boundary_dynamic_nodes=event_bc_dynamic_nodes,
-                     boundary_dynamic_edges=event_bc_dynamic_edges)
+                     dynamic_edges=event_dynamic_edges)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
@@ -177,30 +189,10 @@ class FloodEventDataset(Dataset):
         dynamic_values = np.load(dynamic_values_path)
         dynamic_nodes = dynamic_values['dynamic_nodes']
         dynamic_edges = dynamic_values['dynamic_edges']
-        boundary_dynamic_nodes = dynamic_values['boundary_dynamic_nodes']
-        boundary_dynamic_edges = dynamic_values['boundary_dynamic_edges']
-
-        # Add boundary conditions
-        boundary_static_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_NODE_FEATURES,
-                                                                        (len(boundary_nodes),),
-                                                                        dtype=static_nodes.dtype)
-        boundary_nodes_idx = np.arange(static_nodes.shape[0], static_nodes.shape[0] + len(boundary_nodes))
-        static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
-
-        boundary_static_edges = self._get_normalized_zeros_for_features(FloodEventDataset.STATIC_EDGE_FEATURES,
-                                                                        (boundary_edges.shape[1],),
-                                                                        dtype=static_edges.dtype)
-        boundary_edges_idx = np.arange(static_edges.shape[0], static_edges.shape[0] + boundary_edges.shape[1])
-        static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
-
-        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
-        dynamic_edges = np.concat([dynamic_edges, boundary_dynamic_edges], axis=1)
-
-        edge_index = np.concat([edge_index, boundary_edges], axis=1)
 
         # Create Data object for timestep
-        boundary_nodes_idx = torch.from_numpy(boundary_nodes_idx)
-        boundary_edges_idx = torch.from_numpy(boundary_edges_idx)
+        boundary_nodes = torch.from_numpy(boundary_nodes)
+        boundary_edges = torch.from_numpy(boundary_edges)
         edge_index = torch.from_numpy(edge_index)
         within_event_idx = idx - start_idx
 
@@ -214,8 +206,8 @@ class FloodEventDataset(Dataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
-                    boundary_nodes=boundary_nodes_idx,
-                    boundary_edges=boundary_edges_idx)
+                    boundary_nodes=boundary_nodes,
+                    boundary_edges=boundary_edges)
 
         return data
 
@@ -327,26 +319,27 @@ class FloodEventDataset(Dataset):
         inflow_boundary_nodes = inflow_boundary_nodes[np.isin(inflow_boundary_nodes, ghost_nodes)]
         boundary_nodes = np.concat([inflow_boundary_nodes, np.array(self.outflow_boundary_nodes)])
 
+        for bn in boundary_nodes:
+            if bn not in ghost_nodes:
+                raise ValueError(f'Boundary node {bn} is not a ghost node.')
+
         boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
-        boundary_edges = edge_index[:, boundary_edges_mask]
-        boundary_edges_idx = boundary_edges_mask.nonzero()[0]
+        boundary_edge_index = edge_index[:, boundary_edges_mask]
+        boundary_edges = boundary_edges_mask.nonzero()[0]
 
         # Reassign new indices to the boundary nodes taking into account the removal of ghost nodes
         # Ghost nodes are assumed to be the last nodes in the node feature matrix
         new_boundary_nodes = np.arange(ghost_nodes[0], (ghost_nodes[0] + len(boundary_nodes)))
-        new_boundary_edges = boundary_edges.copy()
+        new_boundary_edge_index = boundary_edge_index.copy()
         boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
         for old_value, new_value in boundary_nodes_mapping.items():
-            new_boundary_edges[new_boundary_edges == old_value] = new_value
-
-        num_ts, _, _ = dynamic_nodes.shape
+            new_boundary_edge_index[new_boundary_edge_index == old_value] = new_value
 
         # Node boundary conditions = Outflow Water Volume
         outflow_dynamic_nodes = dynamic_nodes[:, self.outflow_boundary_nodes, :].copy()
+        num_ts, _, num_dynamic_node_feat = dynamic_nodes.shape
         num_boundary_nodes = len(new_boundary_nodes)
-        boundary_dynamic_nodes = self._get_normalized_zeros_for_features(FloodEventDataset.DYNAMIC_NODE_FEATURES,
-                                                                         (num_ts, num_boundary_nodes),
-                                                                         dtype=dynamic_nodes.dtype)
+        boundary_dynamic_nodes = np.zeros((num_ts, num_boundary_nodes, num_dynamic_node_feat), dtype=dynamic_nodes.dtype)
 
         target_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
         outflow_dynamic_nodes_mask = np.isin(boundary_nodes, self.outflow_boundary_nodes)
@@ -354,24 +347,39 @@ class FloodEventDataset(Dataset):
 
         # Edge boundary conditions = Inflow Water Flow
         inflow_dynamic_edges = dynamic_edges[:, self.inflow_boundary_edges, :].copy()
-        num_boundary_edges = len(boundary_edges_idx)
-        boundary_dynamic_edges = self._get_normalized_zeros_for_features(FloodEventDataset.DYNAMIC_EDGE_FEATURES,
-                                                                        (num_ts, num_boundary_edges),
-                                                                        dtype=dynamic_edges.dtype)
+        num_ts, _, num_dynamic_edge_feat = dynamic_edges.shape
+        num_boundary_edges = len(boundary_edges)
+        boundary_dynamic_edges = np.zeros((num_ts, num_boundary_edges, num_dynamic_edge_feat), dtype=dynamic_edges.dtype)
 
         target_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
-        inflow_dynamic_edges_mask = np.isin(boundary_edges_idx, self.inflow_boundary_edges)
+        inflow_dynamic_edges_mask = np.isin(boundary_edges, self.inflow_boundary_edges)
         boundary_dynamic_edges[:, inflow_dynamic_edges_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
 
         # Ensure boundary edges are pointing away from the ghost nodes
-        to_boundary = np.isin(new_boundary_edges[1], new_boundary_nodes)
-        flipped_to_boundary = new_boundary_edges[:, to_boundary]
+        to_boundary = np.isin(new_boundary_edge_index[1], new_boundary_nodes)
+        flipped_to_boundary = new_boundary_edge_index[:, to_boundary]
         flipped_to_boundary[[0, 1], :] = flipped_to_boundary[[1, 0], :]
-        new_boundary_edges = np.concat([new_boundary_edges[:, ~to_boundary], flipped_to_boundary], axis=1)
+        new_boundary_edge_index = np.concat([new_boundary_edge_index[:, ~to_boundary], flipped_to_boundary], axis=1)
         # Flip the dynamic edge features accordingly
         boundary_dynamic_edges[:, to_boundary, :] *= -1
 
-        return new_boundary_nodes, new_boundary_edges, boundary_dynamic_nodes, boundary_dynamic_edges
+        return new_boundary_nodes, new_boundary_edge_index, boundary_dynamic_nodes, boundary_dynamic_edges
+
+    def _remove_ghost_nodes(self,
+                           ghost_nodes: ndarray,
+                           static_nodes: ndarray,
+                           dynamic_nodes: ndarray,
+                           static_edges: ndarray,
+                           dynamic_edges: ndarray,
+                           edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
+        static_nodes = np.delete(static_nodes, ghost_nodes, axis=0)
+        dynamic_nodes = np.delete(dynamic_nodes, ghost_nodes, axis=1)
+
+        ghost_edges_idx = np.any(np.isin(edge_index, ghost_nodes), axis=0).nonzero()[0]
+        static_edges = np.delete(static_edges, ghost_edges_idx, axis=0)
+        dynamic_edges = np.delete(dynamic_edges, ghost_edges_idx, axis=1)
+        edge_index = np.delete(edge_index, ghost_edges_idx, axis=1)
+        return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 
     def _to_undirected_flipped(self, edge_index: ndarray, static_edges: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
         # Convert to undirected with flipped edge features
@@ -390,7 +398,7 @@ class FloodEventDataset(Dataset):
         _, num_elems, _ = dynamic_features.shape
         if timestep_idx < self.previous_timesteps:
             # Pad with zeros if not enough previous timesteps are available
-            padding = self._get_normalized_zeros_for_features(dynamic_feature_list,
+            padding = self._get_empty_feature_tensor(dynamic_feature_list,
                                                               (self.previous_timesteps - timestep_idx, num_elems),
                                                               dtype=dynamic_features.dtype)
             ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
@@ -403,6 +411,23 @@ class FloodEventDataset(Dataset):
 
         ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
         return torch.from_numpy(ts_data)
+
+    def _get_empty_feature_tensor(self, features: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
+        out_tensor = []
+        shape = (*other_dims, 1)
+        for feature in features:
+            zeros = np.zeros(shape, dtype=dtype)
+
+            if self.is_normalized:
+                if feature not in self.feature_stats:
+                    raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
+
+                mean = self.feature_stats[feature]['mean']
+                std = self.feature_stats[feature]['std']
+                zeros = self._normalize(zeros, mean, std)
+
+            out_tensor.append(zeros)
+        return np.concat(out_tensor, axis=-1)
 
     def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
         # Target feature must be the last feature in the dynamic features
@@ -499,45 +524,36 @@ class FloodEventDataset(Dataset):
                     'std': feature_data.std().item(),
                 }
 
-            if self.normalize:
-                mean = self.feature_stats[feature]['mean']
-                std = self.feature_stats[feature]['std']
-                feature_data = self._normalize_features(feature_data, mean, std)
-
             features.append(feature_data)
 
         return features
 
     # Normalization Methods
 
-    def _get_normalized_zeros_for_features(self, features: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
-        normalized_arrays = []
-        shape = (*other_dims, 1)
-        for feature in features:
-             normalized_zeros = self._get_normalized_zeros(feature, shape, dtype)
-             normalized_arrays.append(normalized_zeros)
-        return np.concat(normalized_arrays, axis=-1)
+    def normalize_feature_vector(self, feature_list: List[str], feature_vector: ndarray) -> ndarray:
+        if not self.is_normalized:
+            return feature_vector
 
-    def _get_normalized_zeros(self, feature: str, shape: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
-        zeros = np.zeros(shape, dtype=dtype)
+        normalized_vector = []
+        is_dynamic_feature = len(feature_vector.shape) == 3
+        for i, feature in enumerate(feature_list):
+            if feature not in self.feature_stats:
+                raise ValueError(f'Feature {feature} not found in feature stats.')
 
-        if not self.normalize:
-            return zeros
+            feature_data = feature_vector[:, :, i:i+1] if is_dynamic_feature else feature_vector[:, i:i+1]
+            mean = self.feature_stats[feature]['mean']
+            std = self.feature_stats[feature]['std']
+            feature_data = self._normalize(feature_data, mean, std)
+            normalized_vector.append(feature_data)
 
-        if feature not in self.feature_stats:
-            raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
+        return np.concat(normalized_vector, axis=-1)
 
-        mean = self.feature_stats[feature]['mean']
-        std = self.feature_stats[feature]['std']
-        zeros = self._normalize_features(zeros, mean, std)
-        return zeros
-
-    def _normalize_features(self, feature_data: ndarray, mean: float, std: float) -> ndarray:
+    def _normalize(self, feature_data: ndarray, mean: float, std: float) -> ndarray:
         """Z-score normalization of features"""
         EPS = 1e-7 # Prevent division by zero
         return (feature_data - mean) / (std + EPS)
 
-    def _denormalize_features(self, feature: str, feature_data: ndarray) -> ndarray:
+    def _denormalize(self, feature: str, feature_data: ndarray) -> ndarray:
         """Z-score denormalization of features"""
         if feature not in self.feature_stats:
             raise ValueError(f'Feature {feature} not found in feature stats.')

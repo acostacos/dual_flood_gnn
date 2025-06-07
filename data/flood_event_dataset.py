@@ -157,7 +157,6 @@ class FloodEventDataset(Dataset):
         static_nodes = constant_values['static_nodes']
         static_edges = constant_values['static_edges']
         boundary_nodes = constant_values['boundary_nodes']
-        boundary_edges = constant_values['boundary_edges']
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_rollout_timesteps:
@@ -175,12 +174,13 @@ class FloodEventDataset(Dataset):
         dynamic_nodes = dynamic_values['dynamic_nodes']
         dynamic_edges = dynamic_values['dynamic_edges']
 
+        # Create Data object for timestep
+        orig_edge_index = edge_index.copy()
+
         # Convert to undirected with flipped edge features
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
 
-        # Create Data object for timestep
         boundary_nodes = torch.from_numpy(boundary_nodes)
-        boundary_edges = torch.from_numpy(boundary_edges)
         edge_index = torch.from_numpy(edge_index)
         within_event_idx = idx - start_idx
 
@@ -216,8 +216,6 @@ class FloodEventDataset(Dataset):
         }
         save_to_yaml_file(self.processed_paths[0], event_stats)
 
-    # =========== Helper Methods ===========
-
     def _get_hecras_files_from_summary(self, root_dir: str, dataset_summary_file: str) -> Tuple[List[str], List[str]]:
         '''Assumes all HEC-RAS files in the dataset summary are from the same catchment'''
         dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
@@ -238,6 +236,8 @@ class FloodEventDataset(Dataset):
             hec_ras_files.append(hec_ras_path)
 
         return hec_ras_files, hec_ras_run_ids
+
+    # =========== process() methods ===========
 
     def _set_event_properties(self) -> None:
         self.event_peak_idx = []
@@ -270,74 +270,6 @@ class FloodEventDataset(Dataset):
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])
         return edge_index
-
-    def _to_undirected_flipped(self, edge_index: ndarray, static_edges: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
-        # Convert to undirected with flipped edge features
-        row, col = edge_index[0], edge_index[1]
-        row, col = np.concat([row, col], axis=0), np.concat([col, row], axis=0)
-        edge_index = np.stack([row, col], axis=0)
-
-        static_edges = np.concat([static_edges, static_edges], axis=0)
-        flipped_dynamic_edges = dynamic_edges * -1
-        dynamic_edges = np.concat([dynamic_edges, flipped_dynamic_edges], axis=1)
-
-        return edge_index, static_edges, dynamic_edges
-
-    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, dynamic_feature_list: List[str], timestep_idx: int) -> Tensor:
-        """Returns the data for a specific timestep in the format [static_features, dynamic_features (previous, current)]"""
-        _, num_elems, _ = dynamic_features.shape
-        if timestep_idx < self.previous_timesteps:
-            # Pad with zeros if not enough previous timesteps are available
-            padding = self._get_empty_feature_tensor(dynamic_feature_list,
-                                                              (self.previous_timesteps - timestep_idx, num_elems),
-                                                              dtype=dynamic_features.dtype)
-            ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
-        else:
-            ts_dynamic_features = dynamic_features[timestep_idx-self.previous_timesteps:timestep_idx+1, :, :]
-
-        # (num_elems,  num_dynamic_features * num_timesteps)
-        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2)
-        ts_dynamic_features = np.reshape(ts_dynamic_features, shape=(num_elems, -1), order='F')
-
-        ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
-        return torch.from_numpy(ts_data)
-
-    def _get_empty_feature_tensor(self, features: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
-        out_tensor = []
-        shape = (*other_dims, 1)
-        for feature in features:
-            zeros = np.zeros(shape, dtype=dtype)
-
-            if self.is_normalized:
-                if feature not in self.feature_stats:
-                    raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
-
-                mean = self.feature_stats[feature]['mean']
-                std = self.feature_stats[feature]['std']
-                zeros = self._normalize(zeros, mean, std)
-
-            out_tensor.append(zeros)
-        return np.concat(out_tensor, axis=-1)
-
-    def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
-        # Target feature must be the last feature in the dynamic features
-        label_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
-        # (num_nodes, 1)
-        label_nodes = node_dynamic_features[timestep_idx+1, :, label_nodes_idx][:, None]
-        label_nodes = torch.from_numpy(label_nodes)
-
-        label_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
-        # (num_nodes, 1)
-        label_edges = edge_dynamic_features[timestep_idx+1, :, label_edges_idx][:, None]
-        label_edges = torch.from_numpy(label_edges)
-
-        return label_nodes, label_edges
-
-    def _get_global_mass_conservation_features(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
-        # Next timestep water volume and face flow
-        pass
-
-    # =========== Feature Retrieval Methods ===========
 
     def _get_static_node_features(self) -> ndarray:
         STATIC_NODE_RETRIEVAL_MAP = {
@@ -426,3 +358,59 @@ class FloodEventDataset(Dataset):
             features.append(feature_data)
 
         return features
+
+    # =========== get() methods ===========
+
+    def _to_undirected_flipped(self, edge_index: ndarray, static_edges: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
+        # Convert to undirected with flipped edge features
+        row, col = edge_index[0], edge_index[1]
+        row, col = np.concat([row, col], axis=0), np.concat([col, row], axis=0)
+        edge_index = np.stack([row, col], axis=0)
+
+        static_edges = np.concat([static_edges, static_edges], axis=0)
+        flipped_dynamic_edges = dynamic_edges * -1
+        dynamic_edges = np.concat([dynamic_edges, flipped_dynamic_edges], axis=1)
+
+        return edge_index, static_edges, dynamic_edges
+
+    def _get_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, dynamic_feature_list: List[str], timestep_idx: int) -> Tensor:
+        """Returns the data for a specific timestep in the format [static_features, dynamic_features (previous, current)]"""
+        _, num_elems, _ = dynamic_features.shape
+        if timestep_idx < self.previous_timesteps:
+            # Pad with zeros if not enough previous timesteps are available
+            padding = self._get_empty_feature_tensor(dynamic_feature_list,
+                                                     (self.previous_timesteps - timestep_idx, num_elems),
+                                                     dtype=dynamic_features.dtype)
+            ts_dynamic_features = np.concat([padding, dynamic_features[:timestep_idx+1, :, :]], axis=0)
+        else:
+            ts_dynamic_features = dynamic_features[timestep_idx-self.previous_timesteps:timestep_idx+1, :, :]
+
+        # (num_elems,  num_dynamic_features * num_timesteps)
+        ts_dynamic_features = ts_dynamic_features.transpose(1, 0, 2)
+        ts_dynamic_features = np.reshape(ts_dynamic_features, shape=(num_elems, -1), order='F')
+
+        ts_data = np.concat([static_features, ts_dynamic_features], axis=1)
+        return torch.from_numpy(ts_data)
+
+    def _get_empty_feature_tensor(self, features: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
+        if not self.is_normalized:
+            return np.zeros((*other_dims, len(features)), dtype=dtype)
+        return self.normalizer.get_normalized_zero_tensor(features, other_dims, dtype)
+
+    def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
+        # Target feature must be the last feature in the dynamic features
+        label_nodes_idx = FloodEventDataset.DYNAMIC_NODE_FEATURES.index(FloodEventDataset.NODE_TARGET_FEATURE)
+        # (num_nodes, 1)
+        label_nodes = node_dynamic_features[timestep_idx+1, :, label_nodes_idx][:, None]
+        label_nodes = torch.from_numpy(label_nodes)
+
+        label_edges_idx = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index(FloodEventDataset.EDGE_TARGET_FEATURE)
+        # (num_nodes, 1)
+        label_edges = edge_dynamic_features[timestep_idx+1, :, label_edges_idx][:, None]
+        label_edges = torch.from_numpy(label_edges)
+
+        return label_nodes, label_edges
+
+    def _get_global_mass_conservation_features(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
+        # Next timestep water volume and face flow
+        pass

@@ -3,7 +3,7 @@ import numpy as np
 
 from numpy import ndarray
 from utils.file_utils import read_yaml_file, save_to_yaml_file
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Tuple
 
 class DatasetNormalizer:
     EPS = 1e-7 # Prevent division by zero
@@ -45,6 +45,22 @@ class DatasetNormalizer:
             normalized_vector.append(feature_data)
 
         return np.concat(normalized_vector, axis=-1)
+
+    def get_normalized_zero_tensor(self, feature_list: List[str], other_dims: Tuple[int, ...], dtype: np.dtype = np.float32) -> ndarray:
+        out_tensor = []
+        shape = (*other_dims, 1)
+        for feature in feature_list:
+            zeros = np.zeros(shape, dtype=dtype)
+
+            if feature not in self.feature_stats:
+                raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
+
+            mean = self.feature_stats[feature]['mean']
+            std = self.feature_stats[feature]['std']
+            zeros = self.normalize(zeros, mean, std)
+
+            out_tensor.append(zeros)
+        return np.concat(out_tensor, axis=-1)
 
     def normalize(self, feature_data: ndarray, mean: float, std: float) -> ndarray:
         """Z-score normalization of features"""

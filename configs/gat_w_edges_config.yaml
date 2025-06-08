@@ -52,7 +52,7 @@ model_parameters:
 
   GAT:
     hidden_features: 32
-    use_edge_features: False
+    use_edge_features: True
     num_layers: 2
     activation: 'prelu'
     residual: True

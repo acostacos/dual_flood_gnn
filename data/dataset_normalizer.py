@@ -23,21 +23,21 @@ class DatasetNormalizer:
     def save_feature_stats(self):
         save_to_yaml_file(self.feature_stats_path, self.feature_stats)
 
+    def update_stats(self, feature: str, feature_data: ndarray):
+        assert self.mode == 'train', 'Feature statistics can only be saved in training mode.'
+
+        mean = feature_data.mean().item()
+        std = feature_data.std().item()
+        self.feature_stats[feature] = {'mean': mean, 'std': std}
+
     def normalize_feature_vector(self, feature_list: List[str], feature_vector: ndarray) -> ndarray:
         normalized_vector = []
         is_dynamic_feature = len(feature_vector.shape) == 3
         for i, feature in enumerate(feature_list):
             feature_data = feature_vector[:, :, i:i+1] if is_dynamic_feature else feature_vector[:, i:i+1]
 
-            if self.mode == 'train':
-                self.feature_stats[feature] = {
-                    'mean': feature_data.mean().item(),
-                    'std': feature_data.std().item(),
-                }
-            else:
-                # If test, use the precomputed feature stats
-                if feature not in self.feature_stats:
-                    raise ValueError(f'Feature {feature} not found in feature stats.')
+            if feature not in self.feature_stats:
+                raise ValueError(f'Feature {feature} not found in feature stats.')
 
             mean = self.feature_stats[feature]['mean']
             std = self.feature_stats[feature]['std']

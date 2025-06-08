@@ -9,8 +9,8 @@ dataset_parameters:
   normalize: True
   spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each)
   timesteps_from_peak: 720                              # Number of timesteps to consider from the peak (30 seconds each)
-  inflow_boundary_edges:
-  - 1849
+  inflow_boundary_nodes:
+  - 1248
   outflow_boundary_nodes:
   - 1253
   - 1129

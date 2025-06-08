@@ -64,7 +64,7 @@ def main():
             'normalize': dataset_parameters['normalize'],
             'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
-            'inflow_boundary_edges': dataset_parameters['inflow_boundary_edges'],
+            'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
         }
         logger.log(f'Using dataset configuration: {dataset_config}')

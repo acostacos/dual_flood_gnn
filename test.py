@@ -57,7 +57,7 @@ def main():
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
-            'with_global_mass_loss': True, # Always include global mass conservation information
+            'with_global_mass_loss': False,
         }
         logger.log(f'Using dataset configuration: {dataset_config}')
 
@@ -89,14 +89,18 @@ def main():
 
         # Testing
         # Get non-boundary nodes and threshold for metric computation
+        inflow_boundary_nodes = dataset[0].inflow_boundary_nodes
+        outflow_boundary_nodes = dataset[0].outflow_boundary_nodes
+        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
         non_boundary_nodes = torch.ones(dataset[0].x.shape[0], dtype=torch.bool)
-        non_boundary_nodes[dataset[0].boundary_nodes] = False
+        non_boundary_nodes[boundary_nodes] = False
 
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
         area = dataset[0].x.clone()[:, area_nodes_idx]
-        denorm_area = dataset._denormalize('area', area)
-        denorm_area = denorm_area[non_boundary_nodes, None]
-        threshold_per_cell = denorm_area * 0.05 # 5% of cell area
+        if dataset.is_normalized:
+            area = dataset.normalizer.denormalize('area', area)
+        area = area[non_boundary_nodes, None]
+        threshold_per_cell = area * 0.05 # 5% of cell area
 
         # Get sliding window indices
         target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
@@ -129,8 +133,8 @@ def main():
 
                     label = graph.y
                     if dataset.is_normalized:
-                        pred = dataset._denormalize(dataset.NODE_TARGET_FEATURE, pred)
-                        label = dataset._denormalize(dataset.NODE_TARGET_FEATURE, label)
+                        pred = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, pred)
+                        label = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, label)
 
                     # Ensure water volume is non-negative
                     pred = torch.clip(pred, min=0)

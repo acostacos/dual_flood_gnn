@@ -141,7 +141,10 @@ def main():
             pred_epoch_loss = running_pred_loss / len(dataloader)
             global_physics_epoch_loss = running_global_physics_loss / len(dataloader)
 
-            logger.log(f'Epoch [{epoch + 1}/{num_epochs}], Training Loss: {epoch_loss:.4e}, Prediction Loss: {pred_epoch_loss:.4e}, Global Physics Loss: {global_physics_epoch_loss:.4e}')
+            logging_str = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {epoch_loss:.4e}'
+            if use_global_mass_loss:
+                logging_str += f', Prediction Loss: {pred_epoch_loss:.4e}, Global Physics Loss: {global_physics_epoch_loss:.4e}'
+            logger.log(logging_str)
 
             training_stats.add_loss(epoch_loss)
             training_stats.add_loss_component('prediction_loss', pred_epoch_loss)

@@ -40,9 +40,12 @@ def get_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.d
         data = data.astype(dtype)
 
         # Convert cumulative rainfall to interval rainfall
-        first_ts_rainfall = np.zeros((1, data.shape[1]), dtype=np.float32)
+        first_ts_rainfall = np.zeros((1, data.shape[1]), dtype=dtype)
         intervals = np.diff(data, axis=0)
         data = np.concatenate((first_ts_rainfall, intervals), axis=0)
+
+        area = get_cell_area(filepath, perimeter_name, dtype=dtype)
+        data = (data / 1000) * area  # Convert mm to m³ (assuming area is in m²)
     except KeyError:
         # Rainfall data not available in the file
         water_level = get_water_level(filepath, perimeter_name)

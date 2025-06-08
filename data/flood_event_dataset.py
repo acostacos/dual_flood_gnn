@@ -117,6 +117,12 @@ class FloodEventDataset(Dataset):
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = boundary_condition.apply(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
+        new_inflow_boundary_nodes = boundary_condition.new_inflow_boundary_nodes
+        new_outflow_boundary_nodes = boundary_condition.new_outflow_boundary_nodes
+
+        if self.with_global_mass_loss:
+            global_mass_info = self._get_global_mass_info(new_inflow_boundary_nodes, new_outflow_boundary_nodes, edge_index, dynamic_nodes, dynamic_edges)
+            total_inflow_per_ts, total_outflow_per_ts, total_rainfall_per_ts, total_water_volume_per_ts = global_mass_info
 
         if self.is_normalized:
             static_nodes = self.normalizer.normalize_feature_vector(self.STATIC_NODE_FEATURES, static_nodes)
@@ -128,8 +134,8 @@ class FloodEventDataset(Dataset):
                  edge_index=edge_index,
                  static_nodes=static_nodes,
                  static_edges=static_edges,
-                 inflow_boundary_nodes=boundary_condition.new_inflow_boundary_nodes,
-                 outflow_boundary_nodes=boundary_condition.new_outflow_boundary_nodes)
+                 inflow_boundary_nodes=new_inflow_boundary_nodes,
+                 outflow_boundary_nodes=new_outflow_boundary_nodes)
         self.log_func(f'Saved constant values to {self.processed_paths[2]}')
 
         start_idx = 0
@@ -139,10 +145,20 @@ class FloodEventDataset(Dataset):
             event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
 
+            # Global Mass Conservation Features
+            event_total_inflow_per_ts = total_inflow_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
+            event_total_outflow_per_ts = total_outflow_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
+            event_total_rainfall_per_ts = total_rainfall_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
+            event_total_water_volume_per_ts = total_water_volume_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
+
             save_path = self.processed_paths[i + 3]
             np.savez(save_path,
                      dynamic_nodes=event_dynamic_nodes,
-                     dynamic_edges=event_dynamic_edges)
+                     dynamic_edges=event_dynamic_edges,
+                     total_inflow_per_ts=event_total_inflow_per_ts,
+                     total_outflow_per_ts=event_total_outflow_per_ts,
+                     total_rainfall_per_ts=event_total_rainfall_per_ts,
+                     total_water_volume_per_ts=event_total_water_volume_per_ts)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
@@ -181,10 +197,6 @@ class FloodEventDataset(Dataset):
         dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
         dynamic_edges: ndarray = dynamic_values['dynamic_edges']
 
-        # Get physics-informed loss information
-        if self.with_global_mass_loss:
-            total_inflow_per_ts, total_outflow_per_ts = self._get_global_mass_info(inflow_boundary_nodes, outflow_boundary_nodes, edge_index, static_nodes, dynamic_nodes, dynamic_edges)
-
         # Mask boundary conditions
         dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(inflow_boundary_nodes, outflow_boundary_nodes, edge_index, dynamic_nodes, dynamic_edges)
 
@@ -194,12 +206,18 @@ class FloodEventDataset(Dataset):
         edge_features = self._get_timestep_data(static_edges, dynamic_edges, self.DYNAMIC_EDGE_FEATURES, within_event_idx)
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
+        # Get physics-informed loss information
         global_mass_info = None
         if self.with_global_mass_loss:
-            global_mass_info = {
-                'total_inflow_per_ts': total_inflow_per_ts[within_event_idx],
-                'total_outflow_per_ts': total_outflow_per_ts[within_event_idx],
-            }
+            total_inflow_per_ts: ndarray = dynamic_values['total_inflow_per_ts']
+            total_outflow_per_ts: ndarray = dynamic_values['total_outflow_per_ts']
+            total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
+            total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
+            global_mass_info = self._get_global_mass_info_for_timestep(total_inflow_per_ts,
+                                                                       total_outflow_per_ts,
+                                                                       total_rainfall_per_ts,
+                                                                       total_water_volume_per_ts,
+                                                                       within_event_idx)
 
         inflow_boundary_nodes = torch.from_numpy(inflow_boundary_nodes)
         outflow_boundary_nodes = torch.from_numpy(outflow_boundary_nodes)
@@ -391,6 +409,41 @@ class FloodEventDataset(Dataset):
 
         return edge_index, static_edges, dynamic_edges
 
+    def _get_global_mass_info(self,
+                              inflow_boundary_nodes: ndarray,
+                              outflow_boundary_nodes: ndarray,
+                              edge_index: ndarray,
+                              dynamic_nodes: ndarray,
+                              dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
+        face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
+
+        # Total inflow volume
+        inflow_edges_mask = np.any(np.isin(edge_index, inflow_boundary_nodes), axis=0)
+        inflow_per_ts = dynamic_edges[:, inflow_edges_mask, face_flow_idx]
+        total_inflow_per_ts = inflow_per_ts.sum(axis=1)
+
+        # Total outflow volume
+        outflow_edges_mask = np.any(np.isin(edge_index, outflow_boundary_nodes), axis=0)
+        outflow_per_ts = dynamic_edges[:, outflow_edges_mask, face_flow_idx]
+        # Flip direction because eges are pointed away from the outflow boundary
+        outflow_per_ts *= -1
+        total_outflow_per_ts = outflow_per_ts.sum(axis=1)
+
+        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
+        non_boundary_nodes_mask = ~np.isin(np.arange(dynamic_nodes.shape[1]), boundary_nodes)
+
+        # Total rainfall 
+        rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
+        node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
+        total_rainfall_per_ts = node_rainfall_per_ts.sum(axis=1)
+
+        # Next timestep total volume
+        water_volume_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
+        water_volume_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, water_volume_idx]
+        total_water_volume_per_ts = water_volume_per_ts.sum(axis=1)
+
+        return total_inflow_per_ts, total_outflow_per_ts, total_rainfall_per_ts, total_water_volume_per_ts
+
     # =========== get() methods ===========
 
     def _mask_boundary_conditions(self,
@@ -399,32 +452,32 @@ class FloodEventDataset(Dataset):
                                   edge_index: ndarray,
                                   dynamic_nodes: ndarray,
                                   dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
-        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
         num_ts, num_nodes, _ = dynamic_nodes.shape
+        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
 
         # Node boundary conditions = Outflow Water Volume
-        mask_boundary_dynamic_nodes = self._get_empty_feature_tensor(self.DYNAMIC_NODE_FEATURES, (num_ts, len(boundary_nodes)), dtype=dynamic_nodes.dtype)
+        boundary_nodes_mask = np.isin(np.arange(num_nodes), boundary_nodes)
+        masked_boundary_dynamic_nodes = self._get_empty_feature_tensor(self.DYNAMIC_NODE_FEATURES, (num_ts, len(boundary_nodes)), dtype=dynamic_nodes.dtype)
 
         outflow_dynamic_nodes = dynamic_nodes[:, outflow_boundary_nodes, :].copy()
         target_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
-        outflow_dynamic_nodes_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
-        mask_boundary_dynamic_nodes[:, outflow_dynamic_nodes_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
+        nodes_overwrite_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
+        masked_boundary_dynamic_nodes[:, nodes_overwrite_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
 
-        dynamic_nodes = dynamic_nodes[:, ~np.isin(np.arange(num_nodes), boundary_nodes), :].copy()
-        dynamic_nodes = np.concat([dynamic_nodes, mask_boundary_dynamic_nodes], axis=1)
+        dynamic_nodes = np.concat([dynamic_nodes[:, ~boundary_nodes_mask, :], masked_boundary_dynamic_nodes], axis=1)
 
         # Edge boundary conditions = Inflow Water Flow
         boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
         boundary_edges = boundary_edges_mask.nonzero()[0]
-        mask_boundary_dynamic_edges = self._get_empty_feature_tensor(self.DYNAMIC_EDGE_FEATURES, (num_ts, len(boundary_edges)), dtype=dynamic_edges.dtype)
+        masked_boundary_dynamic_edges = self._get_empty_feature_tensor(self.DYNAMIC_EDGE_FEATURES, (num_ts, len(boundary_edges)), dtype=dynamic_edges.dtype)
 
-        inflow_dynamic_edges = dynamic_edges[:, boundary_edges_mask, :].copy()
+        inflow_dynamic_edges_mask = np.any(np.isin(edge_index, inflow_boundary_nodes), axis=0)
+        inflow_dynamic_edges = dynamic_edges[:, inflow_dynamic_edges_mask, :].copy()
         target_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
-        inflow_dynamic_edges_mask = np.any(np.isin(boundary_edges, inflow_boundary_nodes), axis=0)
-        mask_boundary_dynamic_edges[:, inflow_dynamic_edges_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
+        edges_overwrite_mask = np.isin(boundary_nodes, inflow_boundary_nodes)
+        masked_boundary_dynamic_edges[:, edges_overwrite_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
 
-        dynamic_edges = dynamic_edges[:, ~boundary_edges_mask, :].copy()
-        dynamic_edges = np.concat([dynamic_edges, mask_boundary_dynamic_edges], axis=1)
+        dynamic_edges = np.concat([dynamic_edges[:, ~boundary_edges_mask, :], masked_boundary_dynamic_edges], axis=1)
 
         return dynamic_nodes, dynamic_edges
 
@@ -465,38 +518,22 @@ class FloodEventDataset(Dataset):
         label_edges = torch.from_numpy(label_edges)
 
         return label_nodes, label_edges
+    
+    def _get_global_mass_info_for_timestep(self,
+                                           total_inflow_per_ts: ndarray,
+                                           total_outflow_per_ts: ndarray,
+                                           total_rainfall_per_ts: ndarray,
+                                           total_water_volume_per_ts: ndarray,
+                                           timestep_idx: int) -> Dict[str, float]:
 
-    def _get_global_mass_info(self,
-                              inflow_boundary_nodes: ndarray,
-                              outflow_boundary_nodes: ndarray,
-                              edge_index: ndarray,
-                              static_nodes: ndarray,
-                              dynamic_nodes: ndarray,
-                              dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
-        face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
-        rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
+        total_inflow = total_inflow_per_ts[timestep_idx].item()
+        total_outflow = total_outflow_per_ts[timestep_idx].item()
+        total_rainfall = total_rainfall_per_ts[timestep_idx].item()
+        total_next_water_volume = total_water_volume_per_ts[timestep_idx+1].item()
 
-        # Total inflow volume
-        inflow_edges_mask = np.any(np.isin(edge_index, inflow_boundary_nodes), axis=0)
-        inflow_per_ts = dynamic_edges[:, inflow_edges_mask, face_flow_idx]
-        inflow_per_ts = self.normalizer.denormalize(self.EDGE_TARGET_FEATURE, inflow_per_ts)
-        total_inflow_per_ts = inflow_per_ts.sum(axis=1)
-
-        # Total outflow volume
-        outflow_edges_mask = np.any(np.isin(edge_index, outflow_boundary_nodes), axis=0)
-        outflow_per_ts = dynamic_edges[:, outflow_edges_mask, face_flow_idx]
-        outflow_per_ts = self.normalizer.denormalize(self.EDGE_TARGET_FEATURE, outflow_per_ts)
-        # Flip direction because eges are pointed away from the outflow boundary
-        outflow_per_ts *= -1
-        total_outflow_per_ts = outflow_per_ts.sum(axis=1)
-
-        # Total rainfall 
-        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
-        non_boundary_nodes_mask = ~np.isin(np.arange(dynamic_nodes.shape[1]), boundary_nodes)
-        node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
-        node_rainfall_per_ts = self.normalizer.denormalize('rainfall', node_rainfall_per_ts)
-        total_node_rainfall_per_ts = node_rainfall_per_ts.sum(axis=1)
-
-        # rf_volume = np.sum((rain_df.iloc[end_time, 1:])*area/1000) - np.sum((rain_df.iloc[start_time, 1:])*area/1000)
-
-        return total_inflow_per_ts, total_outflow_per_ts, total_node_rainfall_per_ts
+        return {
+            'total_inflow': total_inflow,
+            'total_outflow': total_outflow,
+            'total_rainfall': total_rainfall,
+            'total_next_water_volume': total_next_water_volume
+        }

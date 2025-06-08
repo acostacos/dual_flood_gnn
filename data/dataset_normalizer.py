@@ -23,6 +23,15 @@ class DatasetNormalizer:
     def save_feature_stats(self):
         save_to_yaml_file(self.feature_stats_path, self.feature_stats)
 
+    def get_feature_mean_std(self, feature: str) -> Tuple[float, float]:
+        """Get the mean and std of a feature"""
+        if feature not in self.feature_stats:
+            raise ValueError(f'Feature {feature} not found in feature stats.')
+
+        mean = self.feature_stats[feature]['mean']
+        std = self.feature_stats[feature]['std']
+        return mean, std
+
     def update_stats(self, feature: str, feature_data: ndarray):
         assert self.mode == 'train', 'Feature statistics can only be saved in training mode.'
 

@@ -219,8 +219,6 @@ class FloodEventDataset(Dataset):
                                                                        total_water_volume_per_ts,
                                                                        within_event_idx)
 
-        inflow_boundary_nodes = torch.from_numpy(inflow_boundary_nodes)
-        outflow_boundary_nodes = torch.from_numpy(outflow_boundary_nodes)
         edge_index = torch.from_numpy(edge_index)
         data = Data(x=node_features,
                     edge_index=edge_index,
@@ -525,15 +523,17 @@ class FloodEventDataset(Dataset):
                                            total_rainfall_per_ts: ndarray,
                                            total_water_volume_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, float]:
-
         total_inflow = total_inflow_per_ts[timestep_idx].item()
         total_outflow = total_outflow_per_ts[timestep_idx].item()
         total_rainfall = total_rainfall_per_ts[timestep_idx].item()
         total_next_water_volume = total_water_volume_per_ts[timestep_idx+1].item()
+        volume_mean, volume_std = self.normalizer.get_feature_mean_std('water_volume')
 
         return {
             'total_inflow': total_inflow,
             'total_outflow': total_outflow,
             'total_rainfall': total_rainfall,
-            'total_next_water_volume': total_next_water_volume
+            'total_next_water_volume': total_next_water_volume,
+            'volume_mean': volume_mean,
+            'volume_std': volume_std,
         }

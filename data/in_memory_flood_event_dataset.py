@@ -23,8 +23,6 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         inflow_boundary_nodes: ndarray = constant_values['inflow_boundary_nodes']
         outflow_boundary_nodes: ndarray = constant_values['outflow_boundary_nodes']
 
-        t_inflow_boundary_nodes = torch.from_numpy(inflow_boundary_nodes.copy())
-        t_outflow_boundary_nodes = torch.from_numpy(outflow_boundary_nodes.copy())
         t_edge_index = torch.from_numpy(edge_index.copy())
 
         curr_event_idx = -1
@@ -79,8 +77,8 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
-                    inflow_boundary_nodes=t_inflow_boundary_nodes,
-                    outflow_boundary_nodes=t_outflow_boundary_nodes,
+                    inflow_boundary_nodes=inflow_boundary_nodes,
+                    outflow_boundary_nodes=outflow_boundary_nodes,
                     global_mass_info=global_mass_info)
 
             data_list.append(data)

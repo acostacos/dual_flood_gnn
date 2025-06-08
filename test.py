@@ -52,10 +52,12 @@ def main():
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],
+            'timestep_interval': dataset_parameters['timestep_interval'],
             'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
+            'with_global_mass_loss': True, # Always include global mass conservation information
         }
         logger.log(f'Using dataset configuration: {dataset_config}')
 

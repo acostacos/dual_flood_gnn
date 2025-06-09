@@ -53,7 +53,8 @@ def main():
         train_dataset_parameters = dataset_parameters['training']
         dataset_summary_file = train_dataset_parameters['dataset_summary_file']
         event_stats_file = train_dataset_parameters['event_stats_file']
-        use_global_mass_loss = train_config['use_global_mass_loss']
+        loss_func_parameters = config['loss_func_parameters']
+        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
         dataset_config = {
             'mode': 'train',
             'root_dir': dataset_parameters['root_dir'],
@@ -101,10 +102,12 @@ def main():
 
         # Loss function and optimizer
         criterion = MSELoss()
+        node_loss_weight = loss_func_parameters['node_loss_weight']
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
-        logger.log(f"Using loss function: {loss_func_name}")
+        logger.log(f"Using {loss_func_name} loss for nodes with weight {node_loss_weight}")
         if use_global_mass_loss:
-            logger.log('Using global mass conservation loss')
+            global_mass_loss_weight = loss_func_parameters['global_mass_loss_weight']
+            logger.log(f'Using global mass conservation loss with weight {global_mass_loss_weight}')
 
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         num_epochs = train_config['num_epochs']
@@ -125,13 +128,18 @@ def main():
                 pred = model(batch)
 
                 label = batch.y
-                loss = criterion(pred, label)
-                running_pred_loss += loss.item()
 
                 if use_global_mass_loss:
-                    global_physics_loss = global_mass_conservation_loss(pred, batch, delta_t=delta_t)
+                    pred_loss = node_loss_weight * criterion(pred, label)
+                    global_physics_loss =  global_mass_loss_weight * global_mass_conservation_loss(pred,
+                                                                                                   batch,
+                                                                                                   delta_t=delta_t)
+                    loss = pred_loss + global_physics_loss
+                    running_pred_loss += pred_loss.item()
                     running_global_physics_loss += global_physics_loss.item()
-                    loss += global_physics_loss
+                else:
+                    loss = criterion(pred, label)
+                    running_pred_loss += loss.item()
 
                 loss.backward()
                 optimizer.step()

@@ -11,8 +11,8 @@ from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
 
 from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_roughness,\
-    get_rainfall, get_water_level, get_water_volume, get_edge_direction_x, get_edge_direction_y, \
-    get_face_length, get_velocity, get_face_flow
+    get_cumulative_rainfall, get_water_level, get_water_volume, get_edge_direction_x,\
+    get_edge_direction_y, get_face_length, get_velocity, get_face_flow
 from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length, get_edge_slope
 from .boundary_condition import BoundaryCondition
 from .dataset_normalizer import DatasetNormalizer
@@ -337,8 +337,23 @@ class FloodEventDataset(Dataset):
             water_depth = np.clip(water_level - elevation, a_min=0, a_max=None)
             return water_depth
 
+        def get_interval_rainfall(hec_ras_paths: List[str]):
+            """Get interval rainfall from cumulative rainfall"""
+            all_event_data = []
+            for i, path in enumerate(hec_ras_paths):
+                cumulative_rainfall = get_cumulative_rainfall(path)
+                cumulative_rainfall = self._get_trimmed_dynamic_data(cumulative_rainfall, i)
+
+                last_ts_rainfall = np.zeros((1, cumulative_rainfall.shape[1]), dtype=cumulative_rainfall.dtype)
+                intervals = np.diff(cumulative_rainfall, axis=0)
+                interval_rainfall = np.concatenate((intervals, last_ts_rainfall), axis=0)
+
+                all_event_data.append(interval_rainfall)
+            all_event_data = np.concatenate(all_event_data, axis=0)
+            return all_event_data
+
         DYNAMIC_NODE_RETRIEVAL_MAP = {
-            "rainfall": lambda: self._get_dynamic_from_all_events(get_rainfall),
+            "rainfall": lambda: get_interval_rainfall(self.raw_paths[2:]),
             "water_depth": lambda: self._get_dynamic_from_all_events(get_water_depth),
             "water_volume": lambda: self._get_dynamic_from_all_events(get_water_volume),
         }

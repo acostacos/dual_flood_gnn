@@ -42,4 +42,5 @@ def global_mass_conservation_loss(batch_pred: Tensor, databatch, delta_t: int = 
         global_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
         physics_losses.append(global_volume_error)
 
-    return torch.stack(physics_losses).mean()
+    global_loss = torch.stack(physics_losses).mean()
+    return torch.abs(global_loss)

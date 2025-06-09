@@ -33,19 +33,13 @@ def get_roughness(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_cumulative_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     try:
         property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Cumulative Precipitation Depth'
         data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
         data = data.astype(dtype)
-
-        # Convert cumulative rainfall to interval rainfall
-        first_ts_rainfall = np.zeros((1, data.shape[1]), dtype=dtype)
-        intervals = np.diff(data, axis=0)
-        data = np.concatenate((first_ts_rainfall, intervals), axis=0)
-
         area = get_cell_area(filepath, perimeter_name, dtype=dtype)
-        data = (data / 1000) * area  # Convert mm to m³ (assuming area is in m²)
+        data = (data / 1000) * area  # Convert mm to m³
     except KeyError:
         # Rainfall data not available in the file
         water_level = get_water_level(filepath, perimeter_name)

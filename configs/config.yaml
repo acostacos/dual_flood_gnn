@@ -32,7 +32,11 @@ training_parameters:
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  use_global_mass_loss : False                               # Use global mass conservation in training
+
+loss_func_parameters:
+  use_global_mass_loss: False                                # Use global mass conservation in loss function
+  node_loss_weight: 0.9                                      # Weight for Node Features MSE loss
+  global_mass_loss_weight: 0.1                               # Weight for global mass conservation loss
 
 testing_parameters:
   log_path: null                                        # Path to save testing logs

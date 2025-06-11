@@ -41,6 +41,7 @@ loss_func_parameters:
 testing_parameters:
   log_path: null                                        # Path to save testing logs
   output_dir: 'saved_metrics'                           # Directory to save testing results
+  rollout_start: 10000                                  # Start timestep for the test rollout
   rollout_timesteps: 240                                # Number of timesteps for the test rollout (30 seconds each)
 
 model_parameters:

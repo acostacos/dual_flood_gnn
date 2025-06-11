@@ -108,6 +108,7 @@ def main():
         start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
         end_target_idx = start_target_idx + sliding_window_length
 
+        rollout_start = test_config['rollout_start']
         rollout_timesteps = test_config['rollout_timesteps']
         for i, run_id in enumerate(dataset.hec_ras_run_ids):
             logger.log(f'Validating on run {i + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
@@ -119,8 +120,11 @@ def main():
                 sliding_window = dataset[0].x.clone()[:, start_target_idx:end_target_idx]
                 sliding_window = sliding_window.to(args.device)
 
-                event_start_idx = dataset.event_start_idx[i]
-                event_dataset = dataset[event_start_idx:(event_start_idx + rollout_timesteps)]
+                event_start_idx = dataset.event_start_idx[i] + rollout_start
+                event_end_idx = event_start_idx + rollout_timesteps
+                assert event_end_idx <= (dataset.event_start_idx[i + 1] if i + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
+                    f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for run ID {run_id}.'
+                event_dataset = dataset[event_start_idx:event_end_idx]
                 dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
                 for graph in dataloader:
                     graph = graph.to(args.device)

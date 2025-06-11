@@ -109,6 +109,8 @@ def main():
             global_mass_loss_weight = loss_func_parameters['global_mass_loss_weight']
             logger.log(f'Using global mass conservation loss with weight {global_mass_loss_weight}')
 
+        log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
+        logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         num_epochs = train_config['num_epochs']
         delta_t = dataset.timestep_interval

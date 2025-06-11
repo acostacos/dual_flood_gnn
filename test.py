@@ -57,7 +57,7 @@ def main():
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
-            'with_global_mass_loss': False,
+            'with_global_mass_loss': True,
         }
         logger.log(f'Using dataset configuration: {dataset_config}')
 
@@ -95,6 +95,7 @@ def main():
         non_boundary_nodes = torch.ones(dataset[0].x.shape[0], dtype=torch.bool)
         non_boundary_nodes[boundary_nodes] = False
 
+        # Assume using the same area for all events in the dataset
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
         area = dataset[0].x.clone()[:, area_nodes_idx]
         if dataset.is_normalized:
@@ -110,6 +111,9 @@ def main():
 
         rollout_start = test_config['rollout_start']
         rollout_timesteps = test_config['rollout_timesteps']
+        log_test_config = {'rollout_start': rollout_start, 'rollout_timesteps': rollout_timesteps}
+        logger.log(f'Using testing configuration: {log_test_config}')
+
         for i, run_id in enumerate(dataset.hec_ras_run_ids):
             logger.log(f'Validating on run {i + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
             validation_stats = ValidationStats(logger=logger)
@@ -117,15 +121,15 @@ def main():
 
             model.eval()
             with torch.no_grad():
-                sliding_window = dataset[0].x.clone()[:, start_target_idx:end_target_idx]
-                sliding_window = sliding_window.to(args.device)
-
                 event_start_idx = dataset.event_start_idx[i] + rollout_start
                 event_end_idx = event_start_idx + rollout_timesteps
                 assert event_end_idx <= (dataset.event_start_idx[i + 1] if i + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
                     f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for run ID {run_id}.'
                 event_dataset = dataset[event_start_idx:event_end_idx]
                 dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
+
+                sliding_window = dataset[event_start_idx].x.clone()[:, start_target_idx:end_target_idx]
+                sliding_window = sliding_window.to(args.device)
                 for graph in dataloader:
                     graph = graph.to(args.device)
 
@@ -134,6 +138,11 @@ def main():
 
                     pred = model(graph)
                     sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
+
+                    # Requires normalized physics-informed loss
+                    validation_stats.update_physics_informed_stats_for_timestep(pred.cpu(),
+                                                                                graph.cpu(),
+                                                                                delta_t=dataset.timestep_interval)
 
                     label = graph.y
                     if dataset.is_normalized:
@@ -148,7 +157,7 @@ def main():
                     pred = pred[non_boundary_nodes]
                     label = label[non_boundary_nodes]
 
-                    validation_stats.update_stats_for_epoch(pred.cpu(),
+                    validation_stats.update_stats_for_timestep(pred.cpu(),
                                                     label.cpu(),
                                                     water_threshold=threshold_per_cell)
 

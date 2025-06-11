@@ -2,7 +2,9 @@ import numpy as np
 import os
 import time
 
+from numpy import ndarray
 from torch import Tensor
+from loss import global_mass_conservation_loss
 from . import Logger
 from .metric_utils import RMSE, MAE, NSE, CSI
 
@@ -24,6 +26,9 @@ class ValidationStats:
         self.mae_flooded_list = []
         self.nse_flooded_list = []
 
+        # Physics-informed stats
+        self.global_mass_loss_list = []
+
         self.log = print
         if logger is not None and hasattr(logger, 'log'):
             self.log = logger.log
@@ -37,10 +42,7 @@ class ValidationStats:
     def get_inference_time(self):
         return (self.val_end_time - self.val_start_time) / len(self.pred_list)
 
-    def update_stats_for_epoch(self,
-                               pred: Tensor,
-                               target: Tensor,
-                               water_threshold: float = 0.3):
+    def update_stats_for_timestep(self, pred: Tensor, target: Tensor, water_threshold: ndarray):
         self.pred_list.append(pred)
         self.target_list.append(target)
 
@@ -61,13 +63,17 @@ class ValidationStats:
         self.mae_flooded_list.append(MAE(flooded_pred, flooded_target))
         self.nse_flooded_list.append(NSE(flooded_pred, flooded_target))
 
-    def convert_water_depth_to_binary(self, water_depth: Tensor, water_threshold: float) -> Tensor:
+    def convert_water_depth_to_binary(self, water_depth: Tensor, water_threshold: ndarray) -> Tensor:
         return (water_depth > water_threshold)
 
     def filter_by_water_threshold(self, pred: Tensor, target: Tensor, flooded_mask: Tensor):
         flooded_pred = pred[flooded_mask]
         flooded_target = target[flooded_mask]
         return flooded_pred, flooded_target
+
+    def update_physics_informed_stats_for_timestep(self, pred: Tensor, databatch, delta_t: int = 30):
+        global_mass_loss = global_mass_conservation_loss(pred, databatch, delta_t=delta_t)
+        self.global_mass_loss_list.append(global_mass_loss.item())
 
     def print_stats_summary(self):
         if len(self.rmse_list) > 0:
@@ -91,6 +97,9 @@ class ValidationStats:
         if len(self.csi_list) > 0:
             csi_np = np.array(self.csi_list)
             self.log(f'Average CSI: {csi_np.mean():.4e}')
+        if len(self.global_mass_loss_list) > 0:
+            global_mass_loss_np = np.array(self.global_mass_loss_list)
+            self.log(f'Average Global Mass Conservation Loss: {global_mass_loss_np.mean():.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'Inference time for one timestep: {self.get_inference_time():.4f} seconds')
@@ -110,6 +119,8 @@ class ValidationStats:
             'nse': np.array(self.nse_list),
             'nse_flooded': np.array(self.nse_flooded_list),
             'csi': np.array(self.csi_list),
+            'global_mass_loss': np.array(self.global_mass_loss_list),
+            'inference_time': self.get_inference_time(),
         }
         np.savez(filepath, **stats)
 

@@ -10,6 +10,7 @@ from loss import global_mass_conservation_loss
 from models import GAT, GCN
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
+from typing import Callable
 from utils import TrainingStats, Logger, file_utils
 
 torch.serialization.add_safe_globals([datetime])
@@ -29,6 +30,110 @@ def model_factory(model_name: str, **kwargs) -> torch.nn.Module:
     if model_name == 'GAT':
         return GAT(**kwargs)
     raise ValueError(f'Invalid model name: {model_name}')
+
+def train_base(model: torch.nn.Module,
+               dataloader: DataLoader,
+               optimizer: torch.optim.Optimizer,
+               criterion: Callable,
+               training_stats: TrainingStats,
+               num_epochs: int = 100,
+               device: str = 'cpu'):
+    training_stats.start_train()
+    for epoch in range(num_epochs):
+        model.train()
+        running_pred_loss = 0.0
+
+        for batch in dataloader:
+            optimizer.zero_grad()
+
+            batch = batch.to(device)
+            pred = model(batch)
+
+            label = batch.y
+            loss = criterion(pred, label)
+            running_pred_loss += loss.item()
+
+            loss.backward()
+            optimizer.step()
+
+        epoch_loss = running_pred_loss / len(dataloader)
+        logging_str = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {epoch_loss:.4e}'
+        training_stats.log(logging_str)
+
+        training_stats.add_loss(epoch_loss)
+    training_stats.end_train()
+
+def train_w_global(model: torch.nn.Module,
+                   dataloader: DataLoader,
+                   optimizer: torch.optim.Optimizer,
+                   criterion: Callable,
+                   training_stats: TrainingStats,
+                   num_epochs: int = 100,
+                   delta_t: int = 30,
+                   global_mass_loss_weight: float = 0.1,
+                   device: str = 'cpu'):
+    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = 10
+
+    scaled_loss_ratios = []
+    training_stats.start_train()
+    for epoch in range(num_epochs):
+        model.train()
+        running_pred_loss = 0.0
+        running_global_physics_loss = 0.0
+
+        # Dynamic loss weight adjustment
+        running_absolute_loss_ratio = 0.0
+        running_scaled_loss_ratio = 0.0
+
+        for batch in dataloader:
+            optimizer.zero_grad()
+
+            batch = batch.to(device)
+            pred = model(batch)
+
+            label = batch.y
+            pred_loss = criterion(pred, label)
+            running_pred_loss += pred_loss.item()
+
+            global_physics_loss = global_mass_conservation_loss(pred, batch, delta_t=delta_t)
+            absolute_loss_ratio = pred_loss / (global_physics_loss + 1e-8)
+            running_absolute_loss_ratio += absolute_loss_ratio.item()
+
+            scaled_global_physics_loss = global_mass_loss_weight * global_physics_loss
+            scaled_loss_ratio = pred_loss / (scaled_global_physics_loss + 1e-8)
+            running_scaled_loss_ratio  += scaled_loss_ratio.item()
+            running_global_physics_loss += scaled_global_physics_loss.item()
+
+            loss = pred_loss + scaled_global_physics_loss
+
+            loss.backward()
+            optimizer.step()
+
+        running_loss = running_pred_loss + running_global_physics_loss
+        epoch_loss = running_loss / len(dataloader)
+        pred_epoch_loss = running_pred_loss / len(dataloader)
+        global_physics_epoch_loss = running_global_physics_loss / len(dataloader)
+        epoch_scaled_loss_ratio = running_scaled_loss_ratio / len(dataloader)
+
+        logging_str = f'Epoch [{epoch + 1}/{num_epochs}]\n'
+        logging_str += f'\tLoss: {epoch_loss:.4e}\n'
+        logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
+        logging_str += f'\tGlobal Physics Loss: {global_physics_epoch_loss:.4e}\n'
+        logging_str += f'\tAverage Loss Ratio: {epoch_scaled_loss_ratio:.4e}'
+        training_stats.log(logging_str)
+
+        training_stats.add_loss(epoch_loss)
+        training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
+        training_stats.add_loss_component('global_physics_loss', global_physics_epoch_loss)
+        scaled_loss_ratios.append(epoch_scaled_loss_ratio)
+
+        if epoch < DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS:
+            epoch_absolute_loss_ratio = running_absolute_loss_ratio / len(dataloader)
+            global_mass_loss_weight = epoch_absolute_loss_ratio
+            training_stats.log(f'\tAdjusted Global Mass Loss Weight to {global_mass_loss_weight:.4e}')
+
+    training_stats.end_train()
+    training_stats.add_additional_info('loss_ratios', scaled_loss_ratios)
 
 def main():
     args = parse_args()
@@ -102,65 +207,24 @@ def main():
 
         # Loss function and optimizer
         criterion = MSELoss()
-        node_loss_weight = loss_func_parameters['node_loss_weight']
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
-        logger.log(f"Using {loss_func_name} loss for nodes with weight {node_loss_weight}")
+        logger.log(f"Using {loss_func_name} loss for nodes")
         if use_global_mass_loss:
-            global_mass_loss_weight = loss_func_parameters['global_mass_loss_weight']
-            logger.log(f'Using global mass conservation loss with weight {global_mass_loss_weight}')
+            global_mass_loss_weight = loss_func_parameters['init_global_loss_weight']
+            logger.log(f'Using global mass conservation loss with initial weight {global_mass_loss_weight}')
 
         log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         num_epochs = train_config['num_epochs']
-        delta_t = dataset.timestep_interval
-
-        # Training
         training_stats = TrainingStats(logger=logger)
-        training_stats.start_train()
-        for epoch in range(num_epochs):
-            model.train()
-            running_pred_loss = 0.0
-            running_global_physics_loss = 0.0
 
-            for batch in dataloader:
-                optimizer.zero_grad()
+        if use_global_mass_loss:
+            delta_t = dataset.timestep_interval
+            train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_weight, args.device)
+        else:
+            train_base(model, dataloader, optimizer, criterion, training_stats, num_epochs, args.device)
 
-                batch = batch.to(args.device)
-                pred = model(batch)
-
-                label = batch.y
-
-                if use_global_mass_loss:
-                    pred_loss = node_loss_weight * criterion(pred, label)
-                    global_physics_loss =  global_mass_loss_weight * global_mass_conservation_loss(pred,
-                                                                                                   batch,
-                                                                                                   delta_t=delta_t)
-                    loss = pred_loss + global_physics_loss
-                    running_pred_loss += pred_loss.item()
-                    running_global_physics_loss += global_physics_loss.item()
-                else:
-                    loss = criterion(pred, label)
-                    running_pred_loss += loss.item()
-
-                loss.backward()
-                optimizer.step()
-
-            running_loss = running_pred_loss + running_global_physics_loss
-            epoch_loss = running_loss / len(dataloader)
-            pred_epoch_loss = running_pred_loss / len(dataloader)
-            global_physics_epoch_loss = running_global_physics_loss / len(dataloader)
-
-            logging_str = f'Epoch [{epoch + 1}/{num_epochs}], Loss: {epoch_loss:.4e}'
-            if use_global_mass_loss:
-                logging_str += f', Prediction Loss: {pred_epoch_loss:.4e}, Global Physics Loss: {global_physics_epoch_loss:.4e}'
-            logger.log(logging_str)
-
-            training_stats.add_loss(epoch_loss)
-            training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
-            training_stats.add_loss_component('global_physics_loss', global_physics_epoch_loss)
-
-        training_stats.end_train()
         training_stats.print_stats_summary()
 
         # Save training stats and model

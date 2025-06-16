@@ -35,8 +35,7 @@ training_parameters:
 
 loss_func_parameters:
   use_global_mass_loss: True                                 # Use global mass conservation in loss function
-  node_loss_weight: 0.9                                      # Weight for Node Features MSE loss
-  global_mass_loss_weight: 0.1                               # Weight for global mass conservation loss
+  init_global_loss_weight: 0.01                              # Initial weight for global mass conservation loss
 
 testing_parameters:
   log_path: null                                        # Path to save testing logs

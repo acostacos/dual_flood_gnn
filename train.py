@@ -70,10 +70,12 @@ def train_w_global(model: torch.nn.Module,
                    training_stats: TrainingStats,
                    num_epochs: int = 100,
                    delta_t: int = 30,
-                   global_mass_loss_weight: float = 0.1,
+                   global_mass_loss_percent: float = 0.2,
+                   global_mass_loss_weight: float = 0.01,
                    device: str = 'cpu'):
-    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = 10
+    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = num_epochs * 0.5
 
+    pred_loss_percent = 1.0 - global_mass_loss_percent
     scaled_loss_ratios = []
     training_stats.start_train()
     for epoch in range(num_epochs):
@@ -93,6 +95,7 @@ def train_w_global(model: torch.nn.Module,
 
             label = batch.y
             pred_loss = criterion(pred, label)
+            pred_loss =  pred_loss * pred_loss_percent
             running_pred_loss += pred_loss.item()
 
             global_physics_loss = global_mass_conservation_loss(pred, batch, delta_t=delta_t)
@@ -102,6 +105,7 @@ def train_w_global(model: torch.nn.Module,
             scaled_global_physics_loss = global_mass_loss_weight * global_physics_loss
             scaled_loss_ratio = pred_loss / (scaled_global_physics_loss + 1e-8)
             running_scaled_loss_ratio  += scaled_loss_ratio.item()
+            scaled_global_physics_loss = scaled_global_physics_loss * global_mass_loss_percent
             running_global_physics_loss += scaled_global_physics_loss.item()
 
             loss = pred_loss + scaled_global_physics_loss
@@ -210,8 +214,9 @@ def main():
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
         logger.log(f"Using {loss_func_name} loss for nodes")
         if use_global_mass_loss:
-            global_mass_loss_weight = loss_func_parameters['init_global_loss_weight']
-            logger.log(f'Using global mass conservation loss with initial weight {global_mass_loss_weight}')
+            global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
+            init_global_loss_weight = loss_func_parameters['init_global_loss_weight']
+            logger.log(f'Using global mass conservation loss with initial weight {init_global_loss_weight} and target percentage {global_mass_loss_percent}')
 
         log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
@@ -221,7 +226,7 @@ def main():
 
         if use_global_mass_loss:
             delta_t = dataset.timestep_interval
-            train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_weight, args.device)
+            train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, init_global_loss_weight, args.device)
         else:
             train_base(model, dataloader, optimizer, criterion, training_stats, num_epochs, args.device)
 

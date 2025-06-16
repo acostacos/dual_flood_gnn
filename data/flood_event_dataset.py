@@ -297,7 +297,8 @@ class FloodEventDataset(Dataset):
         assert len(self.event_peak_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and peak indices.'
         assert len(self.event_num_timesteps) == len(self.hec_ras_run_ids), 'Mismatch in number of events and number of timesteps.'
         assert len(self.event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
-        assert np.all((np.array(self.event_peak_idx) - self.timesteps_from_peak) >= 0), 'Timesteps from peak exceed available timesteps.'
+        assert np.all((np.array(self.event_peak_idx) - (self.timesteps_from_peak if self.timesteps_from_peak is not None else 0)) >= 0),\
+            'Timesteps from peak exceed available timesteps.'
 
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])

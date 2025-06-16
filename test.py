@@ -122,9 +122,11 @@ def main():
             model.eval()
             with torch.no_grad():
                 event_start_idx = dataset.event_start_idx[i] + rollout_start
-                event_end_idx = event_start_idx + rollout_timesteps
-                assert event_end_idx <= (dataset.event_start_idx[i + 1] if i + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
-                    f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for run ID {run_id}.'
+                event_end_idx = None
+                if rollout_timesteps is not None:
+                    event_end_idx = event_start_idx + rollout_timesteps
+                    assert event_end_idx <= (dataset.event_start_idx[i + 1] if i + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
+                        f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for run ID {run_id}.'
                 event_dataset = dataset[event_start_idx:event_end_idx]
                 dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
 

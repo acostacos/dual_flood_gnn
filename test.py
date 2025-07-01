@@ -67,7 +67,7 @@ def main():
             **dataset_config,
             debug=args.debug,
             logger=logger,
-            # force_reload=True,
+            force_reload=True,
         )
 
         # Load model

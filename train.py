@@ -73,9 +73,9 @@ def train_w_global(model: torch.nn.Module,
                    global_mass_loss_percent: float = 0.2,
                    global_mass_loss_weight: float = 0.01,
                    device: str = 'cpu'):
-    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = num_epochs * 0.5
+    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = num_epochs * 0.2
 
-    pred_loss_percent = 1.0 - global_mass_loss_percent
+    # pred_loss_percent = 1.0 - global_mass_loss_percent
     scaled_loss_ratios = []
     training_stats.start_train()
     for epoch in range(num_epochs):
@@ -95,7 +95,7 @@ def train_w_global(model: torch.nn.Module,
 
             label = batch.y
             pred_loss = criterion(pred, label)
-            pred_loss =  pred_loss * pred_loss_percent
+            # pred_loss =  pred_loss * pred_loss_percent
             running_pred_loss += pred_loss.item()
 
             global_physics_loss = global_mass_conservation_loss(pred, batch, delta_t=delta_t)
@@ -105,7 +105,7 @@ def train_w_global(model: torch.nn.Module,
             scaled_global_physics_loss = global_mass_loss_weight * global_physics_loss
             scaled_loss_ratio = pred_loss / (scaled_global_physics_loss + 1e-8)
             running_scaled_loss_ratio  += scaled_loss_ratio.item()
-            scaled_global_physics_loss = scaled_global_physics_loss * global_mass_loss_percent
+            # scaled_global_physics_loss = scaled_global_physics_loss * global_mass_loss_percent
             running_global_physics_loss += scaled_global_physics_loss.item()
 
             loss = pred_loss + scaled_global_physics_loss
@@ -189,7 +189,7 @@ def main():
             **dataset_config,
             debug=args.debug,
             logger=logger,
-            # force_reload=True,
+            force_reload=True,
         )
         logger.log(f'Loaded dataset with {len(dataset)} samples')
         dataloader = DataLoader(dataset, batch_size=train_config['batch_size'])

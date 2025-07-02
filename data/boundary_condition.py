@@ -1,7 +1,9 @@
 import numpy as np
+import torch
 
 from numpy import ndarray
-from typing import List, Tuple
+from torch import Tensor
+from typing import List, Tuple, Union
 
 from .hecras_data_retrieval import get_min_cell_elevation
 
@@ -86,7 +88,7 @@ class BoundaryCondition:
             dynamic_edges: ndarray,
             edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
         _, num_static_node_feat = static_nodes.shape
-        num_boundary_nodes = len(self.inflow_boundary_nodes) + len(self.outflow_boundary_nodes)
+        num_boundary_nodes = len(self.new_inflow_boundary_nodes) + len(self.new_outflow_boundary_nodes)
         boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat),
                                         dtype=static_nodes.dtype)
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
@@ -102,3 +104,10 @@ class BoundaryCondition:
         edge_index = np.concat([edge_index, self.boundary_edge_index], axis=1)
 
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
+    
+    def filter_nodes(self, nodes_array: Union[ndarray, Tensor]) -> ndarray:
+        boundary_nodes = np.array(self.new_inflow_boundary_nodes + self.new_outflow_boundary_nodes)
+        mask_create_func = torch.ones if isinstance(nodes_array, Tensor) else np.ones
+        non_boundary_nodes_mask = mask_create_func(nodes_array.shape[0], dtype=bool, device=nodes_array.device)
+        non_boundary_nodes_mask[boundary_nodes] = False
+        return nodes_array[non_boundary_nodes_mask]

@@ -5,6 +5,9 @@ import time
 from numpy import ndarray
 from torch import Tensor
 from loss import global_mass_conservation_loss
+from data.boundary_condition import BoundaryCondition
+from data.dataset_normalizer import DatasetNormalizer
+
 from . import Logger
 from .metric_utils import RMSE, MAE, NSE, CSI
 
@@ -71,8 +74,16 @@ class ValidationStats:
         flooded_target = target[flooded_mask]
         return flooded_pred, flooded_target
 
-    def update_physics_informed_stats_for_timestep(self, pred: Tensor, databatch, delta_t: int = 30):
-        global_mass_loss = global_mass_conservation_loss(pred, databatch, delta_t=delta_t)
+    def update_physics_informed_stats_for_timestep(self,
+                                                   node_pred: Tensor,
+                                                   databatch,
+                                                   normalizer: DatasetNormalizer,
+                                                   bc_helper: BoundaryCondition,
+                                                   is_normalized: bool = True,
+                                                   delta_t: int = 30):
+        global_mass_loss = global_mass_conservation_loss(node_pred, None, databatch,
+                                                            normalizer, bc_helper,
+                                                            is_normalized=is_normalized, delta_t=delta_t)
         self.global_mass_loss_list.append(global_mass_loss.item())
 
     def print_stats_summary(self):

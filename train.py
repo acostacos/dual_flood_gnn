@@ -75,6 +75,9 @@ def train_w_global(model: torch.nn.Module,
                    device: str = 'cpu'):
     DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = num_epochs * 0.2
 
+    is_normalized = dataloader.dataset.is_normalized
+    normalizer = dataloader.dataset.normalizer
+    boundary_condition = dataloader.dataset.boundary_condition
     # pred_loss_percent = 1.0 - global_mass_loss_percent
     scaled_loss_ratios = []
     training_stats.start_train()
@@ -98,7 +101,9 @@ def train_w_global(model: torch.nn.Module,
             # pred_loss =  pred_loss * pred_loss_percent
             running_pred_loss += pred_loss.item()
 
-            global_physics_loss = global_mass_conservation_loss(pred, batch, delta_t=delta_t)
+            global_physics_loss = global_mass_conservation_loss(pred, None, batch,
+                                                                normalizer, boundary_condition,
+                                                                is_normalized=is_normalized, delta_t=delta_t)
             absolute_loss_ratio = pred_loss / (global_physics_loss + 1e-8)
             running_absolute_loss_ratio += absolute_loss_ratio.item()
 

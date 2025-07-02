@@ -1,5 +1,5 @@
+import os
 import numpy as np
-import torch
 
 from numpy import ndarray
 from torch import Tensor
@@ -9,50 +9,58 @@ from .hecras_data_retrieval import get_min_cell_elevation
 
 class BoundaryCondition:
     def __init__(self,
-                 hec_ras_path: str,
+                 root_dir: str,
+                 hec_ras_file: str,
                  inflow_boundary_nodes: List[int],
                  outflow_boundary_nodes: List[int]):
+        self.hec_ras_path = os.path.join(root_dir, 'raw', hec_ras_file)
         self.inflow_boundary_nodes = inflow_boundary_nodes
         self.outflow_boundary_nodes = outflow_boundary_nodes
-        self.ghost_nodes = self._get_ghost_nodes(hec_ras_path)
+        self._init()
 
-        self.new_inflow_boundary_nodes = None
-        self.new_outflow_boundary_nodes = None
         self.boundary_edge_index = None
         self.boundary_dynamic_nodes = None
         self.boundary_dynamic_edges = None
 
-    def _get_ghost_nodes(self, hec_ras_path: str) -> ndarray:
-        min_elevation = get_min_cell_elevation(hec_ras_path)
+    def _init(self) -> None:
+        min_elevation = get_min_cell_elevation(self.hec_ras_path)
         ghost_nodes = np.where(np.isnan(min_elevation))[0]
-        return ghost_nodes
 
-    def create(self, edge_index: ndarray, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> None:
         boundary_nodes = np.concat([np.array(self.inflow_boundary_nodes), np.array(self.outflow_boundary_nodes)])
         for bn in boundary_nodes:
-            assert bn in self.ghost_nodes, f'Boundary node {bn} is not a ghost node.'
-
-        boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
-        boundary_edge_index = edge_index[:, boundary_edges_mask]
-        boundary_edges = boundary_edges_mask.nonzero()[0]
+            assert bn in ghost_nodes, f'Boundary node {bn} is not a ghost node.'
 
         # Reassign new indices to the boundary nodes taking into account the removal of ghost nodes
         # Ghost nodes are assumed to be the last nodes in the node feature matrix
-        _, num_nodes, _ = dynamic_nodes.shape
-        num_non_ghost_nodes = num_nodes - len(self.ghost_nodes)
+        num_nodes, = min_elevation.shape
+        num_non_ghost_nodes = num_nodes - len(ghost_nodes)
         new_boundary_nodes = np.arange(num_non_ghost_nodes, (num_non_ghost_nodes + len(boundary_nodes)))
         boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
         new_inflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.inflow_boundary_nodes])
         new_outflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.outflow_boundary_nodes])
 
+        self.ghost_nodes = ghost_nodes
+        self.boundary_nodes_mapping = boundary_nodes_mapping
+        self.new_num_nodes = num_non_ghost_nodes + len(boundary_nodes)
+        self.new_inflow_boundary_nodes = new_inflow_boundary_nodes
+        self.new_outflow_boundary_nodes = new_outflow_boundary_nodes
+
+    def create(self, edge_index: ndarray, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> None:
+        boundary_nodes = np.concat([np.array(self.inflow_boundary_nodes), np.array(self.outflow_boundary_nodes)])
+
+        boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
+        boundary_edge_index = edge_index[:, boundary_edges_mask]
+        boundary_edges = boundary_edges_mask.nonzero()[0]
+
         new_boundary_edge_index = boundary_edge_index.copy()
-        for old_value, new_value in boundary_nodes_mapping.items():
+        for old_value, new_value in self.boundary_nodes_mapping.items():
             new_boundary_edge_index[new_boundary_edge_index == old_value] = new_value
 
         boundary_dynamic_nodes = dynamic_nodes[:, boundary_nodes, :].copy()
         boundary_dynamic_edges = dynamic_edges[:, boundary_edges, :].copy()
 
         # Ensure boundary edges are pointing away from the ghost nodes
+        new_boundary_nodes = np.concat([self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes])
         to_boundary = np.isin(new_boundary_edge_index[1], new_boundary_nodes)
         flipped_to_boundary = new_boundary_edge_index[:, to_boundary]
         flipped_to_boundary[[0, 1], :] = flipped_to_boundary[[1, 0], :]
@@ -60,8 +68,6 @@ class BoundaryCondition:
         # Flip the dynamic edge features accordingly
         boundary_dynamic_edges[:, to_boundary, :] *= -1
 
-        self.new_inflow_boundary_nodes = new_inflow_boundary_nodes
-        self.new_outflow_boundary_nodes = new_outflow_boundary_nodes
         self.boundary_edge_index = new_boundary_edge_index
         self.boundary_dynamic_nodes = boundary_dynamic_nodes
         self.boundary_dynamic_edges = boundary_dynamic_edges
@@ -104,10 +110,8 @@ class BoundaryCondition:
         edge_index = np.concat([edge_index, self.boundary_edge_index], axis=1)
 
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
-    
-    def filter_nodes(self, nodes_array: Union[ndarray, Tensor]) -> ndarray:
-        boundary_nodes = np.array(self.new_inflow_boundary_nodes + self.new_outflow_boundary_nodes)
-        mask_create_func = torch.ones if isinstance(nodes_array, Tensor) else np.ones
-        non_boundary_nodes_mask = mask_create_func(nodes_array.shape[0], dtype=bool, device=nodes_array.device)
-        non_boundary_nodes_mask[boundary_nodes] = False
-        return nodes_array[non_boundary_nodes_mask]
+
+    def get_non_boundary_nodes_mask(self) -> Union[ndarray, Tensor]:
+        boundary_nodes = np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
+        non_boundary_nodes_mask = ~np.isin(np.arange(self.new_num_nodes), boundary_nodes)
+        return non_boundary_nodes_mask

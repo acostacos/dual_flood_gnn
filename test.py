@@ -89,18 +89,18 @@ def main():
 
         # Testing
         # Get non-boundary nodes and threshold for metric computation
-        inflow_boundary_nodes = dataset[0].inflow_boundary_nodes
-        outflow_boundary_nodes = dataset[0].outflow_boundary_nodes
-        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
-        non_boundary_nodes = torch.ones(dataset[0].x.shape[0], dtype=torch.bool)
-        non_boundary_nodes[boundary_nodes] = False
+        normalizer = dataset.normalizer
+        boundary_condition = dataset.boundary_condition
+        is_normalized = dataset.is_normalized
+        delta_t = dataset.timestep_interval
+        non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
 
         # Assume using the same area for all events in the dataset
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
         area = dataset[0].x.clone()[:, area_nodes_idx]
         if dataset.is_normalized:
             area = dataset.normalizer.denormalize('area', area)
-        area = area[non_boundary_nodes, None]
+        area = area[non_boundary_nodes_mask, None]
         threshold_per_cell = area * 0.05 # 5% of cell area
 
         # Get sliding window indices
@@ -142,9 +142,9 @@ def main():
                     sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
                     # Requires normalized physics-informed loss
-                    validation_stats.update_physics_informed_stats_for_timestep(pred.cpu(),
-                                                                                graph.cpu(),
-                                                                                delta_t=dataset.timestep_interval)
+                    validation_stats.update_physics_informed_stats_for_timestep(pred.cpu(), graph.cpu(),
+                                                                                normalizer, boundary_condition,
+                                                                                is_normalized=is_normalized, delta_t=delta_t)
 
                     label = graph.y
                     if dataset.is_normalized:
@@ -156,8 +156,8 @@ def main():
                     label = torch.clip(label, min=0)
 
                     # Filter boundary conditions for metric computation
-                    pred = pred[non_boundary_nodes]
-                    label = label[non_boundary_nodes]
+                    pred = pred[non_boundary_nodes_mask]
+                    label = label[non_boundary_nodes_mask]
 
                     validation_stats.update_stats_for_timestep(pred.cpu(),
                                                     label.cpu(),

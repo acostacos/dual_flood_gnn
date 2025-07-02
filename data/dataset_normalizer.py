@@ -45,11 +45,7 @@ class DatasetNormalizer:
         for i, feature in enumerate(feature_list):
             feature_data = feature_vector[:, :, i:i+1] if is_dynamic_feature else feature_vector[:, i:i+1]
 
-            if feature not in self.feature_stats:
-                raise ValueError(f'Feature {feature} not found in feature stats.')
-
-            mean = self.feature_stats[feature]['mean']
-            std = self.feature_stats[feature]['std']
+            mean, std = self.get_feature_mean_std(feature)
             feature_data = self.normalize(feature_data, mean, std)
             normalized_vector.append(feature_data)
 
@@ -61,11 +57,7 @@ class DatasetNormalizer:
         for feature in feature_list:
             zeros = np.zeros(shape, dtype=dtype)
 
-            if feature not in self.feature_stats:
-                raise ValueError(f'Feature {feature} not found in feature stats when creating normalized zeros array.')
-
-            mean = self.feature_stats[feature]['mean']
-            std = self.feature_stats[feature]['std']
+            mean, std = self.get_feature_mean_std(feature)
             zeros = self.normalize(zeros, mean, std)
 
             out_tensor.append(zeros)
@@ -77,9 +69,5 @@ class DatasetNormalizer:
 
     def denormalize(self, feature: str, feature_data: ndarray) -> ndarray:
         """Z-score denormalization of features"""
-        if feature not in self.feature_stats:
-            raise ValueError(f'Feature {feature} not found in feature stats.')
-
-        mean = self.feature_stats[feature]['mean']
-        std = self.feature_stats[feature]['std']
+        mean, std = self.get_feature_mean_std(feature)
         return feature_data * (std + DatasetNormalizer.EPS) + mean 

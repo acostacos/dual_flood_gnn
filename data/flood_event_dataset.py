@@ -75,7 +75,13 @@ class FloodEventDataset(Dataset):
         self.event_peak_idx = None
         self.event_num_timesteps = None
         self.event_start_idx, self.total_rollout_timesteps = self.load_event_stats(root_dir, event_stats_file)
+
+        # Helper classes
         self.normalizer = DatasetNormalizer(mode, root_dir, features_stats_file)
+        self.boundary_condition = BoundaryCondition(root_dir=root_dir,
+                                                    hec_ras_file=self.hec_ras_files[0],
+                                                    inflow_boundary_nodes=self.inflow_boundary_nodes,
+                                                    outflow_boundary_nodes=self.outflow_boundary_nodes)
 
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
@@ -104,24 +110,19 @@ class FloodEventDataset(Dataset):
         static_edges = self._get_static_edge_features()
         dynamic_edges = self._get_dynamic_edge_features()
 
-        boundary_condition = BoundaryCondition(hec_ras_path=self.raw_paths[2],
-                                               inflow_boundary_nodes=self.inflow_boundary_nodes,
-                                               outflow_boundary_nodes=self.outflow_boundary_nodes)
-        boundary_condition.create(edge_index, dynamic_nodes, dynamic_edges)
-        static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = boundary_condition.remove(
+        self.boundary_condition.create(edge_index, dynamic_nodes, dynamic_edges)
+        static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.remove(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
 
         edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
 
-        static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = boundary_condition.apply(
+        static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.apply(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
-        new_inflow_boundary_nodes = boundary_condition.new_inflow_boundary_nodes
-        new_outflow_boundary_nodes = boundary_condition.new_outflow_boundary_nodes
 
         if self.with_global_mass_loss:
-            global_mass_info = self._get_global_mass_info(new_inflow_boundary_nodes, new_outflow_boundary_nodes, edge_index, dynamic_nodes, dynamic_edges)
+            global_mass_info = self._get_global_mass_info(edge_index, dynamic_nodes, dynamic_edges)
             total_inflow_per_ts, total_outflow_per_ts, total_rainfall_per_ts, total_water_volume_per_ts = global_mass_info
 
         if self.is_normalized:
@@ -133,9 +134,7 @@ class FloodEventDataset(Dataset):
         np.savez(self.processed_paths[2],
                  edge_index=edge_index,
                  static_nodes=static_nodes,
-                 static_edges=static_edges,
-                 inflow_boundary_nodes=new_inflow_boundary_nodes,
-                 outflow_boundary_nodes=new_outflow_boundary_nodes)
+                 static_edges=static_edges)
         self.log_func(f'Saved constant values to {self.processed_paths[2]}')
 
         start_idx = 0
@@ -178,8 +177,6 @@ class FloodEventDataset(Dataset):
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
-        inflow_boundary_nodes: ndarray = constant_values['inflow_boundary_nodes']
-        outflow_boundary_nodes: ndarray = constant_values['outflow_boundary_nodes']
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_rollout_timesteps:
@@ -198,7 +195,7 @@ class FloodEventDataset(Dataset):
         dynamic_edges: ndarray = dynamic_values['dynamic_edges']
 
         # Mask boundary conditions
-        dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(inflow_boundary_nodes, outflow_boundary_nodes, edge_index, dynamic_nodes, dynamic_edges)
+        dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(edge_index, dynamic_nodes, dynamic_edges)
 
         # Create Data object for timestep
         within_event_idx = idx - start_idx
@@ -225,8 +222,6 @@ class FloodEventDataset(Dataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
-                    inflow_boundary_nodes=inflow_boundary_nodes,
-                    outflow_boundary_nodes=outflow_boundary_nodes,
                     global_mass_info=global_mass_info)
 
         return data
@@ -424,28 +419,26 @@ class FloodEventDataset(Dataset):
         return edge_index, static_edges, dynamic_edges
 
     def _get_global_mass_info(self,
-                              inflow_boundary_nodes: ndarray,
-                              outflow_boundary_nodes: ndarray,
                               edge_index: ndarray,
                               dynamic_nodes: ndarray,
                               dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray]:
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
 
         # Total inflow volume
+        inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
         inflow_edges_mask = np.any(np.isin(edge_index, inflow_boundary_nodes), axis=0)
         inflow_per_ts = dynamic_edges[:, inflow_edges_mask, face_flow_idx]
         total_inflow_per_ts = inflow_per_ts.sum(axis=1)
 
         # Total outflow volume
+        outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
         outflow_edges_mask = np.any(np.isin(edge_index, outflow_boundary_nodes), axis=0)
         outflow_per_ts = dynamic_edges[:, outflow_edges_mask, face_flow_idx]
-        # Flip direction because eges are pointed away from the outflow boundary
+        # Flip direction because edges are pointed away from the outflow boundary
         outflow_per_ts *= -1
         total_outflow_per_ts = outflow_per_ts.sum(axis=1)
 
-        boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
-        non_boundary_nodes_mask = ~np.isin(np.arange(dynamic_nodes.shape[1]), boundary_nodes)
-
+        non_boundary_nodes_mask = self.boundary_condition.get_non_boundary_nodes_mask()
         # Total rainfall 
         rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
         node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
@@ -461,12 +454,12 @@ class FloodEventDataset(Dataset):
     # =========== get() methods ===========
 
     def _mask_boundary_conditions(self,
-                                  inflow_boundary_nodes: ndarray,
-                                  outflow_boundary_nodes: ndarray,
                                   edge_index: ndarray,
                                   dynamic_nodes: ndarray,
                                   dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
         num_ts, num_nodes, _ = dynamic_nodes.shape
+        inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
+        outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
         boundary_nodes = np.union1d(inflow_boundary_nodes, outflow_boundary_nodes)
 
         # Node boundary conditions = Outflow Water Volume
@@ -543,13 +536,10 @@ class FloodEventDataset(Dataset):
         total_outflow = total_outflow_per_ts[timestep_idx].item()
         total_rainfall = total_rainfall_per_ts[timestep_idx].item()
         total_next_water_volume = total_water_volume_per_ts[timestep_idx+1].item()
-        volume_mean, volume_std = self.normalizer.get_feature_mean_std('water_volume')
 
         return {
             'total_inflow': total_inflow,
             'total_outflow': total_outflow,
             'total_rainfall': total_rainfall,
             'total_next_water_volume': total_next_water_volume,
-            'volume_mean': volume_mean,
-            'volume_std': volume_std,
         }

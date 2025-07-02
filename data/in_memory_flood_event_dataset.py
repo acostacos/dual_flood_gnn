@@ -20,8 +20,6 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
-        inflow_boundary_nodes: ndarray = constant_values['inflow_boundary_nodes']
-        outflow_boundary_nodes: ndarray = constant_values['outflow_boundary_nodes']
 
         t_edge_index = torch.from_numpy(edge_index.copy())
 
@@ -47,7 +45,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                 dynamic_edges = dynamic_values['dynamic_edges']
 
                 # Mask boundary conditions
-                dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(inflow_boundary_nodes, outflow_boundary_nodes, edge_index, dynamic_nodes, dynamic_edges)
+                dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(edge_index, dynamic_nodes, dynamic_edges)
 
                 # Load physics-informed loss information
                 if self.with_global_mass_loss:
@@ -77,8 +75,6 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
-                    inflow_boundary_nodes=inflow_boundary_nodes,
-                    outflow_boundary_nodes=outflow_boundary_nodes,
                     global_mass_info=global_mass_info)
 
             data_list.append(data)

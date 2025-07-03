@@ -111,7 +111,10 @@ class BoundaryCondition:
 
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 
+    def get_new_boundary_nodes(self) -> ndarray:
+        return np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
+
     def get_non_boundary_nodes_mask(self) -> Union[ndarray, Tensor]:
-        boundary_nodes = np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
+        boundary_nodes = self.get_new_boundary_nodes()
         non_boundary_nodes_mask = ~np.isin(np.arange(self.new_num_nodes), boundary_nodes)
         return non_boundary_nodes_mask

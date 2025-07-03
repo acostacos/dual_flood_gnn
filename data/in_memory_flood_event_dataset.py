@@ -1,6 +1,8 @@
+import os
 import gc
 import torch
 import numpy as np
+import psutil
 
 from numpy import ndarray
 from tqdm import tqdm
@@ -54,6 +56,11 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
                     total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
 
+                if self.with_local_mass_loss:
+                    node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
+                    node_water_volume_per_ts: ndarray = dynamic_values['node_water_volume_per_ts']
+                    edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
+
                 curr_event_idx = event_idx
 
             # Create Data object for timestep
@@ -70,16 +77,28 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                         total_water_volume_per_ts,
                                                                         within_event_idx)
 
+            local_mass_info = None
+            if self.with_local_mass_loss:
+                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
+                                                                         node_water_volume_per_ts,
+                                                                         edge_face_flow_per_ts,
+                                                                         within_event_idx)
+
             data = Data(x=node_features,
                     edge_index=t_edge_index,
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
-                    global_mass_info=global_mass_info)
+                    global_mass_info=global_mass_info,
+                    local_mass_info=local_mass_info)
 
             data_list.append(data)
 
         gc.collect()
+
+        process = psutil.Process(os.getpid())
+        memory_usage = process.memory_info().rss
+        self.log_func(f"RAM usage after loading dataset: {(memory_usage / (1024 ** 3)):.2f} GB")
 
         return data_list
 

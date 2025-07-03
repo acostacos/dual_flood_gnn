@@ -26,6 +26,7 @@ def local_mass_conservation_loss(
     for uid in unique_ids:
         rainfall = local_mass_info['rainfall'][batch == uid]
         next_water_volume = local_mass_info['next_water_volume'][batch == uid]
+        face_flow = local_mass_info['face_flow'][batch == uid]
 
         node_pred = batch_node_pred[batch == uid] # Normalized predicted water volume
         if is_normalized:
@@ -33,15 +34,15 @@ def local_mass_conservation_loss(
         node_pred = node_pred[non_boundary_nodes_mask]
         num_nodes = node_pred.shape[0]
 
-        # Normalized predicted water flow
-        edge_pred = batch_edge_pred[batch == uid] # Normalized predicted water flow
-        if is_normalized:
-            edge_pred = normalizer.denormalize('face_flow', edge_pred)
-        edge_pred = torch.relu(edge_pred) # Negative flow would just be opposite direction of positive flow; Can be ignored
+        # # Normalized predicted water flow
+        # edge_pred = batch_edge_pred[batch == uid] # Normalized predicted water flow
+        # if is_normalized:
+        #     edge_pred = normalizer.denormalize('face_flow', edge_pred)
+        # edge_pred = torch.relu(edge_pred) # Negative flow would just be opposite direction of positive flow; Can be ignored
 
         edge_index = databatch.edge_index[batch == uid]
-        total_inflow = scatter(edge_pred, edge_index[1], reduce='sum', dim_size=num_nodes)
-        total_outflow = scatter(edge_pred, edge_index[0], reduce='sum', dim_size=num_nodes)
+        total_inflow = scatter(face_flow, edge_index[1], reduce='sum', dim_size=num_nodes)
+        total_outflow = scatter(face_flow, edge_index[0], reduce='sum', dim_size=num_nodes)
 
         delta_v = next_water_volume - node_pred
         rf_volume = rainfall

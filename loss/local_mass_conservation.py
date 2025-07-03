@@ -28,9 +28,10 @@ def local_mass_conservation_loss(
         water_volume = local_mass_info['water_volume'][batch == uid]
         face_flow = local_mass_info['face_flow'][batch == uid]
 
-        node_pred = batch_node_pred[batch == uid] # Normalized predicted water volume
+        node_pred = batch_node_pred[batch == uid] # Normalized predicted water volume (t+1)
         if is_normalized:
             node_pred = normalizer.denormalize('water_volume', node_pred)
+        pred = torch.relu(pred) # Negative water volume would not make sense; Can be ignored
         node_pred = node_pred[non_boundary_nodes_mask]
         num_nodes = node_pred.shape[0]
         next_water_volume = node_pred

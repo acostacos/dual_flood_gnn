@@ -30,6 +30,7 @@ def global_mass_conservation_loss(
         pred = batch_node_pred[batch == uid] # Normalized predicted water volume (t+1)
         if is_normalized:
             pred = normalizer.denormalize('water_volume', pred)
+        pred = torch.relu(pred) # Negative water volume would not make sense; Can be ignored
         pred = pred[non_boundary_nodes_mask]
         total_next_water_volume = pred.sum()
 

@@ -25,7 +25,7 @@ def local_mass_conservation_loss(
     physics_losses = []
     for uid in unique_ids:
         rainfall = local_mass_info['rainfall'][batch == uid]
-        next_water_volume = local_mass_info['next_water_volume'][batch == uid]
+        water_volume = local_mass_info['water_volume'][batch == uid]
         face_flow = local_mass_info['face_flow'][batch == uid]
 
         node_pred = batch_node_pred[batch == uid] # Normalized predicted water volume
@@ -33,6 +33,7 @@ def local_mass_conservation_loss(
             node_pred = normalizer.denormalize('water_volume', node_pred)
         node_pred = node_pred[non_boundary_nodes_mask]
         num_nodes = node_pred.shape[0]
+        next_water_volume = node_pred
 
         # # Normalized predicted water flow
         # edge_pred = batch_edge_pred[batch == uid] # Normalized predicted water flow
@@ -44,10 +45,10 @@ def local_mass_conservation_loss(
         total_inflow = scatter(face_flow, edge_index[1], reduce='sum', dim_size=num_nodes)
         total_outflow = scatter(face_flow, edge_index[0], reduce='sum', dim_size=num_nodes)
 
-        delta_v = next_water_volume - node_pred
+        delta_v = next_water_volume - water_volume
         rf_volume = rainfall
-        inflow_volume = total_inflow * delta_t # TODO: Change this to be generalized for different time intervals
-        outflow_volume = total_outflow * delta_t # TODO: Change this to be generalized for different time intervals
+        inflow_volume = total_inflow * delta_t
+        outflow_volume = total_outflow * delta_t
 
         local_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
         total_local_volume_error = torch.abs(local_volume_error).sum()

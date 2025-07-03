@@ -579,13 +579,13 @@ class FloodEventDataset(Dataset):
         total_inflow = total_inflow_per_ts[timestep_idx].item()
         total_outflow = total_outflow_per_ts[timestep_idx].item()
         total_rainfall = total_rainfall_per_ts[timestep_idx].item()
-        total_next_water_volume = total_water_volume_per_ts[timestep_idx+1].item()
+        total_water_volume = total_water_volume_per_ts[timestep_idx].item()
 
         return {
             'total_inflow': total_inflow,
             'total_outflow': total_outflow,
             'total_rainfall': total_rainfall,
-            'total_next_water_volume': total_next_water_volume,
+            'total_water_volume': total_water_volume,
         }
 
     def _get_local_mass_info_for_timestep(self,
@@ -594,11 +594,11 @@ class FloodEventDataset(Dataset):
                                           edge_face_flow_per_ts: ndarray,
                                           timestep_idx: int) -> Dict[str, float]:
         rainfall = node_rainfall_per_ts[timestep_idx]
-        next_water_volume = node_water_volume_per_ts[timestep_idx+1]
+        water_volume = node_water_volume_per_ts[timestep_idx]
         face_flow = edge_face_flow_per_ts[timestep_idx]
 
         return {
             'rainfall': rainfall,
-            'next_water_volume': next_water_volume,
+            'water_volume': water_volume,
             'face_flow': face_flow,
         }

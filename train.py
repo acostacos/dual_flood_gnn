@@ -57,6 +57,7 @@ def train_base(model: torch.nn.Module,
         training_stats.log(logging_str)
 
         training_stats.add_loss(epoch_loss)
+        training_stats.add_loss_component('prediction_loss', epoch_loss)
     training_stats.end_train()
 
 def train_w_global(model: torch.nn.Module,

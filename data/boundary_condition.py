@@ -14,19 +14,19 @@ class BoundaryCondition:
                  inflow_boundary_nodes: List[int],
                  outflow_boundary_nodes: List[int]):
         self.hec_ras_path = os.path.join(root_dir, 'raw', hec_ras_file)
-        self.inflow_boundary_nodes = inflow_boundary_nodes
-        self.outflow_boundary_nodes = outflow_boundary_nodes
+        self.init_inflow_boundary_nodes = inflow_boundary_nodes
+        self.init_outflow_boundary_nodes = outflow_boundary_nodes
         self._init()
 
-        self.boundary_edge_index = None
-        self.boundary_dynamic_nodes = None
-        self.boundary_dynamic_edges = None
+        self._boundary_edge_index = None
+        self._boundary_dynamic_nodes = None
+        self._boundary_dynamic_edges = None
 
     def _init(self) -> None:
         min_elevation = get_min_cell_elevation(self.hec_ras_path)
         ghost_nodes = np.where(np.isnan(min_elevation))[0]
 
-        boundary_nodes = np.concat([np.array(self.inflow_boundary_nodes), np.array(self.outflow_boundary_nodes)])
+        boundary_nodes = np.concat([np.array(self.init_inflow_boundary_nodes), np.array(self.init_outflow_boundary_nodes)])
         for bn in boundary_nodes:
             assert bn in ghost_nodes, f'Boundary node {bn} is not a ghost node.'
 
@@ -36,8 +36,8 @@ class BoundaryCondition:
         num_non_ghost_nodes = num_nodes - len(ghost_nodes)
         new_boundary_nodes = np.arange(num_non_ghost_nodes, (num_non_ghost_nodes + len(boundary_nodes)))
         boundary_nodes_mapping = dict(zip(boundary_nodes, new_boundary_nodes))
-        new_inflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.inflow_boundary_nodes])
-        new_outflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.outflow_boundary_nodes])
+        new_inflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.init_inflow_boundary_nodes])
+        new_outflow_boundary_nodes = np.array([boundary_nodes_mapping[bn] for bn in self.init_outflow_boundary_nodes])
 
         self.ghost_nodes = ghost_nodes
         self.boundary_nodes_mapping = boundary_nodes_mapping
@@ -46,7 +46,7 @@ class BoundaryCondition:
         self.new_outflow_boundary_nodes = new_outflow_boundary_nodes
 
     def create(self, edge_index: ndarray, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> None:
-        boundary_nodes = np.concat([np.array(self.inflow_boundary_nodes), np.array(self.outflow_boundary_nodes)])
+        boundary_nodes = np.concat([np.array(self.init_inflow_boundary_nodes), np.array(self.init_outflow_boundary_nodes)])
 
         boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
         boundary_edge_index = edge_index[:, boundary_edges_mask]
@@ -68,9 +68,9 @@ class BoundaryCondition:
         # Flip the dynamic edge features accordingly
         boundary_dynamic_edges[:, to_boundary, :] *= -1
 
-        self.boundary_edge_index = new_boundary_edge_index
-        self.boundary_dynamic_nodes = boundary_dynamic_nodes
-        self.boundary_dynamic_edges = boundary_dynamic_edges
+        self._boundary_edge_index = new_boundary_edge_index
+        self._boundary_dynamic_nodes = boundary_dynamic_nodes
+        self._boundary_dynamic_edges = boundary_dynamic_edges
 
     def remove(self,
                static_nodes: ndarray,
@@ -100,14 +100,19 @@ class BoundaryCondition:
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
 
         _, num_static_edge_feat = static_edges.shape
-        boundary_static_edges = np.zeros((self.boundary_edge_index.shape[1], num_static_edge_feat),
+        boundary_static_edges = np.zeros((self._boundary_edge_index.shape[1], num_static_edge_feat),
                                          dtype=static_edges.dtype)
         static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
 
-        dynamic_nodes = np.concat([dynamic_nodes, self.boundary_dynamic_nodes], axis=1)
-        dynamic_edges = np.concat([dynamic_edges, self.boundary_dynamic_edges], axis=1)
+        dynamic_nodes = np.concat([dynamic_nodes, self._boundary_dynamic_nodes], axis=1)
+        dynamic_edges = np.concat([dynamic_edges, self._boundary_dynamic_edges], axis=1)
 
-        edge_index = np.concat([edge_index, self.boundary_edge_index], axis=1)
+        edge_index = np.concat([edge_index, self._boundary_edge_index], axis=1)
+
+        # Clear boundary condition attributes to save memory
+        self._boundary_dynamic_edges = None
+        self._boundary_dynamic_nodes = None
+        self._boundary_edge_index = None
 
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 

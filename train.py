@@ -12,7 +12,7 @@ from models import model_factory
 from test import run_test
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 from utils import TrainingStats, Logger, file_utils
 
 torch.serialization.add_safe_globals([datetime])
@@ -147,6 +147,8 @@ def run_train(model: torch.nn.Module,
               dataloader: DataLoader,
               logger: Logger,
               config: Dict,
+              stats_dir: Optional[str] = None,
+              model_dir: Optional[str] = None,
               device: str = 'cpu') -> str:
         train_config = config['training_parameters']
         loss_func_parameters = config['loss_func_parameters']
@@ -177,7 +179,6 @@ def run_train(model: torch.nn.Module,
 
         # Save training stats and model
         curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        stats_dir = train_config['stats_dir']
         if stats_dir is not None:
             if not os.path.exists(stats_dir):
                 os.makedirs(stats_dir)
@@ -185,7 +186,6 @@ def run_train(model: torch.nn.Module,
             saved_metrics_path = os.path.join(stats_dir, f'{model_name}_{curr_date_str}_train_stats.npz')
             training_stats.save_stats(saved_metrics_path)
 
-        model_dir = train_config['model_dir']
         if model_dir is not None:
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
@@ -268,11 +268,15 @@ def main():
         logger.log(f'Using model: {args.model}')
         logger.log(f'Using model configuration: {model_config}')
 
+        stats_dir = train_config['stats_dir']
+        model_dir = train_config['model_dir']
         model_path = run_train(model=model,
                                model_name=args.model,
                                dataloader=dataloader,
                                logger=logger,
                                config=config,
+                               stats_dir=stats_dir,
+                               model_dir=model_dir,
                                device=args.device)
 
         logger.log('================================================')
@@ -302,6 +306,7 @@ def main():
             logger=logger,
             force_reload=True,
         )
+        logger.log(f'Loaded test dataset with {len(dataset)} samples')
 
         logger.log(f'Using model checkpoint for {args.model}: {model_path}')
         logger.log(f'Using model configuration: {model_config}')

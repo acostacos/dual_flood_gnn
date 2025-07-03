@@ -177,6 +177,7 @@ def main():
             logger=logger,
             force_reload=True,
         )
+        logger.log(f'Loaded dataset with {len(dataset)} samples')
 
         # Load model
         model_params = config['model_parameters'][args.model]

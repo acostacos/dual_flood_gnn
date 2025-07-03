@@ -44,6 +44,9 @@ class ValidationStats:
     
     def get_inference_time(self):
         return (self.val_end_time - self.val_start_time) / len(self.pred_list)
+    
+    def get_avg_rmse(self) -> float:
+        return float(np.mean(self.rmse_list))
 
     def update_stats_for_timestep(self, pred: Tensor, target: Tensor, water_threshold: ndarray):
         self.pred_list.append(pred)
@@ -88,8 +91,7 @@ class ValidationStats:
 
     def print_stats_summary(self):
         if len(self.rmse_list) > 0:
-            rmse_np = np.array(self.rmse_list)
-            self.log(f'Average RMSE: {rmse_np.mean():.4e}')
+            self.log(f'Average RMSE: {self.get_avg_rmse():.4e}')
         if len(self.rmse_flooded_list) > 0:
             rmse_flooded_np = np.array(self.rmse_flooded_list)
             self.log(f'Average RMSE (flooded): {rmse_flooded_np.mean():.4e}')

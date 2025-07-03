@@ -84,7 +84,7 @@ class ValidationStats:
         global_mass_loss = global_mass_conservation_loss(node_pred, None, databatch,
                                                             normalizer, bc_helper,
                                                             is_normalized=is_normalized, delta_t=delta_t)
-        self.global_mass_loss_list.append(global_mass_loss.item())
+        self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
     def print_stats_summary(self):
         if len(self.rmse_list) > 0:

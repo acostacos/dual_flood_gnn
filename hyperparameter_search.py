@@ -98,7 +98,7 @@ def main():
         logger.log(f'Using device: {current_device}')
 
         HYPERPARAMETERS = {
-            'global_mass_loss_percent': [0.1, 0.05, 0.01, 0.005, 0.001],
+            'global_mass_loss_percent': [0.003, 0.001, 0.0007, 0.0005, 0.0003, 0.0001, 0.00001],
         }
 
         # Load datasets

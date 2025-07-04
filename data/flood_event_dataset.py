@@ -604,10 +604,10 @@ class FloodEventDataset(Dataset):
                                           node_rainfall_per_ts: ndarray,
                                           node_water_volume_per_ts: ndarray,
                                           edge_face_flow_per_ts: ndarray,
-                                          timestep_idx: int) -> Dict[str, float]:
-        rainfall = node_rainfall_per_ts[timestep_idx]
-        water_volume = node_water_volume_per_ts[timestep_idx]
-        face_flow = edge_face_flow_per_ts[timestep_idx]
+                                          timestep_idx: int) -> Dict[str, Tensor]:
+        rainfall = torch.from_numpy(node_rainfall_per_ts[timestep_idx])
+        water_volume = torch.from_numpy(node_water_volume_per_ts[timestep_idx])
+        face_flow = torch.from_numpy(edge_face_flow_per_ts[timestep_idx])
 
         return {
             'rainfall': rainfall,

@@ -27,12 +27,12 @@ def global_mass_conservation_loss(
         total_rainfall = global_mass_info['total_rainfall'][uid]
         total_water_volume = global_mass_info['total_water_volume'][uid]
 
-        pred = batch_node_pred[batch == uid] # Normalized predicted water volume (t+1)
+        node_pred = batch_node_pred[batch == uid] # Normalized predicted water volume (t+1)
         if is_normalized:
-            pred = normalizer.denormalize('water_volume', pred)
-        pred = torch.relu(pred) # Negative water volume would not make sense; Can be ignored
-        pred = pred[non_boundary_nodes_mask]
-        total_next_water_volume = pred.sum()
+            node_pred = normalizer.denormalize('water_volume', node_pred)
+        node_pred = torch.relu(node_pred) # Negative water volume would not make sense; Can be ignored
+        node_pred = node_pred[non_boundary_nodes_mask]
+        total_next_water_volume = node_pred.sum()
 
         delta_v = total_next_water_volume - total_water_volume
         rf_volume = total_rainfall

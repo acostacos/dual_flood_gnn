@@ -7,7 +7,7 @@ import math
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
 from data import FloodEventDataset, InMemoryFloodEventDataset
-from loss import global_mass_conservation_loss
+from loss import global_mass_conservation_loss, local_mass_conservation_loss
 from models import model_factory
 from test import run_test
 from torch.nn import MSELoss
@@ -67,7 +67,7 @@ def train_w_global(model: torch.nn.Module,
                    training_stats: TrainingStats,
                    num_epochs: int = 100,
                    delta_t: int = 30,
-                   global_mass_loss_percent: float = 0.2,
+                   global_mass_loss_percent: float = 0.1,
                    global_mass_loss_weight: float = 0.01,
                    device: str = 'cpu'):
     DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = int(math.ceil(num_epochs * 0.1))
@@ -142,6 +142,88 @@ def train_w_global(model: torch.nn.Module,
     training_stats.end_train()
     training_stats.add_additional_info('loss_ratios', scaled_loss_ratios)
 
+def train_w_local(model: torch.nn.Module,
+                   dataloader: DataLoader,
+                   optimizer: torch.optim.Optimizer,
+                   criterion: Callable,
+                   training_stats: TrainingStats,
+                   num_epochs: int = 100,
+                   delta_t: int = 30,
+                   local_mass_loss_percent: float = 0.1,
+                   local_mass_loss_weight: float = 0.01,
+                   device: str = 'cpu'):
+    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = int(math.ceil(num_epochs * 0.1))
+    training_stats.log(f'Using dynamic loss weight adjustment for the first {DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS} epochs')
+
+    is_normalized = dataloader.dataset.is_normalized
+    normalizer = dataloader.dataset.normalizer
+    boundary_condition = dataloader.dataset.boundary_condition
+    pred_loss_percent = 1.0 - local_mass_loss_percent
+    scaled_loss_ratios = []
+    training_stats.start_train()
+    for epoch in range(num_epochs):
+        model.train()
+        running_pred_loss = 0.0
+        running_local_physics_loss = 0.0
+
+        # Dynamic loss weight adjustment
+        running_absolute_loss_ratio = 0.0
+        running_scaled_loss_ratio = 0.0
+
+        for batch in dataloader:
+            optimizer.zero_grad()
+
+            batch = batch.to(device)
+            pred = model(batch)
+
+            label = batch.y
+            pred_loss = criterion(pred, label)
+            pred_loss =  pred_loss * pred_loss_percent
+            running_pred_loss += pred_loss.item()
+
+            local_physics_loss = local_mass_conservation_loss(pred, None, batch,
+                                                              normalizer, boundary_condition,
+                                                              is_normalized=is_normalized, delta_t=delta_t)
+            absolute_loss_ratio = pred_loss / (local_physics_loss + 1e-8)
+            running_absolute_loss_ratio += absolute_loss_ratio.item()
+
+            scaled_local_physics_loss = local_mass_loss_weight * local_physics_loss
+            scaled_loss_ratio = pred_loss / (scaled_local_physics_loss + 1e-8)
+            running_scaled_loss_ratio  += scaled_loss_ratio.item()
+            scaled_local_physics_loss = scaled_local_physics_loss * local_mass_loss_percent
+            running_local_physics_loss += scaled_local_physics_loss.item()
+
+            loss = pred_loss + scaled_local_physics_loss
+
+            loss.backward()
+            optimizer.step()
+
+        running_loss = running_pred_loss + running_local_physics_loss
+        epoch_loss = running_loss / len(dataloader)
+        pred_epoch_loss = running_pred_loss / len(dataloader)
+        local_physics_epoch_loss = running_local_physics_loss / len(dataloader)
+        epoch_scaled_loss_ratio = running_scaled_loss_ratio / len(dataloader)
+
+        logging_str = f'Epoch [{epoch + 1}/{num_epochs}]\n'
+        logging_str += f'\tLoss: {epoch_loss:.4e}\n'
+        logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
+        logging_str += f'\tLocal Physics Loss: {local_physics_epoch_loss:.4e}\n'
+        logging_str += f'\tAverage Loss Ratio: {epoch_scaled_loss_ratio:.4e}'
+        training_stats.log(logging_str)
+
+        training_stats.add_loss(epoch_loss)
+        training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
+        training_stats.add_loss_component('local_physics_loss', local_physics_epoch_loss)
+        scaled_loss_ratios.append(epoch_scaled_loss_ratio)
+
+        if epoch < DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS:
+            epoch_absolute_loss_ratio = running_absolute_loss_ratio / len(dataloader)
+            local_mass_loss_weight = epoch_absolute_loss_ratio
+            training_stats.log(f'\tAdjusted Local Mass Loss Weight to {local_mass_loss_weight:.4e}')
+
+    training_stats.end_train()
+    training_stats.add_additional_info('loss_ratios', scaled_loss_ratios)
+
 def run_train(model: torch.nn.Module,
               model_name: str,
               dataloader: DataLoader,
@@ -152,26 +234,32 @@ def run_train(model: torch.nn.Module,
               device: str = 'cpu') -> str:
         train_config = config['training_parameters']
         loss_func_parameters = config['loss_func_parameters']
-        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
 
         # Loss function and optimizer
         criterion = MSELoss()
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
         logger.log(f"Using {loss_func_name} loss for nodes")
+        INIT_WEIGHT = 0.01
+        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
         if use_global_mass_loss:
             global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
-            init_global_loss_weight = loss_func_parameters['init_global_loss_weight']
-            logger.log(f'Using global mass conservation loss with initial weight {init_global_loss_weight} and target percentage {global_mass_loss_percent}')
+            logger.log(f'Using global mass conservation loss with initial weight {INIT_WEIGHT} and target percentage {global_mass_loss_percent}')
+        use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
+        if use_local_mass_loss:
+            local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
+            logger.log(f'Using local mass conservation loss with initial weight {INIT_WEIGHT} and target percentage {local_mass_loss_percent}')
 
         log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         num_epochs = train_config['num_epochs']
+        delta_t = dataloader.dataset.timestep_interval
         training_stats = TrainingStats(logger=logger)
 
         if use_global_mass_loss:
-            delta_t = dataloader.dataset.timestep_interval
-            train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, init_global_loss_weight, device)
+            train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, INIT_WEIGHT, device)
+        elif use_local_mass_loss:
+            train_w_local(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, local_mass_loss_percent, INIT_WEIGHT, device)
         else:
             train_base(model, dataloader, optimizer, criterion, training_stats, num_epochs, device)
 

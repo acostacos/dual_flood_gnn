@@ -60,6 +60,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
                     node_water_volume_per_ts: ndarray = dynamic_values['node_water_volume_per_ts']
                     edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
+                    outflow_edges_mask: ndarray = constant_values['outflow_edges_mask']
 
                 curr_event_idx = event_idx
 
@@ -83,6 +84,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                          node_water_volume_per_ts,
                                                                          edge_face_flow_per_ts,
                                                                          within_event_idx)
+                self.boundary_condition.outflow_edges_mask = outflow_edges_mask
 
             data = Data(x=node_features,
                     edge_index=t_edge_index,

@@ -1,21 +1,19 @@
-import numpy as np
 import torch
 
+from data.dataset_normalizer import DatasetNormalizer
+from data.boundary_condition import BoundaryCondition
+from numpy import ndarray
 from torch import Tensor
 from torch_geometric.utils import scatter
 from typing import Dict
 
-from data.dataset_normalizer import DatasetNormalizer
-from data.boundary_condition import BoundaryCondition
-
-def get_batch_mask(mask: np.ndarray, num_graphs: int):
-    return np.tile(mask, num_graphs)
+from .loss_helper import get_batch_mask
 
 def get_batch_inflow_outflow(
     edge_index: Tensor,
     face_flow: Tensor,
-    batch_outflow_edges_mask: np.ndarray,
-    batch_non_boundary_nodes_mask: np.ndarray,
+    batch_outflow_edges_mask: ndarray,
+    batch_non_boundary_nodes_mask: ndarray,
     num_nodes: int,
 ):
     # Flip outflow edges as these are pointing away from boundary node for message passing.
@@ -67,12 +65,12 @@ def local_mass_conservation_loss(
     )
 
     # Get predictions
-    node_pred = batch_node_pred # Normalized predicted water volume (t+1)
+    node_pred = batch_node_pred.squeeze() # Normalized predicted water volume (t+1)
     if is_normalized:
         node_pred = normalizer.denormalize('water_volume', node_pred)
     node_pred = torch.relu(node_pred) # Negative water volume would not make sense; Can be ignored
     node_pred = node_pred[batch_non_boundary_nodes_mask]
-    next_water_volume = node_pred.squeeze()
+    next_water_volume = node_pred
 
     # # Normalized predicted water flow
     # edge_pred = batch_edge_pred[batch == uid] # Normalized predicted water flow

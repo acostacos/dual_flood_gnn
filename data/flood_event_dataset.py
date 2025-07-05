@@ -587,11 +587,11 @@ class FloodEventDataset(Dataset):
                                            total_outflow_per_ts: ndarray,
                                            total_rainfall_per_ts: ndarray,
                                            total_water_volume_per_ts: ndarray,
-                                           timestep_idx: int) -> Dict[str, float]:
-        total_inflow = total_inflow_per_ts[timestep_idx].item()
-        total_outflow = total_outflow_per_ts[timestep_idx].item()
-        total_rainfall = total_rainfall_per_ts[timestep_idx].item()
-        total_water_volume = total_water_volume_per_ts[timestep_idx].item()
+                                           timestep_idx: int) -> Dict[str, Tensor]:
+        total_inflow = torch.from_numpy(total_inflow_per_ts[[timestep_idx]])
+        total_outflow = torch.from_numpy(total_outflow_per_ts[[timestep_idx]])
+        total_rainfall = torch.from_numpy(total_rainfall_per_ts[[timestep_idx]])
+        total_water_volume = torch.from_numpy(total_water_volume_per_ts[[timestep_idx]])
 
         return {
             'total_inflow': total_inflow,

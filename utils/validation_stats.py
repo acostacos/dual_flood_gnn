@@ -4,7 +4,7 @@ import time
 
 from numpy import ndarray
 from torch import Tensor
-from loss import global_mass_conservation_loss
+from loss import global_mass_conservation_loss, local_mass_conservation_loss
 from data.boundary_condition import BoundaryCondition
 from data.dataset_normalizer import DatasetNormalizer
 
@@ -31,6 +31,7 @@ class ValidationStats:
 
         # Physics-informed stats
         self.global_mass_loss_list = []
+        self.local_mass_loss_list = []
 
         self.log = print
         if logger is not None and hasattr(logger, 'log'):
@@ -89,30 +90,30 @@ class ValidationStats:
                                                             is_normalized=is_normalized, delta_t=delta_t)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
+        local_mass_loss = local_mass_conservation_loss(node_pred, None, databatch,
+                                                        normalizer, bc_helper,
+                                                        is_normalized=is_normalized, delta_t=delta_t)
+        self.local_mass_loss_list.append(local_mass_loss.cpu().item())
+
     def print_stats_summary(self):
         if len(self.rmse_list) > 0:
             self.log(f'Average RMSE: {self.get_avg_rmse():.4e}')
         if len(self.rmse_flooded_list) > 0:
-            rmse_flooded_np = np.array(self.rmse_flooded_list)
-            self.log(f'Average RMSE (flooded): {rmse_flooded_np.mean():.4e}')
+            self.log(f'Average RMSE (flooded): {np.mean(self.rmse_flooded_list):.4e}')
         if len(self.mae_list) > 0:
-            mae_np = np.array(self.mae_list)
-            self.log(f'Average MAE: {mae_np.mean():.4e}')
+            self.log(f'Average MAE: {np.mean(self.mae_list):.4e}')
         if len(self.mae_flooded_list) > 0:
-            mae_flooded_np = np.array(self.mae_flooded_list)
-            self.log(f'Average MAE (flooded): {mae_flooded_np.mean():.4e}')
+            self.log(f'Average MAE (flooded): {np.mean(self.mae_flooded_list):.4e}')
         if len(self.nse_list) > 0:
-            nse_np = np.array(self.nse_list)
-            self.log(f'Average NSE: {nse_np.mean():.4e}')
+            self.log(f'Average NSE: {np.mean(self.nse_list):.4e}')
         if len(self.nse_flooded_list) > 0:
-            nse_flooded_np = np.array(self.nse_flooded_list)
-            self.log(f'Average NSE (flooded): {nse_flooded_np.mean():.4e}')
+            self.log(f'Average NSE (flooded): {np.mean(self.nse_flooded_list):.4e}')
         if len(self.csi_list) > 0:
-            csi_np = np.array(self.csi_list)
-            self.log(f'Average CSI: {csi_np.mean():.4e}')
+            self.log(f'Average CSI: {np.mean(self.csi_list):.4e}')
         if len(self.global_mass_loss_list) > 0:
-            global_mass_loss_np = np.array(self.global_mass_loss_list)
-            self.log(f'Average Global Mass Conservation Loss: {global_mass_loss_np.mean():.4e}')
+            self.log(f'Average Global Mass Conservation Loss: {np.mean(self.global_mass_loss_list):.4e}')
+        if len(self.local_mass_loss_list) > 0:
+            self.log(f'Average Local Mass Conservation Loss: {np.mean(self.local_mass_loss_list):.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'Inference time for one timestep: {self.get_inference_time():.4f} seconds')
@@ -133,6 +134,7 @@ class ValidationStats:
             'nse_flooded': np.array(self.nse_flooded_list),
             'csi': np.array(self.csi_list),
             'global_mass_loss': np.array(self.global_mass_loss_list),
+            'local_mass_loss': np.array(self.local_mass_loss_list),
             'inference_time': self.get_inference_time(),
         }
         np.savez(filepath, **stats)

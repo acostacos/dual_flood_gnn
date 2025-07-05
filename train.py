@@ -9,7 +9,7 @@ from datetime import datetime
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from loss import global_mass_conservation_loss, local_mass_conservation_loss
 from models import model_factory
-from test import run_test
+from test import get_test_dataset_config, run_test
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
 from typing import Callable, Dict, Optional
@@ -375,17 +375,7 @@ def main():
         # =================== Testing ===================
         logger.log(f'Starting testing for model: {model_path}')
 
-        test_dataset_parameters = dataset_parameters['testing']
-        dataset_summary_file = test_dataset_parameters['dataset_summary_file']
-        event_stats_file = test_dataset_parameters['event_stats_file']
-        test_dataset_config = {
-            **dataset_config,
-            'mode': 'test',
-            'dataset_summary_file': dataset_summary_file,
-            'event_stats_file': event_stats_file,
-            'with_global_mass_loss': True,
-            'with_local_mass_loss': False, # TODO: Change this to True
-        }
+        test_dataset_config = get_test_dataset_config(dataset_config, config)
         logger.log(f'Using test dataset configuration: {test_dataset_config}')
 
         dataset = dataset_class(

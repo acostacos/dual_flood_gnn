@@ -7,7 +7,7 @@ from argparse import ArgumentParser, Namespace
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
 from torch_geometric.loader import DataLoader
-from typing import Optional
+from typing import Dict, Optional
 from utils import ValidationStats, Logger, file_utils
 
 def parse_args() -> Namespace:
@@ -19,6 +19,19 @@ def parse_args() -> Namespace:
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
+
+def get_test_dataset_config(base_datset_params: Dict, config: Dict) -> Dict:
+    dataset_parameters = config['dataset_parameters']
+    test_dataset_parameters = dataset_parameters['testing']
+    test_dataset_config = {
+        **base_datset_params,
+        'mode': 'test',
+        'dataset_summary_file': test_dataset_parameters['dataset_summary_file'],
+        'event_stats_file': test_dataset_parameters['event_stats_file'],
+        'with_global_mass_loss': True,
+        'with_local_mass_loss': True,
+    }
+    return test_dataset_config
 
 def test_autoregressive(model: torch.nn.Module,
                         dataset: FloodEventDataset,
@@ -146,16 +159,10 @@ def main():
 
         # Dataset
         dataset_parameters = config['dataset_parameters']
-        test_dataset_parameters = dataset_parameters['testing']
-        dataset_summary_file = test_dataset_parameters['dataset_summary_file']
-        event_stats_file = test_dataset_parameters['event_stats_file']
         dataset_config = {
-            'mode': 'test',
             'root_dir': dataset_parameters['root_dir'],
-            'dataset_summary_file': dataset_summary_file,
             'nodes_shp_file': dataset_parameters['nodes_shp_file'],
             'edges_shp_file': dataset_parameters['edges_shp_file'],
-            'event_stats_file': event_stats_file,
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],
@@ -164,9 +171,8 @@ def main():
             'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
-            'with_global_mass_loss': True,
-            'with_local_mass_loss': False, # TODO: Change this to True
         }
+        dataset_config = get_test_dataset_config(dataset_config, config)
         logger.log(f'Using dataset configuration: {dataset_config}')
 
         storage_mode = dataset_parameters['storage_mode']

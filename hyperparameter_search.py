@@ -7,7 +7,7 @@ from argparse import ArgumentParser, Namespace
 from datetime import datetime
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
-from test import test_autoregressive
+from test import get_test_dataset_config, test_autoregressive
 from train import train_w_global
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
@@ -64,17 +64,7 @@ def load_datasets(config: Dict, logger: Logger, debug: bool = False) -> Tuple[Fl
     train_dataset = dataset_class(**train_dataset_config)
     logger.log(f'Loaded train dataset with {len(train_dataset)} samples')
 
-    test_dataset_parameters = dataset_parameters['testing']
-    test_dataset_summary_file = test_dataset_parameters['dataset_summary_file']
-    test_event_stats_file = test_dataset_parameters['event_stats_file']
-    test_dataset_config = {
-        **base_dataset_config,
-        'mode': 'test',
-        'dataset_summary_file': test_dataset_summary_file,
-        'event_stats_file': test_event_stats_file,
-        'with_global_mass_loss': True,
-        'with_local_mass_loss': False, # TODO: Change this to True
-    }
+    test_dataset_config = get_test_dataset_config(base_dataset_config, config)
     logger.log(f'Using test dataset configuration: {test_dataset_config}')
     test_dataset = dataset_class(**test_dataset_config)
     logger.log(f'Loaded test dataset with {len(train_dataset)} samples')

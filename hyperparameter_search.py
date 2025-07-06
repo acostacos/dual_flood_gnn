@@ -7,7 +7,7 @@ from argparse import ArgumentParser, Namespace
 from datetime import datetime
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
-from test import get_test_dataset_config, test_autoregressive
+from test import get_test_dataset_config, test_autoregressive_node_only
 from train import train_w_global
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
@@ -169,7 +169,7 @@ def main():
             events_rmse = []
             for event_idx in range(len(test_dataset.hec_ras_run_ids)):
                 validation_stats = ValidationStats(logger=logger)
-                test_autoregressive(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
+                test_autoregressive_node_only(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
                 avg_rmse = validation_stats.get_avg_rmse()
                 events_rmse.append(avg_rmse)
                 logger.log(f'Event {event_idx} RMSE: {avg_rmse:.4e}')

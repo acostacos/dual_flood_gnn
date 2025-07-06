@@ -27,7 +27,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
 
-def train_base(model: torch.nn.Module,
+def train_node_only(model: torch.nn.Module,
                dataloader: DataLoader,
                optimizer: torch.optim.Optimizer,
                criterion: Callable,
@@ -60,6 +60,67 @@ def train_base(model: torch.nn.Module,
         training_stats.add_loss_component('prediction_loss', epoch_loss)
     training_stats.end_train()
 
+def train_base(model: torch.nn.Module,
+               dataloader: DataLoader,
+               optimizer: torch.optim.Optimizer,
+               criterion: Callable,
+               training_stats: TrainingStats,
+               num_epochs: int = 100,
+               edge_pred_loss_percent: float = 0.5,
+               device: str = 'cpu'):
+    DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS = int(math.ceil(num_epochs * 0.1))
+
+    pred_loss_percent = 1.0 - edge_pred_loss_percent
+    edge_loss_scaler = LossScaler()
+    training_stats.start_train()
+    for epoch in range(num_epochs):
+        model.train()
+        running_pred_loss = 0.0
+        running_edge_pred_loss = 0.0
+
+        for batch in dataloader:
+            optimizer.zero_grad()
+
+            batch = batch.to(device)
+            pred, edge_pred = model(batch)
+
+            label = batch.y
+            pred_loss = criterion(pred, label)
+            pred_loss =  pred_loss * pred_loss_percent
+            running_pred_loss += pred_loss.item()
+
+            edge_label = batch.y_edge
+            edge_pred_loss = criterion(edge_pred, edge_label)
+            edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
+            scaled_edge_pred_loss = edge_loss_scaler.scale_loss(edge_pred_loss) * edge_pred_loss_percent
+            running_edge_pred_loss += scaled_edge_pred_loss.item()
+
+            loss = pred_loss + edge_pred_loss
+
+            loss.backward()
+            optimizer.step()
+
+        running_loss = running_pred_loss + running_edge_pred_loss
+        epoch_loss = running_loss / len(dataloader)
+        pred_epoch_loss = running_pred_loss / len(dataloader)
+        edge_pred_epoch_loss = running_edge_pred_loss / len(dataloader)
+
+        logging_str = f'Epoch [{epoch + 1}/{num_epochs}]\n'
+        logging_str += f'\tLoss: {epoch_loss:.4e}\n'
+        logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
+        logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
+        training_stats.log(logging_str)
+
+        training_stats.add_loss(epoch_loss)
+        training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
+        training_stats.add_loss_component('edge_prediction_loss', edge_pred_epoch_loss)
+
+        if epoch < DYNAMIC_LOSS_WEIGHT_NUM_EPOCHS:
+            edge_loss_scaler.update_scale_from_epoch()
+            training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {edge_loss_scaler.scale:.4e}')
+
+    training_stats.end_train()
+
 def train_w_global(model: torch.nn.Module,
                    dataloader: DataLoader,
                    optimizer: torch.optim.Optimizer,
@@ -82,6 +143,7 @@ def train_w_global(model: torch.nn.Module,
         model.train()
         running_pred_loss = 0.0
         running_global_physics_loss = 0.0
+
         for batch in dataloader:
             optimizer.zero_grad()
 
@@ -149,6 +211,7 @@ def train_w_local(model: torch.nn.Module,
         model.train()
         running_pred_loss = 0.0
         running_local_physics_loss = 0.0
+
         for batch in dataloader:
             optimizer.zero_grad()
 
@@ -217,6 +280,9 @@ def run_train(model: torch.nn.Module,
         if use_local_mass_loss:
             local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
             logger.log(f'Using local mass conservation loss with target percentage {local_mass_loss_percent}')
+        if model_name == 'NodeEdgeGNN':
+            edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
+            logger.log(f'Using edge prediction loss with target percentage {edge_pred_loss_percent}')
 
         log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
@@ -225,12 +291,14 @@ def run_train(model: torch.nn.Module,
         delta_t = dataloader.dataset.timestep_interval
         training_stats = TrainingStats(logger=logger)
 
-        if use_global_mass_loss:
+        if model_name == 'NodeEdgeGNN': # TODO: Move this to the bottom of if statement when implemented for global and local
+            train_base(model, dataloader, optimizer, criterion, training_stats, num_epochs, edge_pred_loss_percent, device=device)
+        elif use_global_mass_loss:
             train_w_global(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, device)
         elif use_local_mass_loss:
             train_w_local(model, dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, local_mass_loss_percent, device)
         else:
-            train_base(model, dataloader, optimizer, criterion, training_stats, num_epochs, device)
+            train_node_only(model, dataloader, optimizer, criterion, training_stats, num_epochs, device)
 
         training_stats.print_stats_summary()
 

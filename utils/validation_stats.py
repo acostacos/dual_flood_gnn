@@ -15,6 +15,8 @@ class ValidationStats:
     def __init__(self, logger: Logger = None):
         self.val_start_time = None
         self.val_end_time = None
+
+        # ======== Water depth stats ========
         self.pred_list = []
         self.target_list = []
 
@@ -29,7 +31,21 @@ class ValidationStats:
         self.mae_flooded_list = []
         self.nse_flooded_list = []
 
-        # Physics-informed stats
+        # ======== Water flow stats ========
+        self.edge_pred_list = []
+        self.edge_target_list = []
+
+        # Overall stats
+        self.edge_rmse_list = []
+        self.edge_mae_list = []
+        self.edge_nse_list = []
+
+        # Flooded cell stats
+        self.edge_rmse_flooded_list = []
+        self.edge_mae_flooded_list = []
+        self.edge_nse_flooded_list = []
+
+        # ======== Physics-informed stats ========
         self.global_mass_loss_list = []
         self.local_mass_loss_list = []
 
@@ -77,6 +93,14 @@ class ValidationStats:
         flooded_pred = pred[flooded_mask]
         flooded_target = target[flooded_mask]
         return flooded_pred, flooded_target
+
+    def update_edge_stats_for_timestep(self, edge_pred: Tensor, edge_target: Tensor):
+        self.edge_pred_list.append(edge_pred)
+        self.edge_target_list.append(edge_target)
+
+        self.edge_rmse_list.append(RMSE(edge_pred, edge_target))
+        self.edge_mae_list.append(MAE(edge_pred, edge_target))
+        self.edge_nse_list.append(NSE(edge_pred, edge_target))
 
     def update_physics_informed_stats_for_timestep(self,
                                                    node_pred: Tensor,

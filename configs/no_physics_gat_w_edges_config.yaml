@@ -34,6 +34,7 @@ training_parameters:
   weight_decay         : 0                                   # Weight decay
 
 loss_func_parameters:
+  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
   use_local_mass_loss: False                                 # Use local mass conservation in loss function
   global_mass_loss_percent: 0.001                            # Percentage of global mass conservation loss in total loss
@@ -68,6 +69,17 @@ model_parameters:
     negative_slope: 0.2
     attn_bias: True
     attn_residual: True
+    encoder_layers: 2
+    encoder_activation: 'prelu'
+    decoder_layers: 2
+    decoder_activation: 'prelu'
+
+  NodeEdgeGNN:
+    hidden_features: 32
+    num_layers: 2
+    activation: 'prelu'
+    residual: True
+    mlp_layers: 2
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2

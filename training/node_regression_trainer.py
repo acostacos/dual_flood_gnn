@@ -38,7 +38,7 @@ class NodeRegressionTrainer(BaseTrainer):
             self.training_stats.log(logging_str)
 
             self.training_stats.add_loss(epoch_loss)
-            self.training_stats.add_loss_component('prediction_loss', epoch_loss)
+            self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
 
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)

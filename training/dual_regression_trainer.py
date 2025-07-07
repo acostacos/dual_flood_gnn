@@ -9,11 +9,12 @@ class DualRegressionTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
         self.edge_pred_loss_percent = edge_pred_loss_percent
+
         self.edge_loss_scaler = LossScaler()
+        self.pred_loss_percent -= self.pred_loss_percent * self.edge_pred_loss_percent
 
     def train(self):
         # TODO: How to handle percentage between node ande edge?
-        self.pred_loss_percent -= self.pred_loss_percent * self.edge_pred_loss_percent
         self.training_stats.start_train()
         for epoch in range(self.num_epochs):
             self.model.train()
@@ -48,7 +49,7 @@ class DualRegressionTrainer(BaseTrainer):
                 loss.backward()
                 self.optimizer.step()
 
-            running_loss = running_pred_loss + running_edge_pred_loss
+            running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))
             epoch_loss = running_loss / len(self.dataloader)
             pred_epoch_loss = running_pred_loss / len(self.dataloader)
             edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)

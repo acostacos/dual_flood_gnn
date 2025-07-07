@@ -69,7 +69,7 @@ class BaseTrainer:
             global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch)
             physics_loss += global_physics_loss
 
-        if self.use_local_loss and not self.use_global_loss:
+        if self.use_local_loss:
             local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch)
             physics_loss += local_physics_loss
 

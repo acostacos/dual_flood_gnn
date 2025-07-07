@@ -35,8 +35,8 @@ training_parameters:
 
 loss_func_parameters:
   edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
-  use_global_mass_loss: True                                 # Use global mass conservation in loss function
-  use_local_mass_loss: False                                 # Use local mass conservation in loss function
+  use_global_mass_loss: False                                # Use global mass conservation in loss function
+  use_local_mass_loss: True                                  # Use local mass conservation in loss function
   global_mass_loss_percent: 0.001                            # Percentage of global mass conservation loss in total loss
   local_mass_loss_percent: 0.001                             # Percentage of local mass conservation loss in total loss
 

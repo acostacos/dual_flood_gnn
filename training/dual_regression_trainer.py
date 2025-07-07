@@ -11,10 +11,9 @@ class DualRegressionTrainer(BaseTrainer):
         self.edge_pred_loss_percent = edge_pred_loss_percent
 
         self.edge_loss_scaler = LossScaler()
-        self.pred_loss_percent -= self.pred_loss_percent * self.edge_pred_loss_percent
+        self.pred_loss_percent -= self.edge_pred_loss_percent
 
     def train(self):
-        # TODO: How to handle percentage between node ande edge?
         self.training_stats.start_train()
         for epoch in range(self.num_epochs):
             self.model.train()

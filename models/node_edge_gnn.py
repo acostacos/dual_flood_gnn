@@ -17,6 +17,7 @@ class NodeEdgeGNN(BaseModel):
                  activation: str = 'prelu',
                  residual: bool = True,
                  mlp_layers: int = 2,
+                 enforce_flipped_edge_attr: bool = True,
 
                  # Encoder Decoder Parameters
                  encoder_layers: int = 0,
@@ -29,6 +30,7 @@ class NodeEdgeGNN(BaseModel):
         self.with_encoder = encoder_layers > 0
         self.with_decoder = decoder_layers > 0
         self.with_residual = residual
+        self.enforce_flipped_edge_attr = enforce_flipped_edge_attr
 
 
         # Encoder
@@ -95,7 +97,31 @@ class NodeEdgeGNN(BaseModel):
             x = self.res_activation(x + self.residual(x0[:, -self.output_node_features:]))
             edge_attr = self.res_activation(edge_attr + self.residual(edge_attr0[:, -self.output_edge_features:]))
 
+        if self.enforce_flipped_edge_attr:
+            edge_attr = self._overwrite_edge_attr(edge_attr, edge_index, graph.num_graphs)
+
         return x, edge_attr
+
+    def _overwrite_edge_attr(self, edge_attr: Tensor, edge_index: Tensor, num_graphs: int) -> Tensor:
+        temp = edge_index.clone()
+        temp[0, :], temp[1, :] = temp[1, :], temp[0, :]
+        undirected_mask = torch.all(torch.isin(edge_index, temp), dim=0)
+
+        # Assume first half of edges are the corresponding flipped edges for the second half (PyG standard)
+        num_undirected_edges = undirected_mask.sum().item()
+        num_edges_per_graph = num_undirected_edges // num_graphs
+        first_half_mask = torch.arange(num_edges_per_graph) < (num_edges_per_graph // 2)
+        first_half_mask = first_half_mask.repeat(num_graphs)
+
+        new_undir_edge_attr = edge_attr[undirected_mask].squeeze()
+        # Overwrite second half of undirected edge attributes
+        new_undir_edge_attr[~first_half_mask] = new_undir_edge_attr[first_half_mask] * -1
+
+        new_edge_attr = edge_attr.clone().squeeze()
+        new_edge_attr[undirected_mask] = new_undir_edge_attr
+        new_edge_attr = new_edge_attr.view(-1, self.output_edge_features)
+
+        return new_edge_attr
 
 class NodeEdgeConv(MessagePassing):
     """

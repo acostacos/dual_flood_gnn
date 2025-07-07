@@ -52,6 +52,7 @@ def load_datasets(config: Dict, logger: Logger, debug: bool = False) -> Tuple[Fl
     loss_func_parameters = config['loss_func_parameters']
     use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
     use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
+    assert use_global_mass_loss, "Global mass loss must be enabled for training"
     train_dataset_config = {
         **base_dataset_config,
         'mode': 'train',
@@ -92,7 +93,7 @@ def main():
         }
 
         # Load datasets
-        test_dataset, train_dataset = load_datasets(config, logger, args.debug)
+        train_dataset, test_dataset = load_datasets(config, logger, args.debug)
 
         # Load model configuration
         model_params = config['model_parameters'][args.model]
@@ -122,8 +123,6 @@ def main():
         log_test_config = {'rollout_start': rollout_start, 'rollout_timesteps': rollout_timesteps}
         logger.log(f'Using testing configuration: {log_test_config}')
 
-        loss_func_parameters = config['loss_func_parameters']
-        init_global_loss_weight = loss_func_parameters['init_global_loss_weight']
         delta_t = train_dataset.timestep_interval
 
         best_rmse = float('inf')
@@ -141,7 +140,7 @@ def main():
             training_stats = TrainingStats(logger=None)
 
             training_stats.log = lambda x : None  # Suppress training stats logging to console
-            train_w_global(model, train_dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, init_global_loss_weight, args.device)
+            train_w_global(model, train_dataloader, optimizer, criterion, training_stats, num_epochs, delta_t, global_mass_loss_percent, args.device)
             training_stats.log = logger.log  # Restore logging to console
 
             training_stats.print_stats_summary()
@@ -167,12 +166,12 @@ def main():
             logger.log('\nValidating model on test dataset...')
 
             events_rmse = []
-            for event_idx in range(len(test_dataset.hec_ras_run_ids)):
+            for event_idx, run_id in enumerate(test_dataset.hec_ras_run_ids):
                 validation_stats = ValidationStats(logger=logger)
                 test_autoregressive_node_only(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
                 avg_rmse = validation_stats.get_avg_rmse()
                 events_rmse.append(avg_rmse)
-                logger.log(f'Event {event_idx} RMSE: {avg_rmse:.4e}')
+                logger.log(f'Event {run_id} RMSE: {avg_rmse:.4e}')
             events_avg_rmse = np.mean(events_rmse)
             logger.log(f'Average RMSE for all events: {events_avg_rmse:.4e}')
             if events_avg_rmse < best_rmse:

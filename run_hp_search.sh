@@ -8,4 +8,14 @@
 
 . venv/bin/activate
 
+# Global Mass Loss hyperparameter search
+srun python hyperparameter_search.py --config 'configs/global_loss_config.yaml' --model 'GAT'
+
+# Local Mass Loss hyperparameter search
+srun python hyperparameter_search.py --config 'configs/local_loss_config.yaml' --model 'GAT'
+
+# Global and Local Mass Loss hyperparameter search
 srun python hyperparameter_search.py --config 'configs/config.yaml' --model 'GAT'
+
+# Base NodeEdge GNN hyperparameter search
+srun python hyperparameter_search.py --config 'configs/no_physics_config.yaml' --model 'NodeEdgeGNN'

@@ -140,6 +140,7 @@ class ValidationStats:
             self.log(f'Average Local Mass Conservation Loss: {np.mean(self.local_mass_loss_list):.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
+            self.log(f'Validation time: {self.val_end_time - self.val_start_time:.2f} seconds')
             self.log(f'Inference time for one timestep: {self.get_inference_time():.4f} seconds')
 
     def save_stats(self, filepath: str):

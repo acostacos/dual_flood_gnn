@@ -2,6 +2,7 @@ import numpy as np
 import os
 import traceback
 import torch
+import gc
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
@@ -192,6 +193,10 @@ def main():
 
         test_dataset_config = get_test_dataset_config(dataset_config, config)
         logger.log(f'Using test dataset configuration: {test_dataset_config}')
+
+        # Clear memory before loading test dataset
+        dataset = None
+        gc.collect()
 
         dataset = dataset_class(
             **test_dataset_config,

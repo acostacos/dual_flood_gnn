@@ -17,7 +17,7 @@ dataset_parameters:
   - 1129
 
   training:
-    dataset_summary_file: 'dummy_train.csv'
+    dataset_summary_file: 'train.csv'
     event_stats_file: 'train_event_stats.yaml'
 
   testing:

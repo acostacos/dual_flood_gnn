@@ -63,21 +63,25 @@ class BaseTrainer:
         if self.use_local_loss:
             self.running_local_physics_loss = 0.0
 
-    def _get_epoch_physics_loss(self, pred: Tensor, pred_loss: Tensor, batch) -> Tensor:
+    def _get_epoch_physics_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
         physics_loss = torch.zeros(1, device=self.device)
         if self.use_global_loss:
-            global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch)
+            global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch, edge_pred)
             physics_loss += global_physics_loss
 
         if self.use_local_loss:
-            local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch)
+            local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch, edge_pred)
             physics_loss += local_physics_loss
 
         return physics_loss
 
-    def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch) -> Tensor:
+    def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
         total_water_volume = batch.global_mass_info['total_water_volume']
-        global_physics_loss = global_mass_conservation_loss(pred, None, total_water_volume, batch,
+        if edge_pred is None:
+            edge_pred = batch.global_mass_info['face_flow']
+            mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            edge_pred = self.normalizer.normalize(edge_pred, mean, std)
+        global_physics_loss = global_mass_conservation_loss(pred, edge_pred, total_water_volume, batch,
                                                             self.normalizer, self.boundary_condition,
                                                             is_normalized=self.is_normalized, delta_t=self.delta_t)
         self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_physics_loss)
@@ -86,9 +90,13 @@ class BaseTrainer:
         self.running_global_physics_loss += scaled_global_physics_loss.item()
         return scaled_global_physics_loss
 
-    def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch) -> Tensor:
+    def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
         water_volume = batch.local_mass_info['water_volume']
-        local_physics_loss = local_mass_conservation_loss(pred, None, water_volume, batch,
+        if edge_pred is None:
+            edge_pred = batch.global_mass_info['face_flow']
+            mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            edge_pred = self.normalizer.normalize(edge_pred, mean, std)
+        local_physics_loss = local_mass_conservation_loss(pred, edge_pred, water_volume, batch,
                                                           self.normalizer, self.boundary_condition,
                                                           is_normalized=self.is_normalized, delta_t=self.delta_t)
         self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_physics_loss)

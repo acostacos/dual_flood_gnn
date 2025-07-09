@@ -46,15 +46,12 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                 dynamic_nodes = dynamic_values['dynamic_nodes']
                 dynamic_edges = dynamic_values['dynamic_edges']
 
-                # Mask boundary conditions
-                dynamic_nodes, dynamic_edges = self._mask_boundary_conditions(edge_index, dynamic_nodes, dynamic_edges)
-
                 # Load physics-informed loss information
                 if self.with_global_mass_loss:
                     total_inflow_per_ts: ndarray = dynamic_values['total_inflow_per_ts']
-                    total_outflow_per_ts: ndarray = dynamic_values['total_outflow_per_ts']
                     total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
                     total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
+                    edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
                     outflow_edges_mask: ndarray = constant_values['outflow_edges_mask']
 
                 if self.with_local_mass_loss:
@@ -67,16 +64,16 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
             # Create Data object for timestep
             within_event_idx = idx - start_idx
-            node_features = self._get_timestep_data(static_nodes, dynamic_nodes, FloodEventDataset.DYNAMIC_NODE_FEATURES, within_event_idx)
-            edge_features = self._get_timestep_data(static_edges, dynamic_edges, FloodEventDataset.DYNAMIC_EDGE_FEATURES, within_event_idx)
+            node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
+            edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
             label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
             global_mass_info = None
             if self.with_global_mass_loss:
                 global_mass_info = self._get_global_mass_info_for_timestep(total_inflow_per_ts,
-                                                                        total_outflow_per_ts,
                                                                         total_rainfall_per_ts,
                                                                         total_water_volume_per_ts,
+                                                                        edge_face_flow_per_ts,
                                                                         within_event_idx)
                 self.boundary_condition.outflow_edges_mask = outflow_edges_mask
 

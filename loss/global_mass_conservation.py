@@ -18,6 +18,7 @@ def global_mass_conservation_loss(
         is_normalized: bool = True,
         delta_t: int = 30):
     batch = databatch.batch # Returns a tensor of shape (num_nodes,) with the batch index for each node
+    edge_index = databatch.edge_index
     num_graphs = databatch.num_graphs
     global_mass_info: Dict[str, Tensor] = databatch.global_mass_info
 
@@ -27,25 +28,25 @@ def global_mass_conservation_loss(
 
     # Get predefined information
     total_inflow = global_mass_info['total_inflow']
-    total_outflow = global_mass_info['total_outflow']
     total_rainfall = global_mass_info['total_rainfall']
 
     # Get predictions
     # Node prediction = normalized predicted water volume (t+1)
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
     next_water_volume = get_orig_water_volume(batch_node_pred, normalizer, is_normalized, batch_non_boundary_nodes_mask)
-    next_water_volume = next_water_volume.squeeze()
     non_boundary_batch = batch[batch_non_boundary_nodes_mask]
     total_next_water_volume = scatter(next_water_volume, non_boundary_batch, reduce='sum')
 
-    # # Edge prediction = normalized predicted water flow (t+1)
-    # if is_normalized:
-    #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
-    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
-    # outflow = batch_edge_pred[batch_outflow_edges_mask]
-    # # Flip direction because edges are pointed away from the outflow boundary
-    # outflow *= -1
-    # total_outflow = outflow.sum(axis=1)
+    # Edge prediction = normalized predicted water flow (t)
+    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    if is_normalized:
+        batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
+    outflow = batch_edge_pred[batch_outflow_edges_mask].squeeze()
+    # Flip direction because edges are pointed away from the outflow boundary
+    outflow *= -1
+    outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
+    outflow_batch = batch[outflow_node_idxs]
+    total_outflow = scatter(outflow, outflow_batch, reduce='sum')
 
     delta_v = total_next_water_volume - total_water_volume
     rf_volume = total_rainfall

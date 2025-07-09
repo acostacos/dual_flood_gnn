@@ -14,4 +14,4 @@ def get_orig_water_volume(water_volume: torch.Tensor,
         water_volume = normalizer.denormalize('water_volume', water_volume)
     water_volume = torch.relu(water_volume) # Water volume must be non-negative
     water_volume = water_volume[non_boundary_nodes_mask]
-    return water_volume
+    return water_volume.squeeze()

@@ -6,11 +6,12 @@ from torch import Tensor
 from torch_geometric.utils import scatter
 from typing import Dict
 
-from .loss_helper import get_batch_mask
+from .loss_helper import get_batch_mask, get_orig_water_volume
 
 def global_mass_conservation_loss(
         batch_node_pred: Tensor,
         batch_edge_pred: Tensor,
+        total_water_volume: Tensor,
         databatch,
         normalizer: DatasetNormalizer,
         bc_helper: BoundaryCondition,
@@ -19,26 +20,32 @@ def global_mass_conservation_loss(
     batch = databatch.batch # Returns a tensor of shape (num_nodes,) with the batch index for each node
     num_graphs = databatch.num_graphs
     global_mass_info: Dict[str, Tensor] = databatch.global_mass_info
-    device = batch_node_pred.device
 
     # Values assumed to be the same for all batches
     non_boundary_nodes_mask = bc_helper.get_non_boundary_nodes_mask()
+    outflow_edges_mask = bc_helper.outflow_edges_mask
 
     # Get predefined information
-    total_inflow = global_mass_info['total_inflow'].to(device)
-    total_outflow = global_mass_info['total_outflow'].to(device)
-    total_rainfall = global_mass_info['total_rainfall'].to(device)
-    total_water_volume = global_mass_info['total_water_volume'].to(device)
+    total_inflow = global_mass_info['total_inflow']
+    total_outflow = global_mass_info['total_outflow']
+    total_rainfall = global_mass_info['total_rainfall']
 
     # Get predictions
+    # Node prediction = normalized predicted water volume (t+1)
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
-    node_pred = batch_node_pred.squeeze() # Normalized predicted water volume (t+1)
-    if is_normalized:
-        node_pred = normalizer.denormalize('water_volume', node_pred)
-    node_pred = torch.relu(node_pred) # Negative water volume would not make sense; Can be ignored
-    node_pred = node_pred[batch_non_boundary_nodes_mask]
+    next_water_volume = get_orig_water_volume(batch_node_pred, normalizer, is_normalized, batch_non_boundary_nodes_mask)
+    next_water_volume = next_water_volume.squeeze()
     non_boundary_batch = batch[batch_non_boundary_nodes_mask]
-    total_next_water_volume = scatter(node_pred, non_boundary_batch, reduce='sum')
+    total_next_water_volume = scatter(next_water_volume, non_boundary_batch, reduce='sum')
+
+    # # Edge prediction = normalized predicted water flow (t+1)
+    # if is_normalized:
+    #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
+    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    # outflow = batch_edge_pred[batch_outflow_edges_mask]
+    # # Flip direction because edges are pointed away from the outflow boundary
+    # outflow *= -1
+    # total_outflow = outflow.sum(axis=1)
 
     delta_v = total_next_water_volume - total_water_volume
     rf_volume = total_rainfall

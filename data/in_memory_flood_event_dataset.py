@@ -55,6 +55,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     total_outflow_per_ts: ndarray = dynamic_values['total_outflow_per_ts']
                     total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
                     total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
+                    outflow_edges_mask: ndarray = constant_values['outflow_edges_mask']
 
                 if self.with_local_mass_loss:
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
@@ -77,6 +78,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                         total_rainfall_per_ts,
                                                                         total_water_volume_per_ts,
                                                                         within_event_idx)
+                self.boundary_condition.outflow_edges_mask = outflow_edges_mask
 
             local_mass_info = None
             if self.with_local_mass_loss:

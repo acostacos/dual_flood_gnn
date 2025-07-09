@@ -7,7 +7,7 @@ from torch import Tensor
 from torch_geometric.utils import scatter
 from typing import Dict
 
-from .loss_helper import get_batch_mask
+from .loss_helper import get_batch_mask, get_orig_water_volume
 
 def get_batch_inflow_outflow(
     edge_index: Tensor,
@@ -33,6 +33,7 @@ def get_batch_inflow_outflow(
 def local_mass_conservation_loss(
         batch_node_pred: Tensor,
         batch_edge_pred: Tensor,
+        water_volume: Tensor,
         databatch,
         normalizer: DatasetNormalizer,
         bc_helper: BoundaryCondition,
@@ -43,17 +44,15 @@ def local_mass_conservation_loss(
     num_nodes = databatch.num_nodes
     num_graphs = databatch.num_graphs
     local_mass_info: Dict[str, Tensor] = databatch.local_mass_info
-    device = batch_node_pred.device
 
     # Values assumed to be the same for all batches
     non_boundary_nodes_mask = bc_helper.get_non_boundary_nodes_mask()
     outflow_edges_mask = bc_helper.outflow_edges_mask
 
     # Get predefined information
-    rainfall = local_mass_info['rainfall'].to(device)
-    water_volume = local_mass_info['water_volume'].to(device)
+    rainfall = local_mass_info['rainfall']
 
-    face_flow = local_mass_info['face_flow'].to(device)
+    face_flow = local_mass_info['face_flow']
     batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
     total_inflow, total_outflow = get_batch_inflow_outflow(
@@ -65,17 +64,22 @@ def local_mass_conservation_loss(
     )
 
     # Get predictions
-    node_pred = batch_node_pred.squeeze() # Normalized predicted water volume (t+1)
-    if is_normalized:
-        node_pred = normalizer.denormalize('water_volume', node_pred)
-    node_pred = torch.relu(node_pred) # Negative water volume would not make sense; Can be ignored
-    node_pred = node_pred[batch_non_boundary_nodes_mask]
-    next_water_volume = node_pred
+    # Node prediction = normalized predicted water volume (t+1)
+    next_water_volume = get_orig_water_volume(batch_node_pred, normalizer, is_normalized, batch_non_boundary_nodes_mask)
+    next_water_volume = next_water_volume.squeeze()
 
-    # # Normalized predicted water flow
-    # edge_pred = batch_edge_pred[batch == uid] # Normalized predicted water flow
+    # # Edge prediction = normalized predicted water flow (t+1)
     # if is_normalized:
-    #     edge_pred = normalizer.denormalize('face_flow', edge_pred)
+    #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
+    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    # batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
+    # total_inflow, total_outflow = get_batch_inflow_outflow(
+    #     edge_index=edge_index,
+    #     face_flow=batch_edge_pred,
+    #     batch_outflow_edges_mask=batch_outflow_edges_mask,
+    #     batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
+    #     num_nodes=num_nodes,
+    # )
 
     # Local mass conservation equation:
     delta_v = next_water_volume - water_volume

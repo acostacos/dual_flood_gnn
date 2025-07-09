@@ -76,7 +76,8 @@ class BaseTrainer:
         return physics_loss
 
     def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch) -> Tensor:
-        global_physics_loss = global_mass_conservation_loss(pred, None, batch,
+        total_water_volume = batch.global_mass_info['total_water_volume']
+        global_physics_loss = global_mass_conservation_loss(pred, None, total_water_volume, batch,
                                                             self.normalizer, self.boundary_condition,
                                                             is_normalized=self.is_normalized, delta_t=self.delta_t)
         self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_physics_loss)
@@ -86,7 +87,8 @@ class BaseTrainer:
         return scaled_global_physics_loss
 
     def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch) -> Tensor:
-        local_physics_loss = local_mass_conservation_loss(pred, None, batch,
+        water_volume = batch.local_mass_info['water_volume']
+        local_physics_loss = local_mass_conservation_loss(pred, None, water_volume, batch,
                                                           self.normalizer, self.boundary_condition,
                                                           is_normalized=self.is_normalized, delta_t=self.delta_t)
         self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_physics_loss)

@@ -52,22 +52,35 @@ def local_mass_conservation_loss(
     # Get predefined information
     rainfall = local_mass_info['rainfall']
 
+    # TODO: Revert once edge prediction is implemented
+    face_flow = local_mass_info['face_flow']
+    batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
+    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    total_inflow, total_outflow = get_batch_inflow_outflow(
+        edge_index=edge_index,
+        face_flow=face_flow,
+        batch_outflow_edges_mask=batch_outflow_edges_mask,
+        batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
+        num_nodes=num_nodes,
+    )
+
     # Get predictions
     # Node prediction = normalized predicted water volume (t+1)
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
     next_water_volume = get_orig_water_volume(batch_node_pred, normalizer, is_normalized, batch_non_boundary_nodes_mask)
 
-    # Edge prediction = normalized predicted water flow (t)
-    if is_normalized:
-        batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
-    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
-    total_inflow, total_outflow = get_batch_inflow_outflow(
-        edge_index=edge_index,
-        face_flow=batch_edge_pred,
-        batch_outflow_edges_mask=batch_outflow_edges_mask,
-        batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
-        num_nodes=num_nodes,
-    )
+    # TODO: Revert once edge prediction is implemented
+    # # Edge prediction = normalized predicted water flow (t+1)
+    # if is_normalized:
+    #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
+    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    # total_inflow, total_outflow = get_batch_inflow_outflow(
+    #     edge_index=edge_index,
+    #     face_flow=batch_edge_pred,
+    #     batch_outflow_edges_mask=batch_outflow_edges_mask,
+    #     batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
+    #     num_nodes=num_nodes,
+    # )
 
     # Local mass conservation equation:
     delta_v = next_water_volume - water_volume

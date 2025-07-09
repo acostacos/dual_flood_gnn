@@ -30,6 +30,16 @@ def global_mass_conservation_loss(
     total_inflow = global_mass_info['total_inflow']
     total_rainfall = global_mass_info['total_rainfall']
 
+    # TODO: Revert once edge prediction is implemented
+    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    face_flow = global_mass_info['face_flow']
+    outflow = face_flow[batch_outflow_edges_mask].squeeze()
+    # Flip direction because edges are pointed away from the outflow boundary
+    outflow *= -1
+    outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
+    outflow_batch = batch[outflow_node_idxs]
+    total_outflow = scatter(outflow, outflow_batch, reduce='sum')
+
     # Get predictions
     # Node prediction = normalized predicted water volume (t+1)
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
@@ -37,16 +47,17 @@ def global_mass_conservation_loss(
     non_boundary_batch = batch[batch_non_boundary_nodes_mask]
     total_next_water_volume = scatter(next_water_volume, non_boundary_batch, reduce='sum')
 
-    # Edge prediction = normalized predicted water flow (t)
-    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
-    if is_normalized:
-        batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
-    outflow = batch_edge_pred[batch_outflow_edges_mask].squeeze()
-    # Flip direction because edges are pointed away from the outflow boundary
-    outflow *= -1
-    outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
-    outflow_batch = batch[outflow_node_idxs]
-    total_outflow = scatter(outflow, outflow_batch, reduce='sum')
+    # TODO: Revert once edge prediction is implemented
+    # # Edge prediction = normalized predicted water flow (t+1)
+    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
+    # if is_normalized:
+    #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
+    # outflow = batch_edge_pred[batch_outflow_edges_mask].squeeze()
+    # # Flip direction because edges are pointed away from the outflow boundary
+    # outflow *= -1
+    # outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
+    # outflow_batch = batch[outflow_node_idxs]
+    # total_outflow = scatter(outflow, outflow_batch, reduce='sum')
 
     delta_v = total_next_water_volume - total_water_volume
     rf_volume = total_rainfall

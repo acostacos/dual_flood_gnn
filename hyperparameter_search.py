@@ -98,7 +98,10 @@ def main():
     args = parse_args()
     config = file_utils.read_yaml_file(args.config)
 
-    logger = Logger()
+    train_config = config['training_parameters']
+    log_path = train_config['log_path']
+
+    logger = Logger(log_path=log_path)
 
     try:
         logger.log('================================================')
@@ -197,6 +200,7 @@ def main():
                 'local_mass_loss_percent': local_mass_loss_percent,
                 'delta_t': delta_t,
                 'num_epochs': num_epochs,
+                'logger': logger,
                 'device': args.device,
             }
             if use_edge_pred_loss:

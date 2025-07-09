@@ -109,12 +109,14 @@ class ValidationStats:
                                                    bc_helper: BoundaryCondition,
                                                    is_normalized: bool = True,
                                                    delta_t: int = 30):
-        global_mass_loss = global_mass_conservation_loss(node_pred, None, databatch,
+        total_water_volume = databatch.global_mass_info['total_water_volume']
+        global_mass_loss = global_mass_conservation_loss(node_pred, None, total_water_volume, databatch,
                                                             normalizer, bc_helper,
                                                             is_normalized=is_normalized, delta_t=delta_t)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
-        local_mass_loss = local_mass_conservation_loss(node_pred, None, databatch,
+        water_volume = databatch.local_mass_info['water_volume']
+        local_mass_loss = local_mass_conservation_loss(node_pred, None, water_volume, databatch,
                                                         normalizer, bc_helper,
                                                         is_normalized=is_normalized, delta_t=delta_t)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())

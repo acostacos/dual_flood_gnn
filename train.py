@@ -60,6 +60,7 @@ def run_train(model: torch.nn.Module,
             'use_local_loss': use_local_mass_loss,
             'delta_t': delta_t,
             'num_epochs': num_epochs,
+            'logger': logger,
             'device': device,
         }
         if use_global_mass_loss:

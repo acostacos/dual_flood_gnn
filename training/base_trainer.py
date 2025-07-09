@@ -21,8 +21,8 @@ class BaseTrainer:
                  use_local_loss: bool = False,
                  local_mass_loss_percent: float = 0.1,
                  delta_t: int = 30,
-                 logger: Logger = None,
                  num_epochs: int = 100,
+                 logger: Logger = None,
                  device: str = 'cpu'):
         self.dataloader = dataloader
         self.model = model

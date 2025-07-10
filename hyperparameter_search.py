@@ -121,20 +121,16 @@ def main():
         if not (use_global_mass_loss or use_local_mass_loss or use_edge_pred_loss):
             raise ValueError('No hyperparameters to search. Please enable at least one of the mass loss functions or edge prediction loss.')
 
-        best_hyperparameters = {}
         HYPERPARAMETERS = {}
         if use_global_mass_loss:
-            GLOBAL_LOSS_PERCENTS = [0.01, 0.001, 0.0001, 0.00001]
+            GLOBAL_LOSS_PERCENTS = [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
             HYPERPARAMETERS['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
-            best_hyperparameters['global_mass_loss_percent'] = None
         if use_local_mass_loss:
-            LOCAL_LOSS_PERCENTS = [0.01, 0.001, 0.0001, 0.00001]
+            LOCAL_LOSS_PERCENTS = [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
             HYPERPARAMETERS['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
-            best_hyperparameters['local_mass_loss_percent'] = None
         if use_edge_pred_loss:
             EDGE_LOSS_PERCENTS = [0.1, 0.3, 0.5, 0.7, 0.9]
             HYPERPARAMETERS['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
-            best_hyperparameters['edge_pred_loss_percent'] = None
 
         hyperparameter_list = list(HYPERPARAMETERS.keys())
         logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(hyperparameter_list)}')
@@ -173,6 +169,7 @@ def main():
         delta_t = train_dataset.timestep_interval
 
         best_rmse = float('inf')
+        best_hyperparameters = {}
         hyperparameter_values = [HYPERPARAMETERS[key] for key in hyperparameter_list]
         combinations = list(product(*hyperparameter_values))
         for comb in combinations:
@@ -215,19 +212,27 @@ def main():
             trainer.print_stats_summary()
 
             # Save training stats and model
+            model_postfix = ''
+            if use_global_mass_loss:
+                model_postfix += f'_g{global_mass_loss_percent}'
+            if use_local_mass_loss:
+                model_postfix += f'_l{local_mass_loss_percent}'
+            if use_edge_pred_loss:
+                model_postfix += f'_e{edge_pred_loss_percent}'
+
             curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             if stats_dir is not None:
                 if not os.path.exists(stats_dir):
                     os.makedirs(stats_dir)
 
-                saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats.npz')
+                saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats_{model_postfix}.npz')
                 trainer.save_stats(saved_metrics_path)
 
             if model_dir is not None:
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
 
-                model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}.pt')
+                model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}_{model_postfix}.pt')
                 trainer.save_model(model_path)
 
             # ============ Testing Phase ============
@@ -245,10 +250,23 @@ def main():
                 logger.log(f'Event {run_id} RMSE: {avg_rmse:.4e}')
             events_avg_rmse = np.mean(events_rmse)
             logger.log(f'Average RMSE for all events: {events_avg_rmse:.4e}')
+
             if events_avg_rmse < best_rmse:
                 best_rmse = events_avg_rmse
-                best_hyperparameters['global_mass_loss_percent'] = global_mass_loss_percent
-                logger.log(f'New best RMSE: {best_rmse:.4e} with global mass loss percent: {global_mass_loss_percent}')
+                if use_global_mass_loss:
+                    best_hyperparameters['global_mass_loss_percent'] = global_mass_loss_percent
+                if use_local_mass_loss:
+                    best_hyperparameters['local_mass_loss_percent'] = local_mass_loss_percent
+                if use_edge_pred_loss:
+                    best_hyperparameters['edge_pred_loss_percent'] = edge_pred_loss_percent
+
+                logger.log(f'New best RMSE: {best_rmse:.4e} for hyperparameter combination:')
+                for key, value in zip(hyperparameter_list, comb):
+                    logger.log(f'\t{key}: {value}')
+
+        logger.log(f'\nBest hyperparameters found with RMSE {best_rmse:.4e}:')
+        for key, value in best_hyperparameters.items():
+            logger.log(f'\t{key}: {value}')
 
         logger.log('================================================')
 

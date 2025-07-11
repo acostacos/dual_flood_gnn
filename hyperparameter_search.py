@@ -123,13 +123,13 @@ def main():
 
         HYPERPARAMETERS = {}
         if use_global_mass_loss:
-            GLOBAL_LOSS_PERCENTS = [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+            GLOBAL_LOSS_PERCENTS = [0.00008, 0.00006, 0.00005, 0.00004, 0.00002]
             HYPERPARAMETERS['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
         if use_local_mass_loss:
-            LOCAL_LOSS_PERCENTS = [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001]
+            LOCAL_LOSS_PERCENTS = [0.0003, 0.0002, 0.0001, 0.00009, 0.00008]
             HYPERPARAMETERS['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
         if use_edge_pred_loss:
-            EDGE_LOSS_PERCENTS = [0.1, 0.3, 0.5, 0.7, 0.9]
+            EDGE_LOSS_PERCENTS = [0.2, 0.25, 0.3, 0.35, 0.4]
             HYPERPARAMETERS['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
 
         hyperparameter_list = list(HYPERPARAMETERS.keys())
@@ -285,7 +285,10 @@ def main():
                 for key, value in zip(hyperparameter_list, comb):
                     logger.log(f'\t{key}: {value}')
 
-        logger.log(f'\nBest hyperparameters found with RMSE {best_rmse:.4e}:')
+        best_rmse_log_str = f'\nBest hyperparameters found with RMSE {best_rmse:.4e}:'
+        if use_edge_pred_loss:
+            best_rmse_log_str += f'and Edge RMSE {best_edge_rmse:.4e}'
+        logger.log(best_rmse_log_str)
         for key, value in best_hyperparameters.items():
             logger.log(f'\t{key}: {value}')
 

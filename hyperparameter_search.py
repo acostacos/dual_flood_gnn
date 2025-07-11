@@ -169,6 +169,8 @@ def main():
         delta_t = train_dataset.timestep_interval
 
         best_rmse = float('inf')
+        if use_edge_pred_loss:
+            best_edge_rmse = float('inf')
         best_hyperparameters = {}
         hyperparameter_values = [HYPERPARAMETERS[key] for key in hyperparameter_list]
         combinations = list(product(*hyperparameter_values))
@@ -225,34 +227,53 @@ def main():
                 if not os.path.exists(stats_dir):
                     os.makedirs(stats_dir)
 
-                saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats_{model_postfix}.npz')
+                saved_metrics_path = os.path.join(stats_dir, f'{args.model}_{curr_date_str}_train_stats{model_postfix}.npz')
                 trainer.save_stats(saved_metrics_path)
 
             if model_dir is not None:
                 if not os.path.exists(model_dir):
                     os.makedirs(model_dir)
 
-                model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}_{model_postfix}.pt')
+                model_path = os.path.join(model_dir, f'{args.model}_{curr_date_str}{model_postfix}.pt')
                 trainer.save_model(model_path)
 
             # ============ Testing Phase ============
             logger.log('\nValidating model on test dataset...')
 
             events_rmse = []
+            if use_edge_pred_loss:
+                events_edge_rmse = []
             for event_idx, run_id in enumerate(test_dataset.hec_ras_run_ids):
                 validation_stats = ValidationStats(logger=logger)
                 if use_edge_pred_loss:
                     test_autoregressive(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
                 else:
                     test_autoregressive_node_only(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
+
                 avg_rmse = validation_stats.get_avg_rmse()
                 events_rmse.append(avg_rmse)
                 logger.log(f'Event {run_id} RMSE: {avg_rmse:.4e}')
+
+                if use_edge_pred_loss:
+                    avg_edge_rmse = validation_stats.get_avg_edge_rmse()
+                    events_edge_rmse.append(avg_edge_rmse)
+                    logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
+
             events_avg_rmse = np.mean(events_rmse)
             logger.log(f'Average RMSE for all events: {events_avg_rmse:.4e}')
+            if use_edge_pred_loss:
+                events_avg_edge_rmse = np.mean(events_edge_rmse)
+                logger.log(f'Average Edge RMSE for all events: {events_avg_edge_rmse:.4e}')
 
-            if events_avg_rmse < best_rmse:
+            is_best = ((use_edge_pred_loss and
+                        (events_avg_rmse < best_rmse and events_avg_edge_rmse < best_edge_rmse)) or
+                        (not use_edge_pred_loss and
+                         (events_avg_rmse < best_rmse)))
+            if is_best:
                 best_rmse = events_avg_rmse
+                if use_edge_pred_loss:
+                    best_edge_rmse = events_avg_edge_rmse
+
                 if use_global_mass_loss:
                     best_hyperparameters['global_mass_loss_percent'] = global_mass_loss_percent
                 if use_local_mass_loss:
@@ -260,7 +281,7 @@ def main():
                 if use_edge_pred_loss:
                     best_hyperparameters['edge_pred_loss_percent'] = edge_pred_loss_percent
 
-                logger.log(f'New best RMSE: {best_rmse:.4e} for hyperparameter combination:')
+                logger.log(f'New best RMSE for hyperparameter combination:')
                 for key, value in zip(hyperparameter_list, comb):
                     logger.log(f'\t{key}: {value}')
 

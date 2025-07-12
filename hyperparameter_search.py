@@ -287,7 +287,7 @@ def main():
 
         best_rmse_log_str = f'\nBest hyperparameters found with RMSE {best_rmse:.4e}:'
         if use_edge_pred_loss:
-            best_rmse_log_str += f'and Edge RMSE {best_edge_rmse:.4e}'
+            best_rmse_log_str.replace(':', f' and Edge RMSE {best_edge_rmse:.4e}:')
         logger.log(best_rmse_log_str)
         for key, value in best_hyperparameters.items():
             logger.log(f'\t{key}: {value}')

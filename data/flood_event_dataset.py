@@ -123,22 +123,19 @@ class FloodEventDataset(Dataset):
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
 
-        if self.with_global_mass_loss:
-            global_mass_info = self._get_global_mass_info(edge_index, dynamic_nodes, dynamic_edges)
-            total_inflow_per_ts, outflow_edges_mask, edge_face_flow_per_ts, total_rainfall_per_ts, total_water_volume_per_ts = global_mass_info
+        # Global Mass Loss Features
+        global_mass_info = self._get_global_mass_info(edge_index, dynamic_nodes, dynamic_edges)
+        total_inflow_per_ts, outflow_edges_mask, edge_face_flow_per_ts, total_rainfall_per_ts, total_water_volume_per_ts = global_mass_info
 
-        if self.with_local_mass_loss:
-            local_mass_info = self._get_local_mass_loss_info(edge_index, dynamic_nodes, dynamic_edges)
-            node_rainfall_per_ts, node_water_volume_per_ts, outflow_edges_mask, edge_face_flow_per_ts = local_mass_info
+        # Local Mass Loss Features
+        local_mass_info = self._get_local_mass_loss_info(edge_index, dynamic_nodes, dynamic_edges)
+        node_rainfall_per_ts, node_water_volume_per_ts, outflow_edges_mask, edge_face_flow_per_ts = local_mass_info
 
         if self.is_normalized:
             static_nodes = self.normalizer.normalize_feature_vector(self.STATIC_NODE_FEATURES, static_nodes)
             dynamic_nodes = self.normalizer.normalize_feature_vector(self.DYNAMIC_NODE_FEATURES, dynamic_nodes)
             static_edges = self.normalizer.normalize_feature_vector(self.STATIC_EDGE_FEATURES, static_edges)
             dynamic_edges = self.normalizer.normalize_feature_vector(self.DYNAMIC_EDGE_FEATURES, dynamic_edges)
-
-        # Local and Global Mass Conservation Features
-        outflow_edges_mask = outflow_edges_mask if self.with_global_mass_loss or self.with_local_mass_loss else None
 
         np.savez(self.processed_paths[2],
                  edge_index=edge_index,
@@ -155,15 +152,15 @@ class FloodEventDataset(Dataset):
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
 
             # Global Mass Conservation Features
-            event_total_inflow_per_ts = total_inflow_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
-            event_total_rainfall_per_ts = total_rainfall_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
-            event_total_water_volume_per_ts = total_water_volume_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss else None
+            event_total_inflow_per_ts = total_inflow_per_ts[start_idx:end_idx].copy()
+            event_total_rainfall_per_ts = total_rainfall_per_ts[start_idx:end_idx].copy()
+            event_total_water_volume_per_ts = total_water_volume_per_ts[start_idx:end_idx].copy()
 
             # Local Mass Conservation Features
-            event_rainfall_per_ts = node_rainfall_per_ts[start_idx:end_idx].copy() if self.with_local_mass_loss else None
-            event_water_volume_per_ts = node_water_volume_per_ts[start_idx:end_idx].copy() if self.with_local_mass_loss else None
+            event_rainfall_per_ts = node_rainfall_per_ts[start_idx:end_idx].copy()
+            event_water_volume_per_ts = node_water_volume_per_ts[start_idx:end_idx].copy()
 
-            event_face_flow_per_ts = edge_face_flow_per_ts[start_idx:end_idx].copy() if self.with_global_mass_loss or self.with_local_mass_loss else None
+            event_face_flow_per_ts = edge_face_flow_per_ts[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 3]
             np.savez(save_path,

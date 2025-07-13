@@ -13,7 +13,8 @@
 srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' --summary_file 'temp_train.csv'
 
 # Local Mass Loss hyperparameter search
-srun python hyperparameter_search.py --config 'configs/hp_search_local_config.yaml' --model 'GAT'
+#srun python hyperparameter_search.py --config 'configs/hp_search_local_config.yaml' --model 'GAT'
+srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'local_mass_loss' --summary_file 'temp_train.csv'
 
 # Global and Local Mass Loss hyperparameter search
 srun python hyperparameter_search.py --config 'configs/hp_search_config.yaml' --model 'GAT'

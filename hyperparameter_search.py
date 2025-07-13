@@ -24,6 +24,7 @@ HYPERPARAMETER_CHOICES = [
     'local_mass_loss',
     'edge_pred_loss',
 ]
+dataset_cache = {}
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -31,7 +32,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
-    parser.add_argument("--num_trials", type=int, default=50, help='Number of trials for hyperparameter search')
+    parser.add_argument("--num_trials", type=int, default=30, help='Number of trials for hyperparameter search')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -71,6 +72,9 @@ def create_cross_val_dataset_files() -> List[str]:
     return hec_ras_run_ids
 
 def load_datasets(run_id: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
+    if f'train_{run_id}' in dataset_cache and f'test_{run_id}' in dataset_cache:
+        return dataset_cache[f'train_{run_id}'], dataset_cache[f'test_{run_id}']
+
     features_stats_file = os.path.join(TEMP_DIR_NAME, f'features_stats_{run_id}.yaml')
     train_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'train_{run_id}.csv')
     train_event_stats_file = os.path.join(TEMP_DIR_NAME, f'train_event_stats_{run_id}.yaml')
@@ -101,7 +105,10 @@ def load_datasets(run_id: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
     dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
 
     train_dataset = dataset_class(**train_dataset_config)
+    dataset_cache[f'train_{run_id}'] = train_dataset
+
     test_dataset = dataset_class(**test_dataset_config)
+    dataset_cache[f'test_{run_id}'] = train_dataset
 
     return train_dataset, test_dataset
 

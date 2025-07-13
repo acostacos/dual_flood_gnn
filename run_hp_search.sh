@@ -3,8 +3,8 @@
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --partition=gpu-long
 #SBATCH --gpus=a100-40:1
-#SBATCH --mem-per-cpu=64000
-#SBATCH --time=1440
+#SBATCH --mem-per-cpu=128000
+#SBATCH --time=2880
 
 . venv/bin/activate
 

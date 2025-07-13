@@ -246,9 +246,9 @@ def main():
             for event_idx, run_id in enumerate(test_dataset.hec_ras_run_ids):
                 validation_stats = ValidationStats(logger=logger)
                 if use_edge_pred_loss:
-                    test_autoregressive(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
+                    test_autoregressive(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
                 else:
-                    test_autoregressive_node_only(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device)
+                    test_autoregressive_node_only(model, test_dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
 
                 avg_rmse = validation_stats.get_avg_rmse()
                 events_rmse.append(avg_rmse)

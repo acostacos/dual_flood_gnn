@@ -10,6 +10,7 @@ from argparse import ArgumentParser, Namespace
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
 from models.base_model import BaseModel
+from optuna.visualization import plot_optimization_history, plot_slice
 from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
@@ -211,6 +212,33 @@ def objective(trial: optuna.Trial) -> float:
 
     return cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
 
+def plot_hyperparameter_search_results(study: optuna.Study):
+    stats_dir = train_config['stats_dir']
+    if stats_dir is None:
+        return
+
+    if not os.path.exists(stats_dir):
+        os.makedirs(stats_dir)
+
+    if use_edge_pred_loss:
+        fig = plot_optimization_history(study, target=lambda t: t.values[0], target_name='Node RMSE')
+        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
+
+        fig = plot_optimization_history(study, target=lambda t: t.values[1], target_name='Edge RMSE')
+        fig.write_html(os.path.join(stats_dir, 'edge_optimization_history.html'))
+
+        fig = plot_slice(study, target=lambda t: t.values[0], target_name='Node RMSE')
+        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
+
+        fig = plot_slice(study, target=lambda t: t.values[1], target_name='Edge RMSE')
+        fig.write_html(os.path.join(stats_dir, 'edge_slice_plot.html'))
+    else:
+        fig = plot_optimization_history(study)
+        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
+
+        fig = plot_slice(study)
+        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
+
 if __name__ == '__main__':
     args = parse_args()
     config = file_utils.read_yaml_file(args.config)
@@ -268,6 +296,7 @@ if __name__ == '__main__':
         logger.log(f'Using testing configuration: {test_config}')
 
         # Begin hyperparameter search
+        # Create temporary directories
         raw_temp_dir_path = os.path.join(root_dir, 'raw', TEMP_DIR_NAME)
         processed_temp_dir_path = os.path.join(root_dir, 'processed', TEMP_DIR_NAME)
         if os.path.exists(processed_temp_dir_path):
@@ -278,17 +307,36 @@ if __name__ == '__main__':
 
         hec_ras_run_ids = create_cross_val_dataset_files()
 
-        study = optuna.create_study(direction='minimize')
+        study_kwargs = {}
+        if use_edge_pred_loss:
+            study_kwargs['directions'] = ['minimize', 'minimize']
+        else:
+            study_kwargs['direction'] = 'minimize'
+
+        study = optuna.create_study(**study_kwargs)
         logger.log(f'Using sampler: {study.sampler.__class__.__name__ if study.sampler else None}')
         logger.log(f'Using pruner: {study.pruner.__class__.__name__ if study.pruner else None}')
         logger.log(f'Running hyperparameter search for {args.num_trials} trials...')
         study.optimize(objective, n_trials=args.num_trials)
 
-        logger.log('Best hyperparameters found:')
-        for key, value in study.best_params.items():
-            logger.log(f'{key}: {value}')
-        logger.log(f'Best objective value: {study.best_value:.4e}')
+        if use_edge_pred_loss:
+            logger.log('Best hyperparameters found:')
+            for trial in study.best_trials:
+                logger.log(f'Trial {trial.number}:')
+                for key, value in trial.params.items():
+                    logger.log(f'\t{key}: {value}')
+                objective_values_str = ', '.join([f'{v:.4e}' for v in trial.values])
+                logger.log(f'\tObjective values: {objective_values_str}')
+        else:
+            logger.log('Best hyperparameters found:')
+            for key, value in study.best_params.items():
+                logger.log(f'{key}: {value}')
+            logger.log(f'Best objective value: {study.best_value:.4e}')
 
+        # Plot hyperparameter search results
+        plot_hyperparameter_search_results(study)
+
+        # Clean up temporary directories
         shutil.rmtree(raw_temp_dir_path)
         shutil.rmtree(processed_temp_dir_path)
 

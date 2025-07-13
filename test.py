@@ -39,14 +39,15 @@ def test_autoregressive_node_only(model: torch.nn.Module,
                         validation_stats: ValidationStats,
                         rollout_start: int = 0,
                         rollout_timesteps: Optional[int] = None,
-                        device: str = 'cpu'):
+                        device: str = 'cpu',
+                        include_physics_loss: bool = True):
     previous_timesteps = dataset.previous_timesteps
     normalizer = dataset.normalizer
     boundary_condition = dataset.boundary_condition
     is_normalized = dataset.is_normalized
     delta_t = dataset.timestep_interval
 
-    # Get non-boundary nodes and threshold for metric computation
+    # Get boundary condition masks
     non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
 
     # Assume using the same area for all events in the dataset
@@ -82,15 +83,18 @@ def test_autoregressive_node_only(model: torch.nn.Module,
             graph = graph.to(device)
 
             # Override graph data with sliding window
-            graph.x[:, start_target_idx:end_target_idx] = sliding_window
+            # Only override non-boundary nodes to keep boundary conditions intact
+            graph.x[non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[non_boundary_nodes_mask]
 
             pred = model(graph)
             sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
             # Requires normalized physics-informed loss
-            validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
-                                                                        normalizer, boundary_condition,
-                                                                        is_normalized=is_normalized, delta_t=delta_t)
+            if include_physics_loss:
+                # Requires normalized prediction for physics-informed loss
+                validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
+                                                                            normalizer, boundary_condition,
+                                                                            is_normalized=is_normalized, delta_t=delta_t)
 
             label = graph.y
             if dataset.is_normalized:
@@ -117,15 +121,17 @@ def test_autoregressive(model: torch.nn.Module,
                         validation_stats: ValidationStats,
                         rollout_start: int = 0,
                         rollout_timesteps: Optional[int] = None,
-                        device: str = 'cpu'):
+                        device: str = 'cpu',
+                        include_physics_loss: bool = True):
     previous_timesteps = dataset.previous_timesteps
     normalizer = dataset.normalizer
     boundary_condition = dataset.boundary_condition
     is_normalized = dataset.is_normalized
     delta_t = dataset.timestep_interval
 
-    # Get non-boundary nodes and threshold for metric computation
+    # Get non-boundary nodes/edges and threshold for metric computation
     non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
+    non_boundary_edges_mask = dataset.boundary_condition.non_boundary_edges_mask
 
     # Assume using the same area for all events in the dataset
     area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
@@ -165,15 +171,18 @@ def test_autoregressive(model: torch.nn.Module,
             graph = graph.to(device)
 
             # Override graph data with sliding window
-            graph.x[:, start_target_idx:end_target_idx] = sliding_window
-            graph.edge_attr[:, start_target_edges_idx:end_target_edges_idx] = edge_sliding_window
+            # Only override non-boundary nodes to keep boundary conditions intact
+            graph.x[non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[non_boundary_nodes_mask]
+            # Only override non-boundary edges to keep boundary conditions intact
+            graph.edge_attr[non_boundary_edges_mask, start_target_edges_idx:end_target_edges_idx] = edge_sliding_window[non_boundary_edges_mask]
 
             pred, edge_pred = model(graph)
             sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
             edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
 
-            # Requires normalized physics-informed loss
-            validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
+            if include_physics_loss:
+                # Requires normalized prediction for physics-informed loss
+                validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
                                                                         normalizer, boundary_condition,
                                                                         is_normalized=is_normalized, delta_t=delta_t)
 

@@ -19,6 +19,7 @@ class BoundaryCondition:
         self._init()
 
         self.outflow_edges_mask = None # Used for physics mass conservation loss
+        self.non_boundary_edges_mask = None # Used for testing
 
         self._boundary_edge_index = None
         self._boundary_dynamic_nodes = None

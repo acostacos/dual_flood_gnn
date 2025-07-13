@@ -30,7 +30,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
-    parser.add_argument("--num_trials", type=int, default=20, help='Number of trials for hyperparameter search')
+    parser.add_argument("--num_trials", type=int, default=50, help='Number of trials for hyperparameter search')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -91,8 +91,9 @@ def load_datasets(run_id: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
         'dataset_summary_file': test_dataset_summary_file,
         'event_stats_file': test_event_stats_file,
         'features_stats_file': features_stats_file,
-        'with_global_mass_loss': True,
-        'with_local_mass_loss': True,
+        # Exclude computation of physics loss for hyperparameter search
+        'with_global_mass_loss': False,
+        'with_local_mass_loss': False,
     }
 
     storage_mode = dataset_parameters['storage_mode']
@@ -172,9 +173,9 @@ def cross_validate(global_mass_loss_percent: Optional[float],
         rollout_timesteps = test_config['rollout_timesteps']
         validation_stats = ValidationStats(logger=logger)
         if use_edge_pred_loss:
-            test_autoregressive(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device)
+            test_autoregressive(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
         else:
-            test_autoregressive_node_only(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device)
+            test_autoregressive_node_only(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
 
         avg_rmse = validation_stats.get_avg_rmse()
         val_rmses.append(avg_rmse)
@@ -185,14 +186,19 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             val_edge_rmses.append(avg_edge_rmse)
             logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
-    np_val_rmses = np.array(val_rmses)
-    avg_val_rmse = np_val_rmses[np.isfinite(np_val_rmses)].mean()
+    def get_avg_rmse(rmses: List[float]) -> float:
+        np_rmses = np.array(rmses)
+        is_finite = np.isfinite(np_rmses)
+        if np.any(is_finite):
+            return np_rmses[is_finite].mean()
+        return 1e10
+
+    avg_val_rmse = get_avg_rmse(val_rmses)
     logger.log(f'\nAverage RMSE across all events: {avg_val_rmse:.4e}')
     if not use_edge_pred_loss:
         return avg_val_rmse
 
-    np_val_edge_rmses = np.array(val_edge_rmses)
-    avg_val_edge_rmse = np_val_edge_rmses[np.isfinite(np_val_edge_rmses)].mean()
+    avg_val_edge_rmse = get_avg_rmse(val_edge_rmses)
     logger.log(f'Average Edge RMSE across all events: {avg_val_edge_rmse:.4e}')
     return avg_val_rmse, avg_val_edge_rmse
 

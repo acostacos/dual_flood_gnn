@@ -28,7 +28,7 @@ training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'training_stats'                    # Directory to save training statistics
-  num_epochs           : 30                                  # Number of epochs
+  num_epochs           : 20                                  # Number of epochs
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.001                               # Learning rate
   weight_decay         : 0                                   # Weight decay

@@ -108,7 +108,7 @@ def load_datasets(run_id: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
     dataset_cache[f'train_{run_id}'] = train_dataset
 
     test_dataset = dataset_class(**test_dataset_config)
-    dataset_cache[f'test_{run_id}'] = train_dataset
+    dataset_cache[f'test_{run_id}'] = test_dataset
 
     return train_dataset, test_dataset
 

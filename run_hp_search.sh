@@ -19,4 +19,5 @@ srun python hyperparameter_search.py --config 'configs/hp_search_local_config.ya
 srun python hyperparameter_search.py --config 'configs/hp_search_config.yaml' --model 'GAT'
 
 # Base NodeEdge GNN hyperparameter search
-srun python hyperparameter_search.py --config 'configs/hp_search_no_physics_config.yaml' --model 'NodeEdgeGNN'
+#srun python hyperparameter_search.py --config 'configs/hp_search_no_physics_config.yaml' --model 'NodeEdgeGNN'
+srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNN' --hyperparameters 'edge_pred_loss' --summary_file 'temp_train.csv'

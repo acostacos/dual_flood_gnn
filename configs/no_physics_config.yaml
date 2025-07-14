@@ -3,7 +3,7 @@ dataset_parameters:
   root_dir: 'data/datasets'
   nodes_shp_file: 'Geometry/updated_cell_centers.shp'
   edges_shp_file: 'Geometry/links.shp'
-  features_stats_file: 'all_events_features_stats.yaml'
+  features_stats_file: 'features_stats.yaml'
 
   previous_timesteps: 6
   normalize: True

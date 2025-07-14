@@ -17,28 +17,28 @@ dataset_parameters:
   - 1129
 
   training:
-    dataset_summary_file: 'temp_train.csv'
+    dataset_summary_file: 'train.csv'
     event_stats_file: 'train_event_stats.yaml'
 
   testing:
-    dataset_summary_file: 'dummy_test.csv'
+    dataset_summary_file: 'test.csv'
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'training_stats'                    # Directory to save training statistics
-  num_epochs           : 100                                 # Number of epochs
+  num_epochs           : 20                                  # Number of epochs
   batch_size           : 128                                 # Batch size
-  learning_rate        : 0.0001                              # Learning rate
+  learning_rate        : 0.001                               # Learning rate
   weight_decay         : 0                                   # Weight decay
 
 loss_func_parameters:
-  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
+  edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: True                                 # Use global mass conservation in loss function
   use_local_mass_loss: True                                  # Use local mass conservation in loss function
-  global_mass_loss_percent: 0.001                            # Percentage of global mass conservation loss in total loss
-  local_mass_loss_percent: 0.001                             # Percentage of local mass conservation loss in total loss
+  global_mass_loss_percent: 0.00004                          # Percentage of global mass conservation loss in total loss
+  local_mass_loss_percent: 0.00008                           # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
   log_path: null                                        # Path to save testing logs
@@ -85,4 +85,3 @@ model_parameters:
     encoder_activation: 'prelu'
     decoder_layers: 2
     decoder_activation: 'prelu'
-

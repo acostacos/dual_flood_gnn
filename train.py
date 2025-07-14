@@ -72,7 +72,7 @@ def run_train(model: torch.nn.Module,
             logger.log(f'Using local mass conservation loss with target percentage {local_mass_loss_percent}')
             trainer_params['local_mass_loss_percent'] = local_mass_loss_percent
 
-        if model_name == 'NodeEdgeGNN':
+        if 'NodeEdgeGNN' in model_name:
             edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
             logger.log(f'Using edge prediction loss with target percentage {edge_pred_loss_percent}')
 

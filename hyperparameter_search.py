@@ -260,7 +260,7 @@ if __name__ == '__main__':
 
         use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss = get_hyperparam_search_config()
         assert use_global_mass_loss or use_local_mass_loss or use_edge_pred_loss, 'At least one hyperparameter must be selected for search'
-        assert not use_edge_pred_loss or args.model == 'NodeEdgeGNN', 'Edge prediction loss can only be used with NodeEdgeGNN model'
+        assert not use_edge_pred_loss or 'NodeEdgeGNN' in args.model, 'Edge prediction loss can only be used with NodeEdgeGNN model'
 
         if args.seed is not None:
             np.random.seed(args.seed)

@@ -32,7 +32,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
-    parser.add_argument("--num_trials", type=int, default=30, help='Number of trials for hyperparameter search')
+    parser.add_argument("--num_trials", type=int, default=20, help='Number of trials for hyperparameter search')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -211,8 +211,8 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     return avg_val_rmse, avg_val_edge_rmse
 
 def objective(trial: optuna.Trial) -> float:
-    global_mass_loss_percent = trial.suggest_float('global_mass_loss_percent', 0.00001, 0.001, log=True) if use_global_mass_loss else None
-    local_mass_loss_percent = trial.suggest_float('local_mass_loss_percent', 0.00001, 0.001, log=True) if use_local_mass_loss else None
+    global_mass_loss_percent = trial.suggest_float('global_mass_loss_percent', 0.001, 0.5, log=True) if use_global_mass_loss else None
+    local_mass_loss_percent = trial.suggest_float('local_mass_loss_percent', 0.001, 0.5, log=True) if use_local_mass_loss else None
     edge_pred_loss_percent = trial.suggest_float('edge_pred_loss_percent', 0.1, 0.9, step=0.05) if use_edge_pred_loss else None
 
     logger.log(f'Hyperparameters: global_mass_loss_percent={global_mass_loss_percent}, local_mass_loss_percent={local_mass_loss_percent}, edge_pred_loss_percent={edge_pred_loss_percent}')
@@ -241,10 +241,10 @@ def plot_hyperparameter_search_results(study: optuna.Study):
         fig.write_html(os.path.join(stats_dir, 'edge_slice_plot.html'))
     else:
         fig = plot_optimization_history(study)
-        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
+        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'), target_name='RMSE')
 
         fig = plot_slice(study)
-        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
+        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'), target_name='RMSE')
 
 if __name__ == '__main__':
     args = parse_args()

@@ -8,17 +8,29 @@
 
 . venv/bin/activate
 
+# Grid Search
 # Global Mass Loss hyperparameter search
-#srun python hyperparameter_search.py --config 'configs/hp_search_global_config.yaml' --model 'GAT'
-srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' --summary_file 'temp_train.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' --summary_file 'temp_train.csv'
 
 # Local Mass Loss hyperparameter search
-#srun python hyperparameter_search.py --config 'configs/hp_search_local_config.yaml' --model 'GAT'
-srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'local_mass_loss' --summary_file 'temp_train.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'local_mass_loss' --summary_file 'temp_train.csv'
 
 # Global and Local Mass Loss hyperparameter search
-srun python hyperparameter_search.py --config 'configs/hp_search_config.yaml' --model 'GAT'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' 'local_mass_loss' --summary_file 'temp_train.csv'
 
 # Base NodeEdge GNN hyperparameter search
-#srun python hyperparameter_search.py --config 'configs/hp_search_no_physics_config.yaml' --model 'NodeEdgeGNN'
-srun python hyperparameter_search.py  --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNN' --hyperparameters 'edge_pred_loss' --summary_file 'temp_train.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNN' --hyperparameters 'edge_pred_loss' --summary_file 'temp_train.csv'
+
+
+# Bayesian Search
+# Global Mass Loss hyperparameter search
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' --summary_file 'temp_train.csv'
+
+# Local Mass Loss hyperparameter search
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'local_mass_loss' --summary_file 'temp_train.csv'
+
+# Global and Local Mass Loss hyperparameter search
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'GAT' --hyperparameters 'global_mass_loss' 'local_mass_loss' --summary_file 'temp_train.csv'
+
+# Base NodeEdge GNN hyperparameter search
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNN' --hyperparameters 'edge_pred_loss' --summary_file 'temp_train.csv'

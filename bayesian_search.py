@@ -3,13 +3,8 @@ import numpy as np
 import traceback
 import torch
 import optuna
-import pandas as pd
-import shutil
 
 from argparse import ArgumentParser, Namespace
-from data import FloodEventDataset, InMemoryFloodEventDataset
-from models import model_factory
-from models.base_model import BaseModel
 from optuna.visualization import plot_optimization_history, plot_slice
 from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
@@ -17,14 +12,8 @@ from torch_geometric.loader import DataLoader
 from training import NodeRegressionTrainer, DualRegressionTrainer
 from typing import List, Optional, Tuple
 from utils import ValidationStats, Logger, file_utils
-
-TEMP_DIR_NAME = '_temp_hp_dir'
-HYPERPARAMETER_CHOICES = [
-    'global_mass_loss',
-    'local_mass_loss',
-    'edge_pred_loss',
-]
-dataset_cache = {}
+from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
+    create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -32,7 +21,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
-    parser.add_argument("--num_trials", type=int, default=30, help='Number of trials for hyperparameter search')
+    parser.add_argument("--num_trials", type=int, default=20, help='Number of trials for hyperparameter search')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -45,86 +34,6 @@ def get_hyperparam_search_config() -> Tuple[bool, bool, bool]:
     use_edge_pred_loss = 'edge_pred_loss' in hyperparams_to_search
     return use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss
 
-def create_cross_val_dataset_files() -> List[str]:
-    dataset_summary_file = args.summary_file
-
-    dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
-
-    assert os.path.exists(dataset_summary_path), f'Dataset summary file does not exist: {dataset_summary_path}'
-    summary_df = pd.read_csv(dataset_summary_path)
-    assert len(summary_df) > 0, f'No data found in summary file: {dataset_summary_path}'
-
-    hec_ras_run_ids = []
-    for _, row in summary_df.iterrows():
-        run_id = row['Run_ID']
-        assert run_id not in hec_ras_run_ids, f'Duplicate Run_ID found: {run_id}'
-
-        other_rows_df: pd.DataFrame = summary_df[summary_df['Run_ID'] != run_id]
-        train_df_path = os.path.join(raw_temp_dir_path, f'train_{run_id}.csv') 
-        other_rows_df.to_csv(train_df_path, index=False)
-
-        event_df = pd.DataFrame([row])
-        test_df_path = os.path.join(raw_temp_dir_path, f'test_{run_id}.csv')
-        event_df.to_csv(test_df_path, index=False)
-
-        hec_ras_run_ids.append(run_id)
-
-    return hec_ras_run_ids
-
-def load_datasets(run_id: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
-    if f'train_{run_id}' in dataset_cache and f'test_{run_id}' in dataset_cache:
-        return dataset_cache[f'train_{run_id}'], dataset_cache[f'test_{run_id}']
-
-    features_stats_file = os.path.join(TEMP_DIR_NAME, f'features_stats_{run_id}.yaml')
-    train_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'train_{run_id}.csv')
-    train_event_stats_file = os.path.join(TEMP_DIR_NAME, f'train_event_stats_{run_id}.yaml')
-    train_dataset_config = {
-        **base_dataset_config,
-        'mode': 'train',
-        'dataset_summary_file': train_dataset_summary_file,
-        'event_stats_file': train_event_stats_file,
-        'features_stats_file': features_stats_file,
-        'with_global_mass_loss': use_global_mass_loss,
-        'with_local_mass_loss': use_local_mass_loss,
-    }
-
-    test_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'test_{run_id}.csv')
-    test_event_stats_file = os.path.join(TEMP_DIR_NAME, f'test_event_stats_{run_id}.yaml')
-    test_dataset_config = {
-        **base_dataset_config,
-        'mode': 'test',
-        'dataset_summary_file': test_dataset_summary_file,
-        'event_stats_file': test_event_stats_file,
-        'features_stats_file': features_stats_file,
-        # Exclude computation of physics loss for hyperparameter search
-        'with_global_mass_loss': False,
-        'with_local_mass_loss': False,
-    }
-
-    storage_mode = dataset_parameters['storage_mode']
-    dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
-
-    train_dataset = dataset_class(**train_dataset_config)
-    dataset_cache[f'train_{run_id}'] = train_dataset
-
-    test_dataset = dataset_class(**test_dataset_config)
-    dataset_cache[f'test_{run_id}'] = test_dataset
-
-    return train_dataset, test_dataset
-
-def load_model(dataset: FloodEventDataset) -> BaseModel:
-    base_model_params = {
-        'static_node_features': dataset.num_static_node_features,
-        'dynamic_node_features': dataset.num_dynamic_node_features,
-        'static_edge_features': dataset.num_static_edge_features,
-        'dynamic_edge_features': dataset.num_dynamic_edge_features,
-        'previous_timesteps': dataset.previous_timesteps,
-        'device': args.device,
-    }
-    model_config = {**model_params, **base_model_params}
-    model = model_factory(args.model, **model_config)
-    return model
-
 def cross_validate(global_mass_loss_percent: Optional[float],
                    local_mass_loss_percent: Optional[float],
                    edge_pred_loss_percent: Optional[float]) -> float | Tuple[float, float]:
@@ -134,8 +43,13 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     for run_id in hec_ras_run_ids:
         logger.log(f'Cross-validating with Run ID {run_id} as the test set...\n')
 
-        train_dataset, test_dataset = load_datasets(run_id)
-        model = load_model(train_dataset)
+        storage_mode = config['dataset_parameters']['storage_mode']
+        train_dataset, test_dataset = load_datasets(run_id,
+                                                    base_dataset_config,
+                                                    use_global_mass_loss,
+                                                    use_local_mass_loss,
+                                                    storage_mode)
+        model = load_model(args.model, model_params, train_dataset, args.device)
         delta_t = train_dataset.timestep_interval
 
         # ============ Training Phase ============
@@ -211,8 +125,8 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     return avg_val_rmse, avg_val_edge_rmse
 
 def objective(trial: optuna.Trial) -> float:
-    global_mass_loss_percent = trial.suggest_float('global_mass_loss_percent', 0.00001, 0.001, log=True) if use_global_mass_loss else None
-    local_mass_loss_percent = trial.suggest_float('local_mass_loss_percent', 0.00001, 0.001, log=True) if use_local_mass_loss else None
+    global_mass_loss_percent = trial.suggest_float('global_mass_loss_percent', 0.001, 0.5, log=True) if use_global_mass_loss else None
+    local_mass_loss_percent = trial.suggest_float('local_mass_loss_percent', 0.001, 0.5, log=True) if use_local_mass_loss else None
     edge_pred_loss_percent = trial.suggest_float('edge_pred_loss_percent', 0.1, 0.9, step=0.05) if use_edge_pred_loss else None
 
     logger.log(f'Hyperparameters: global_mass_loss_percent={global_mass_loss_percent}, local_mass_loss_percent={local_mass_loss_percent}, edge_pred_loss_percent={edge_pred_loss_percent}')
@@ -240,10 +154,10 @@ def plot_hyperparameter_search_results(study: optuna.Study):
         fig = plot_slice(study, target=lambda t: t.values[1], target_name='Edge RMSE')
         fig.write_html(os.path.join(stats_dir, 'edge_slice_plot.html'))
     else:
-        fig = plot_optimization_history(study)
+        fig = plot_optimization_history(study, target_name='RMSE')
         fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
 
-        fig = plot_slice(study)
+        fig = plot_slice(study, target_name='RMSE')
         fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
 
 if __name__ == '__main__':
@@ -260,59 +174,22 @@ if __name__ == '__main__':
 
         use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss = get_hyperparam_search_config()
         assert use_global_mass_loss or use_local_mass_loss or use_edge_pred_loss, 'At least one hyperparameter must be selected for search'
-        assert not use_edge_pred_loss or args.model == 'NodeEdgeGNN', 'Edge prediction loss can only be used with NodeEdgeGNN model'
+        assert not use_edge_pred_loss or 'NodeEdgeGNN' in args.model, 'Edge prediction loss can only be used with NodeEdgeGNN model'
 
         if args.seed is not None:
             np.random.seed(args.seed)
             torch.manual_seed(args.seed)
 
-        # Print static configuration
         current_device = torch.cuda.get_device_name(args.device) if args.device != 'cpu' else 'CPU'
         logger.log(f'Using device: {current_device}')
 
-        # ============ Dataset Configuration ============
-        dataset_parameters = config['dataset_parameters']
-        root_dir = dataset_parameters['root_dir']
-        base_dataset_config = {
-            'root_dir': root_dir,
-            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-            'edges_shp_file': dataset_parameters['edges_shp_file'],
-            'previous_timesteps': dataset_parameters['previous_timesteps'],
-            'normalize': dataset_parameters['normalize'],
-            'timestep_interval': dataset_parameters['timestep_interval'],
-            'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
-            'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
-            'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
-            'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
-            'logger': logger,
-            'force_reload': False,
-        }
-        logger.log(f'Using train dataset configuration: {base_dataset_config}')
-
-        # ============ Model Configuration ============
-        model_params = config['model_parameters'][args.model]
-        logger.log(f'Using model: {args.model}')
-        logger.log(f'Using model configuration: {model_params}')
-
-        # ============ Training Configuration ============
-        train_config = config['training_parameters']
-        logger.log(f'Using training configuration: {train_config}')
-
-        # ============ Testing Configuration ============
-        test_config = config['testing_parameters']
-        logger.log(f'Using testing configuration: {test_config}')
+        static_config = get_static_config(config, args.model, logger)
+        base_dataset_config, model_params, train_config, test_config = static_config
 
         # Begin hyperparameter search
-        # Create temporary directories
-        raw_temp_dir_path = os.path.join(root_dir, 'raw', TEMP_DIR_NAME)
-        processed_temp_dir_path = os.path.join(root_dir, 'processed', TEMP_DIR_NAME)
-        if os.path.exists(processed_temp_dir_path):
-            shutil.rmtree(processed_temp_dir_path)
-        if os.path.exists(raw_temp_dir_path):
-            shutil.rmtree(raw_temp_dir_path)
-        os.makedirs(raw_temp_dir_path)
-
-        hec_ras_run_ids = create_cross_val_dataset_files()
+        root_dir = base_dataset_config['root_dir']
+        raw_temp_dir_path, processed_temp_dir_path = create_temp_dirs(root_dir)
+        hec_ras_run_ids = create_cross_val_dataset_files(root_dir, args.summary_file)
 
         study_kwargs = {}
         if use_edge_pred_loss:
@@ -344,8 +221,7 @@ if __name__ == '__main__':
         plot_hyperparameter_search_results(study)
 
         # Clean up temporary directories
-        shutil.rmtree(raw_temp_dir_path)
-        shutil.rmtree(processed_temp_dir_path)
+        delete_temp_dirs(raw_temp_dir_path, processed_temp_dir_path)
 
         logger.log('================================================')
 

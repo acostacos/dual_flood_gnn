@@ -228,7 +228,7 @@ def run_test(model: torch.nn.Module,
 
         validation_stats = ValidationStats(logger=logger)
 
-        if model.__class__.__name__ == 'NodeEdgeGNN':
+        if 'NodeEdgeGNN' in model.__class__.__name__:
             test_autoregressive(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)
         else:
             test_autoregressive_node_only(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)

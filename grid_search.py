@@ -1,0 +1,255 @@
+import os
+import numpy as np
+import traceback
+import torch
+
+from argparse import ArgumentParser, Namespace
+from datetime import datetime
+from itertools import product
+from test import test_autoregressive, test_autoregressive_node_only
+from torch.nn import MSELoss
+from torch_geometric.loader import DataLoader
+from training import NodeRegressionTrainer, DualRegressionTrainer
+from typing import Dict, Tuple, Optional, List
+from utils import ValidationStats, Logger, file_utils
+from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
+    create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
+
+torch.serialization.add_safe_globals([datetime])
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser(description='')
+    parser.add_argument("--hyperparameters", type=str, choices=HYPERPARAMETER_CHOICES, nargs='+', required=True, help='Hyperparameters to search for')
+    parser.add_argument("--config", type=str, required=True, help='Path to training config file')
+    parser.add_argument("--model", type=str, required=True, help='Model to use for training')
+    parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
+    parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
+    parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
+    return parser.parse_args()
+
+def get_hyperparam_search_config() -> Tuple[bool, bool, bool]:
+    hyperparams_to_search = args.hyperparameters
+
+    use_global_mass_loss = 'global_mass_loss' in hyperparams_to_search
+    use_local_mass_loss = 'local_mass_loss' in hyperparams_to_search
+    use_edge_pred_loss = 'edge_pred_loss' in hyperparams_to_search
+    return use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss
+
+def get_hyperparameters_for_search(hyperparam_comb: Tuple) -> Dict:
+    index = 0
+
+    global_mass_loss_percent = None
+    if use_global_mass_loss:
+        global_mass_loss_percent = hyperparam_comb[index]
+        index += 1
+
+    local_mass_loss_percent = None
+    if use_local_mass_loss:
+        local_mass_loss_percent = hyperparam_comb[index]
+        index += 1
+
+    edge_pred_loss_percent = None
+    if use_edge_pred_loss:
+        edge_pred_loss_percent = hyperparam_comb[index]
+        index += 1
+    return global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent
+
+def cross_validate(global_mass_loss_percent: Optional[float],
+                   local_mass_loss_percent: Optional[float],
+                   edge_pred_loss_percent: Optional[float]) -> float | Tuple[float, float]:
+    val_rmses = []
+    if use_edge_pred_loss:
+        val_edge_rmses = []
+    for run_id in hec_ras_run_ids:
+        logger.log(f'Cross-validating with Run ID {run_id} as the test set...\n')
+
+        storage_mode = config['dataset_parameters']['storage_mode']
+        train_dataset, test_dataset = load_datasets(run_id,
+                                                    base_dataset_config,
+                                                    use_global_mass_loss,
+                                                    use_local_mass_loss,
+                                                    storage_mode)
+        model = load_model(args.model, model_params, train_dataset, args.device)
+        delta_t = train_dataset.timestep_interval
+
+        # ============ Training Phase ============
+        train_dataloader = DataLoader(train_dataset, batch_size=train_config['batch_size'])
+        criterion = MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
+
+        if global_mass_loss_percent is None:
+            global_mass_loss_percent = config['loss_func_parameters']['global_mass_loss_percent']
+        if local_mass_loss_percent is None:
+            local_mass_loss_percent = config['loss_func_parameters']['local_mass_loss_percent']
+        if edge_pred_loss_percent is None:
+            edge_pred_loss_percent = config['loss_func_parameters']['edge_pred_loss_percent']
+        trainer_params = {
+            'model': model,
+            'dataloader': train_dataloader,
+            'optimizer': optimizer,
+            'loss_func': criterion,
+            'use_global_loss': use_global_mass_loss,
+            'global_mass_loss_percent': global_mass_loss_percent,
+            'use_local_loss': use_local_mass_loss,
+            'local_mass_loss_percent': local_mass_loss_percent,
+            'delta_t': delta_t,
+            'num_epochs': train_config['num_epochs'],
+            'logger': logger,
+            'device': args.device,
+        }
+        if use_edge_pred_loss:
+            trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
+        else:
+            trainer = NodeRegressionTrainer(**trainer_params)
+
+        trainer.training_stats.log = lambda x : None  # Suppress training stats logging to console
+        trainer.train()
+        trainer.training_stats.log = logger.log  # Restore logging to console
+
+        trainer.print_stats_summary()
+
+        # ============ Testing Phase ============
+        logger.log('\nValidating model...')
+
+        rollout_start = test_config['rollout_start']
+        rollout_timesteps = test_config['rollout_timesteps']
+        validation_stats = ValidationStats(logger=logger)
+        if use_edge_pred_loss:
+            test_autoregressive(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
+        else:
+            test_autoregressive_node_only(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
+
+        avg_rmse = validation_stats.get_avg_rmse()
+        val_rmses.append(avg_rmse)
+        logger.log(f'Event {run_id} RMSE: {avg_rmse:.4e}')
+
+        if use_edge_pred_loss:
+            avg_edge_rmse = validation_stats.get_avg_edge_rmse()
+            val_edge_rmses.append(avg_edge_rmse)
+            logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
+
+    def get_avg_rmse(rmses: List[float]) -> float:
+        np_rmses = np.array(rmses)
+        is_finite = np.isfinite(np_rmses)
+        if np.any(is_finite):
+            return np_rmses[is_finite].mean()
+        return 1e10
+
+    avg_val_rmse = get_avg_rmse(val_rmses)
+    logger.log(f'\nAverage RMSE across all events: {avg_val_rmse:.4e}')
+    if not use_edge_pred_loss:
+        return avg_val_rmse
+
+    avg_val_edge_rmse = get_avg_rmse(val_edge_rmses)
+    logger.log(f'Average Edge RMSE across all events: {avg_val_edge_rmse:.4e}')
+    return avg_val_rmse, avg_val_edge_rmse
+
+def search(hyperparameters: Dict[str, List[float]]):
+    best_rmse = float('inf')
+    if use_edge_pred_loss:
+        best_edge_rmse = float('inf')
+    best_hyperparameters = {}
+
+    hyperparameter_list = list(hyperparameters.keys())
+    hyperparameter_values = [hyperparameters[key] for key in hyperparameter_list]
+    combinations = list(product(*hyperparameter_values))
+    for comb in combinations:
+        logger.log('\nRunning training with hyperparameter combination:')
+        for key, value in zip(hyperparameter_list, comb):
+            logger.log(f'\t{key}: {value}')
+
+        search_hyperparams = get_hyperparameters_for_search(comb)
+        global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent = search_hyperparams
+
+        results = cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
+        if use_edge_pred_loss:
+            avg_val_rmse, avg_val_edge_rmse = results
+            is_best = avg_val_rmse < best_rmse and avg_val_edge_rmse < best_edge_rmse
+        else:
+            avg_val_rmse = results
+            is_best = avg_val_rmse < best_rmse
+
+        if is_best:
+            best_rmse = avg_val_rmse
+            if use_edge_pred_loss:
+                best_edge_rmse = avg_val_edge_rmse
+
+            if use_global_mass_loss:
+                best_hyperparameters['global_mass_loss_percent'] = global_mass_loss_percent
+            if use_local_mass_loss:
+                best_hyperparameters['local_mass_loss_percent'] = local_mass_loss_percent
+            if use_edge_pred_loss:
+                best_hyperparameters['edge_pred_loss_percent'] = edge_pred_loss_percent
+
+            logger.log(f'New best RMSE for hyperparameter combination:')
+            for key, value in zip(hyperparameter_list, comb):
+                logger.log(f'\t{key}: {value}')
+
+    if use_edge_pred_loss:
+        return (best_rmse, best_edge_rmse), best_hyperparameters
+    return best_rmse, best_hyperparameters
+
+if __name__ == '__main__':
+    args = parse_args()
+    config = file_utils.read_yaml_file(args.config)
+
+    train_config = config['training_parameters']
+    log_path = train_config['log_path']
+
+    logger = Logger(log_path=log_path)
+
+    try:
+        logger.log('================================================')
+
+        if args.seed is not None:
+            np.random.seed(args.seed)
+            torch.manual_seed(args.seed)
+
+        current_device = torch.cuda.get_device_name(args.device) if args.device != 'cpu' else 'CPU'
+        logger.log(f'Using device: {current_device}')
+
+        # Check which hyperparameters will be searched
+        use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss = get_hyperparam_search_config()
+        assert use_global_mass_loss or use_local_mass_loss or use_edge_pred_loss, 'At least one hyperparameter must be selected for search'
+        assert not use_edge_pred_loss or 'NodeEdgeGNN' in args.model, 'Edge prediction loss can only be used with NodeEdgeGNN model'
+
+        hyperparameters = {}
+        if use_global_mass_loss:
+            GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.03, 0.01]
+            hyperparameters['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
+        if use_local_mass_loss:
+            LOCAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.03, 0.01]
+            hyperparameters['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
+        if use_edge_pred_loss:
+            EDGE_LOSS_PERCENTS = [0.1, 0.3, 0.5, 0.7, 0.9]
+            hyperparameters['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
+
+        logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(list(hyperparameters.keys()))}')
+
+        static_config = get_static_config(config, args.model, logger)
+        base_dataset_config, model_params, train_config, test_config = static_config
+
+        # Begin hyperparameter search
+        root_dir = base_dataset_config['root_dir']
+        raw_temp_dir_path, processed_temp_dir_path = create_temp_dirs(root_dir)
+        hec_ras_run_ids = create_cross_val_dataset_files(root_dir, args.summary_file)
+
+        best_rmse_values, best_hyperparameters = search(hyperparameters)
+
+        if use_edge_pred_loss:
+            best_rmse, best_edge_rmse = best_rmse_values
+            logger.log(f'Best RMSE: {best_rmse:.4e}, Best Edge RMSE: {best_edge_rmse:.4e}')
+        else:
+            best_rmse = best_rmse_values
+            logger.log(f'Best RMSE: {best_rmse:.4e}')
+        logger.log('Best hyperparameters found:')
+        for key, value in best_hyperparameters.items():
+            logger.log(f'{key}: {value}')
+
+        # Clean up temporary directories
+        delete_temp_dirs(raw_temp_dir_path, processed_temp_dir_path)
+
+        logger.log('================================================')
+
+    except Exception:
+        logger.log(f'Unexpected error:\n{traceback.format_exc()}')

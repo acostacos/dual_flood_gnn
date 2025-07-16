@@ -30,7 +30,7 @@ training_parameters:
   stats_dir            : 'hp_stats'                          # Directory to save training statistics
   num_epochs           : 20                                  # Number of epochs
   batch_size           : 128                                 # Batch size
-  learning_rate        : 0.001                               # Learning rate
+  learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
 
 loss_func_parameters:

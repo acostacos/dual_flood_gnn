@@ -5,6 +5,7 @@ import torch
 import optuna
 
 from argparse import ArgumentParser, Namespace
+from datetime import datetime
 from optuna.visualization import plot_optimization_history, plot_slice
 from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
@@ -34,13 +35,34 @@ def get_hyperparam_search_config() -> Tuple[bool, bool, bool]:
     use_edge_pred_loss = 'edge_pred_loss' in hyperparams_to_search
     return use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss
 
+def save_cross_val_results(trainer, validation_stats: ValidationStats, run_id: str, model_postfix: str):
+    curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    model_name = f'{args.model}_{curr_date_str}{model_postfix}'
+    stats_dir = train_config['stats_dir']
+    if stats_dir is not None:
+        if not os.path.exists(stats_dir):
+            os.makedirs(stats_dir)
+
+        saved_metrics_path = os.path.join(stats_dir, f'{model_name}_train_stats.npz')
+        trainer.save_stats(saved_metrics_path)
+
+    output_dir = test_config['output_dir']
+    if output_dir is not None:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # Get filename from model path
+        saved_metrics_path = os.path.join(output_dir, f'{model_name}_runid_{run_id}_test_metrics.npz')
+        validation_stats.save_stats(saved_metrics_path)
+
 def cross_validate(global_mass_loss_percent: Optional[float],
                    local_mass_loss_percent: Optional[float],
-                   edge_pred_loss_percent: Optional[float]) -> float | Tuple[float, float]:
+                   edge_pred_loss_percent: Optional[float],
+                   save_stats_for_first: bool = False) -> float | Tuple[float, float]:
     val_rmses = []
     if use_edge_pred_loss:
         val_edge_rmses = []
-    for run_id in hec_ras_run_ids:
+    for i, run_id in enumerate(hec_ras_run_ids):
         logger.log(f'Cross-validating with Run ID {run_id} as the test set...\n')
 
         storage_mode = config['dataset_parameters']['storage_mode']
@@ -108,6 +130,18 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             val_edge_rmses.append(avg_edge_rmse)
             logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
+        # ============ Saving stats (optional) ============
+        if save_stats_for_first and i == 0:
+            model_postfix = ''
+            if use_global_mass_loss:
+                model_postfix += f'_g{global_mass_loss_percent}'
+            if use_local_mass_loss:
+                model_postfix += f'_l{local_mass_loss_percent}'
+            if use_edge_pred_loss:
+                model_postfix += f'_e{edge_pred_loss_percent}'
+
+            save_cross_val_results(trainer, validation_stats, run_id, model_postfix)
+
     def get_avg_rmse(rmses: List[float]) -> float:
         np_rmses = np.array(rmses)
         is_finite = np.isfinite(np_rmses)
@@ -131,7 +165,10 @@ def objective(trial: optuna.Trial) -> float:
 
     logger.log(f'Hyperparameters: global_mass_loss_percent={global_mass_loss_percent}, local_mass_loss_percent={local_mass_loss_percent}, edge_pred_loss_percent={edge_pred_loss_percent}')
 
-    return cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
+    return cross_validate(global_mass_loss_percent,
+                          local_mass_loss_percent,
+                          edge_pred_loss_percent,
+                          save_stats_for_first=True)
 
 def plot_hyperparameter_search_results(study: optuna.Study):
     stats_dir = train_config['stats_dir']

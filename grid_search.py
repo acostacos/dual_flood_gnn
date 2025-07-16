@@ -15,8 +15,6 @@ from utils import ValidationStats, Logger, file_utils
 from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
     create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
 
-torch.serialization.add_safe_globals([datetime])
-
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
     parser.add_argument("--hyperparameters", type=str, choices=HYPERPARAMETER_CHOICES, nargs='+', required=True, help='Hyperparameters to search for')
@@ -54,13 +52,34 @@ def get_hyperparameters_for_search(hyperparam_comb: Tuple) -> Dict:
         index += 1
     return global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent
 
+def save_cross_val_results(trainer, validation_stats: ValidationStats, run_id: str, model_postfix: str):
+    curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    model_name = f'{args.model}_{curr_date_str}{model_postfix}'
+    stats_dir = train_config['stats_dir']
+    if stats_dir is not None:
+        if not os.path.exists(stats_dir):
+            os.makedirs(stats_dir)
+
+        saved_metrics_path = os.path.join(stats_dir, f'{model_name}_train_stats.npz')
+        trainer.save_stats(saved_metrics_path)
+
+    output_dir = test_config['output_dir']
+    if output_dir is not None:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        # Get filename from model path
+        saved_metrics_path = os.path.join(output_dir, f'{model_name}_runid_{run_id}_test_metrics.npz')
+        validation_stats.save_stats(saved_metrics_path)
+
 def cross_validate(global_mass_loss_percent: Optional[float],
                    local_mass_loss_percent: Optional[float],
-                   edge_pred_loss_percent: Optional[float]) -> float | Tuple[float, float]:
+                   edge_pred_loss_percent: Optional[float],
+                   save_stats_for_first: bool = False) -> float | Tuple[float, float]:
     val_rmses = []
     if use_edge_pred_loss:
         val_edge_rmses = []
-    for run_id in hec_ras_run_ids:
+    for i, run_id in enumerate(hec_ras_run_ids):
         logger.log(f'Cross-validating with Run ID {run_id} as the test set...\n')
 
         storage_mode = config['dataset_parameters']['storage_mode']
@@ -128,6 +147,18 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             val_edge_rmses.append(avg_edge_rmse)
             logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
+        # ============ Saving stats (optional) ============
+        if save_stats_for_first and i == 0:
+            model_postfix = ''
+            if use_global_mass_loss:
+                model_postfix += f'_g{global_mass_loss_percent}'
+            if use_local_mass_loss:
+                model_postfix += f'_l{local_mass_loss_percent}'
+            if use_edge_pred_loss:
+                model_postfix += f'_e{edge_pred_loss_percent}'
+
+            save_cross_val_results(trainer, validation_stats, run_id, model_postfix)
+
     def get_avg_rmse(rmses: List[float]) -> float:
         np_rmses = np.array(rmses)
         is_finite = np.isfinite(np_rmses)
@@ -161,7 +192,10 @@ def search(hyperparameters: Dict[str, List[float]]):
         search_hyperparams = get_hyperparameters_for_search(comb)
         global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent = search_hyperparams
 
-        results = cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
+        results = cross_validate(global_mass_loss_percent,
+                                 local_mass_loss_percent,
+                                 edge_pred_loss_percent,
+                                 save_stats_for_first=True)
         if use_edge_pred_loss:
             avg_val_rmse, avg_val_edge_rmse = results
             is_best = avg_val_rmse < best_rmse and avg_val_edge_rmse < best_edge_rmse
@@ -215,13 +249,14 @@ if __name__ == '__main__':
 
         hyperparameters = {}
         if use_global_mass_loss:
-            GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.03, 0.01]
+            # GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
+            GLOBAL_LOSS_PERCENTS = [0.01]
             hyperparameters['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
         if use_local_mass_loss:
-            LOCAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.03, 0.01]
+            LOCAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
             hyperparameters['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
         if use_edge_pred_loss:
-            EDGE_LOSS_PERCENTS = [0.1, 0.3, 0.5, 0.7, 0.9]
+            EDGE_LOSS_PERCENTS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
             hyperparameters['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
 
         logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(list(hyperparameters.keys()))}')

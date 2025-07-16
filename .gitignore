@@ -182,6 +182,7 @@ logs/
 training_stats/
 saved_models/
 saved_metrics/
+hp_stats/
 slurm_logs/
 slurm-*.out
 

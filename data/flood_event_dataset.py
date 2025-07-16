@@ -46,6 +46,9 @@ class FloodEventDataset(Dataset):
                  debug: bool = False,
                  logger: Optional[Logger] = None,
                  force_reload: bool = False):
+        assert mode in ['train', 'test'], f'Invalid mode: {mode}. Must be "train" or "test".'
+        assert timestep_interval % self.BASE_TIMESTEP_INTERVAL == 0, f'Timestep interval must be a multiple of {self.BASE_TIMESTEP_INTERVAL} seconds.'
+
         self.log_func = print
         if logger is not None and hasattr(logger, 'log'):
             self.log_func = logger.log

@@ -15,8 +15,6 @@ from training import NodeRegressionTrainer, DualRegressionTrainer
 from typing import Dict, Optional
 from utils import Logger, file_utils
 
-torch.serialization.add_safe_globals([datetime])
-
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
@@ -92,6 +90,7 @@ def run_train(model: torch.nn.Module,
             saved_metrics_path = os.path.join(stats_dir, f'{model_name}_{curr_date_str}_train_stats.npz')
             trainer.save_stats(saved_metrics_path)
 
+        model_path = f'{model_name}_{curr_date_str}.pt'
         if model_dir is not None:
             if not os.path.exists(model_dir):
                 os.makedirs(model_dir)
@@ -196,7 +195,8 @@ def main():
         logger.log(f'Using test dataset configuration: {test_dataset_config}')
 
         # Clear memory before loading test dataset
-        dataset = None
+        del dataset
+        del dataloader
         gc.collect()
 
         dataset = dataset_class(

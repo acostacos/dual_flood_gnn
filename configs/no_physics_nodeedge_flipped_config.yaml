@@ -5,7 +5,7 @@ dataset_parameters:
   edges_shp_file: 'Geometry/links.shp'
   features_stats_file: 'features_stats.yaml'
 
-  previous_timesteps: 6
+  previous_timesteps: 2
   normalize: True
   timestep_interval: 30                                 # Interval between timesteps in seconds (must be a multiple of 30)
   spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each)

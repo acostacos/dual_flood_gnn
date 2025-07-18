@@ -560,7 +560,7 @@ class FloodEventDataset(Dataset):
     def _get_timestep_dynamic_features(self, dynamic_features: ndarray, dynamic_feature_list: List[str], timestep_idx: int) -> Tensor:
         _, num_elems, _ = dynamic_features.shape
         if timestep_idx < self.previous_timesteps:
-            # Pad with zeros if not enough previous timesteps are available
+            # Pad with zeros if not enough previous timesteps are available; Currently not being used
             padding = self._get_empty_feature_tensor(dynamic_feature_list,
                                                      (self.previous_timesteps - timestep_idx, num_elems),
                                                      dtype=dynamic_features.dtype)

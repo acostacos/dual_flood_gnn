@@ -223,16 +223,25 @@ def run_test(model: torch.nn.Module,
     log_test_config = {'rollout_start': rollout_start, 'rollout_timesteps': rollout_timesteps}
     logger.log(f'Using testing configuration: {log_test_config}')
 
+    is_dual_model = 'NodeEdgeGNN' in model.__class__.__name__
+
+    avg_rmses = []
+    if is_dual_model:
+        avg_edge_rmses = []
     for event_idx, run_id in enumerate(dataset.hec_ras_run_ids):
         logger.log(f'Validating on run {event_idx + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
 
         validation_stats = ValidationStats(logger=logger)
 
-        if 'NodeEdgeGNN' in model.__class__.__name__:
+        if is_dual_model:
             test_autoregressive(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)
         else:
             test_autoregressive_node_only(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)
         validation_stats.print_stats_summary()
+
+        avg_rmses.append(validation_stats.get_avg_rmse())
+        if is_dual_model:
+            avg_edge_rmses.append(validation_stats.get_avg_edge_rmse())
 
         # Save validation stats
         if output_dir is not None:
@@ -243,6 +252,10 @@ def run_test(model: torch.nn.Module,
             model_filename = os.path.splitext(os.path.basename(model_path))[0]  # Remove file extension
             saved_metrics_path = os.path.join(output_dir, f'{model_filename}_runid_{run_id}_test_metrics.npz') if output_dir is not None else None
             validation_stats.save_stats(saved_metrics_path)
+
+    logger.log(f'Average RMSE across events: {np.mean(avg_rmses):.4e}')
+    if is_dual_model:
+        logger.log(f'Average Edge RMSE across events: {np.mean(avg_edge_rmses):.4e}')
 
 def main():
     args = parse_args()

@@ -120,8 +120,6 @@ class FloodEventDataset(Dataset):
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
 
-        edge_index, static_edges, dynamic_edges = self._to_undirected_flipped(edge_index, static_edges, dynamic_edges)
-
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.apply(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
@@ -442,18 +440,6 @@ class FloodEventDataset(Dataset):
             features.append(feature_data)
 
         return features
-
-    def _to_undirected_flipped(self, edge_index: ndarray, static_edges: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
-        # Convert to undirected with flipped edge features
-        row, col = edge_index[0], edge_index[1]
-        row, col = np.concat([row, col], axis=0), np.concat([col, row], axis=0)
-        edge_index = np.stack([row, col], axis=0)
-
-        static_edges = np.concat([static_edges, static_edges], axis=0)
-        flipped_dynamic_edges = dynamic_edges * -1
-        dynamic_edges = np.concat([dynamic_edges, flipped_dynamic_edges], axis=1)
-
-        return edge_index, static_edges, dynamic_edges
 
     def _get_global_mass_info(self,
                               edge_index: ndarray,

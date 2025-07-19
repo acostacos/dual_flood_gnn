@@ -62,14 +62,13 @@ class BoundaryCondition:
         boundary_dynamic_nodes = dynamic_nodes[:, boundary_nodes, :].copy()
         boundary_dynamic_edges = dynamic_edges[:, boundary_edges, :].copy()
 
-        # Ensure boundary edges are pointing away from the ghost nodes
-        new_boundary_nodes = np.concat([self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes])
-        to_boundary = np.isin(new_boundary_edge_index[1], new_boundary_nodes)
-        flipped_to_boundary = new_boundary_edge_index[:, to_boundary]
-        flipped_to_boundary[[0, 1], :] = flipped_to_boundary[[1, 0], :]
-        new_boundary_edge_index = np.concat([new_boundary_edge_index[:, ~to_boundary], flipped_to_boundary], axis=1)
+        # Flip inflow boundary edge
+        inflow_boundary_edge_mask = np.any(np.isin(new_boundary_edge_index, self.new_inflow_boundary_nodes), axis=0)
+        inflow_edge_index = new_boundary_edge_index[:, inflow_boundary_edge_mask]
+        inflow_edge_index[[0, 1], :] = inflow_edge_index[[1, 0], :]
+        new_boundary_edge_index[:, inflow_boundary_edge_mask] = inflow_edge_index
         # Flip the dynamic edge features accordingly
-        boundary_dynamic_edges[:, to_boundary, :] *= -1
+        boundary_dynamic_edges[:, inflow_boundary_edge_mask, :] *= -1
 
         self._boundary_edge_index = new_boundary_edge_index
         self._boundary_dynamic_nodes = boundary_dynamic_nodes

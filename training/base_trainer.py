@@ -2,6 +2,7 @@ import math
 import torch
 
 from loss import global_mass_conservation_loss, local_mass_conservation_loss
+from data import FloodEventDataset
 from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
@@ -13,7 +14,7 @@ from utils import TrainingStats, LossScaler, Logger
 class BaseTrainer:
     def __init__(self,
                  model: Module,
-                 dataloader: DataLoader,
+                 dataset: FloodEventDataset,
                  optimizer: Optimizer,
                  loss_func: Callable,
                  use_global_loss: bool = False,
@@ -21,10 +22,11 @@ class BaseTrainer:
                  use_local_loss: bool = False,
                  local_mass_loss_percent: float = 0.1,
                  delta_t: int = 30,
+                 batch_size: int = 64,
                  num_epochs: int = 100,
                  logger: Logger = None,
                  device: str = 'cpu'):
-        self.dataloader = dataloader
+        self.dataloader = DataLoader(dataset, batch_size=batch_size)
         self.model = model
         self.optimizer = optimizer
         self.loss_func = loss_func
@@ -34,13 +36,14 @@ class BaseTrainer:
         self.use_local_loss = use_local_loss
         self.local_mass_loss_percent = local_mass_loss_percent
         self.delta_t = delta_t
+        self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.device = device
 
         self.training_stats = TrainingStats(logger=logger)
-        self.is_normalized = dataloader.dataset.is_normalized
-        self.normalizer = dataloader.dataset.normalizer
-        self.boundary_condition = dataloader.dataset.boundary_condition
+        self.is_normalized = dataset.is_normalized
+        self.normalizer = dataset.normalizer
+        self.boundary_condition = dataset.boundary_condition
 
         self.num_epochs_dyn_weight = self._get_num_epochs_dynamic_loss_weight(num_epochs)
         self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_weight} epochs')

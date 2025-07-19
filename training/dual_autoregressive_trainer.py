@@ -1,27 +1,34 @@
 import numpy as np
 import torch
-from data import AutoRegressiveDataLoader
-from utils import LossScaler
+from data import AutoRegressiveDataLoader, FloodEventDataset
 
-from .base_trainer import BaseTrainer
+from .dual_regression_trainer import DualRegressionTrainer
 
-class DualAutoRegressiveTrainer(BaseTrainer):
+class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def __init__(self,
-                 edge_pred_loss_percent: float = 0.5,
-                 batch_size: int = 1,
                  num_timesteps: int = 1,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.dataloader = AutoRegressiveDataLoader(self.dataloader.dataset,
-                                                   batch_size=batch_size,
+        self.num_timesteps = num_timesteps
+        self.dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset,
+                                                   batch_size=self.batch_size,
                                                    num_timesteps=num_timesteps)
 
-        self.edge_pred_loss_percent = edge_pred_loss_percent
-        self.num_timesteps = num_timesteps
+        # Get non-boundary nodes/edges and threshold for metric computation
+        ds: FloodEventDataset = self.dataloader.dataset
+        self.non_boundary_nodes_mask = ds.boundary_condition.get_non_boundary_nodes_mask()
+        self.non_boundary_edges_mask = ds.boundary_condition.non_boundary_edges_mask
 
-        self.edge_loss_scaler = LossScaler()
-        self.pred_loss_percent -= self.edge_pred_loss_percent
+        # Get sliding window indices
+        sliding_window_length = ds.previous_timesteps + 1
+        target_nodes_idx = ds.DYNAMIC_NODE_FEATURES.index(ds.NODE_TARGET_FEATURE)
+        self.start_target_idx = ds.num_static_node_features + (target_nodes_idx * sliding_window_length)
+        self.end_target_idx = self.start_target_idx + sliding_window_length
+
+        target_edges_idx = ds.DYNAMIC_EDGE_FEATURES.index(ds.EDGE_TARGET_FEATURE)
+        self.start_target_edges_idx = ds.num_static_edge_features + (target_edges_idx * sliding_window_length)
+        self.end_target_edges_idx = self.start_target_edges_idx + sliding_window_length
 
     def train(self):
         self.training_stats.start_train()
@@ -32,21 +39,7 @@ class DualAutoRegressiveTrainer(BaseTrainer):
             if self.use_physics_loss:
                 self._reset_epoch_physics_running_loss()
 
-            # Get non-boundary nodes/edges and threshold for metric computation
-            dataset = self.dataloader.dataset
-            non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
-            non_boundary_edges_mask = dataset.boundary_condition.non_boundary_edges_mask
-
-            # Get sliding window indices
-            sliding_window_length = dataset.previous_timesteps + 1
-            target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
-            start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
-            end_target_idx = start_target_idx + sliding_window_length
-
-            target_edges_idx = dataset.DYNAMIC_EDGE_FEATURES.index(dataset.EDGE_TARGET_FEATURE)
-            start_target_edges_idx = dataset.num_static_edge_features + (target_edges_idx * sliding_window_length)
-            end_target_edges_idx = start_target_edges_idx + sliding_window_length
-
+            group_losses = None
             sliding_window = None
             edge_sliding_window = None
             for i, batch in enumerate(self.dataloader):
@@ -54,18 +47,20 @@ class DualAutoRegressiveTrainer(BaseTrainer):
 
                 if (i % self.num_timesteps == 0):
                     self.optimizer.zero_grad()
-
-                    sliding_window = batch.x.clone()[:, start_target_idx:end_target_idx]
-                    edge_sliding_window = batch.edge_attr.clone()[:, start_target_edges_idx:end_target_edges_idx]
+                    group_losses = []
+                    sliding_window = batch.x.clone()[:, self.start_target_idx:self.end_target_idx]
+                    edge_sliding_window = batch.edge_attr.clone()[:, self.start_target_edges_idx:self.end_target_edges_idx]
 
                 # Override graph data with sliding window
                 # Only override non-boundary nodes to keep boundary conditions intact
-                batch_non_boundary_nodes_mask = np.tile(non_boundary_nodes_mask, batch.num_graphs)
-                batch.x[batch_non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[batch_non_boundary_nodes_mask]
+                batch_non_boundary_nodes_mask = np.tile(self.non_boundary_nodes_mask, batch.num_graphs)
+                batch.x[batch_non_boundary_nodes_mask, self.start_target_idx:self.end_target_idx] \
+                    = sliding_window[batch_non_boundary_nodes_mask]
 
                 # Only override non-boundary edges to keep boundary conditions intact
-                batch_non_boundary_edges_mask = np.tile(non_boundary_edges_mask, batch.num_graphs)
-                batch.edge_attr[batch_non_boundary_edges_mask, start_target_edges_idx:end_target_edges_idx] = edge_sliding_window[batch_non_boundary_edges_mask]
+                batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
+                batch.edge_attr[batch_non_boundary_edges_mask, self.start_target_edges_idx:self.end_target_edges_idx] \
+                    = edge_sliding_window[batch_non_boundary_edges_mask]
 
                 pred, edge_pred = self.model(batch)
 
@@ -89,10 +84,10 @@ class DualAutoRegressiveTrainer(BaseTrainer):
                     physics_loss = self._get_epoch_physics_loss(pred, loss, batch)
                     loss = loss * self.pred_loss_percent + physics_loss
 
-                loss = loss / self.num_timesteps
-                loss.backward()
+                group_losses.append(loss)
 
                 if ((i + 1) % self.num_timesteps == 0) or (i + 1 == len(self.dataloader)):
+                    torch.stack(group_losses).mean().backward()
                     self.optimizer.step()
 
             running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))

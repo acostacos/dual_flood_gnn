@@ -198,9 +198,8 @@ class FloodEventDataset(Dataset):
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
 
-        if self.mode == 'test':
-            non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
-            self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
+        non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
+        self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_rollout_timesteps:

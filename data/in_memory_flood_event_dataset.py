@@ -22,9 +22,9 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
-        if self.mode == 'test':
-            non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
-            self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
+
+        non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
+        self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
 
         t_edge_index = torch.from_numpy(edge_index.copy())
 

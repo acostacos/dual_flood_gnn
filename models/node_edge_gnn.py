@@ -137,11 +137,17 @@ class NodeEdgeConv(MessagePassing):
         self.msg_mlp = make_mlp(input_size=msg_input_size, output_size=edge_out_channels,
                             hidden_size=msg_hidden_size, num_layers=num_layers,
                             activation=activation, device=device)
+        
+        edge_update_input_size = (edge_in_channels + edge_out_channels)
+        edge_update_hidden_size = edge_update_input_size * 2
+        self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_channels,
+                                 hidden_size=edge_update_hidden_size, num_layers=num_layers,
+                                 activation=activation, device=device)
 
-        update_input_size = (node_in_channels + edge_out_channels)
-        update_hidden_size = update_input_size * 2
-        self.update_mlp = make_mlp(input_size=update_input_size, output_size=node_out_channels,
-                                 hidden_size=update_hidden_size, num_layers=num_layers,
+        node_update_input_size = (node_in_channels + edge_out_channels)
+        node_update_hidden_size = node_update_input_size * 2
+        self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=node_out_channels,
+                                 hidden_size=node_update_hidden_size, num_layers=num_layers,
                                  activation=activation, device=device)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
@@ -155,14 +161,20 @@ class NodeEdgeConv(MessagePassing):
         msg = self.message(**msg_kwargs)
 
         aggr_kwargs = self.inspector.collect_param_data('aggregate', coll_dict)
-        out = self.aggregate(msg, **aggr_kwargs)
+        aggr = self.aggregate(msg, **aggr_kwargs)
 
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
-        out = self.update(out, **update_kwargs)
-        return out, msg
+        node_out = self.update(aggr, **update_kwargs)
+
+        edge_out = self.edge_update(msg, kwargs['edge_attr'])
+
+        return node_out, edge_out
 
     def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor):
         return self.msg_mlp(torch.cat([x_i, x_j, edge_attr], dim=-1))
 
-    def update(self, aggr_out: Tensor, x: Tensor):
-        return self.update_mlp(torch.cat([x, aggr_out], dim=-1))
+    def update(self, aggr: Tensor, x: Tensor):
+        return self.node_update_mlp(torch.cat([x, aggr], dim=-1))
+
+    def edge_update(self, msg: Tensor, edge_attr: Tensor):
+        return self.edge_update_mlp(torch.cat([edge_attr, msg], dim=-1))

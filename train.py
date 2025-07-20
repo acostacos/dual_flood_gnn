@@ -10,8 +10,7 @@ from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from torch.nn import MSELoss
-from torch_geometric.loader import DataLoader
-from training import NodeRegressionTrainer, DualRegressionTrainer
+from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
 from typing import Dict, Optional
 from utils import Logger, file_utils
 
@@ -27,7 +26,7 @@ def parse_args() -> Namespace:
 
 def run_train(model: torch.nn.Module,
               model_name: str,
-              dataloader: DataLoader,
+              dataset: FloodEventDataset,
               logger: Logger,
               config: Dict,
               stats_dir: Optional[str] = None,
@@ -37,11 +36,12 @@ def run_train(model: torch.nn.Module,
         loss_func_parameters = config['loss_func_parameters']
 
         # Loss function and optimizer
-        log_train_config = {'num_epochs': train_config['num_epochs'], 'batch_size': train_config['batch_size'], 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
+        num_epochs = train_config['num_epochs']
+        batch_size = train_config['batch_size']
+        log_train_config = {'num_epochs': num_epochs, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-        num_epochs = train_config['num_epochs']
-        delta_t = dataloader.dataset.timestep_interval
+        delta_t = dataset.timestep_interval
 
         criterion = MSELoss()
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
@@ -51,12 +51,13 @@ def run_train(model: torch.nn.Module,
         use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
         trainer_params = {
             'model': model,
-            'dataloader': dataloader,
+            'dataset': dataset,
             'optimizer': optimizer,
             'loss_func': criterion,
             'use_global_loss': use_global_mass_loss,
             'use_local_loss': use_local_mass_loss,
             'delta_t': delta_t,
+            'batch_size': batch_size,
             'num_epochs': num_epochs,
             'logger': logger,
             'device': device,
@@ -74,7 +75,14 @@ def run_train(model: torch.nn.Module,
             edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
             logger.log(f'Using edge prediction loss with target percentage {edge_pred_loss_percent}')
 
-            trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
+            if train_config.get('autoregressive', False):
+                num_timesteps = train_config['autoregressive_timesteps']
+                curriculum_epochs = train_config['curriculum_epochs']
+                logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
+
+                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+            else:
+                trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
         else:
             trainer = NodeRegressionTrainer(**trainer_params)
         trainer.train()
@@ -155,7 +163,6 @@ def main():
             force_reload=True,
         )
         logger.log(f'Loaded dataset with {len(dataset)} samples')
-        dataloader = DataLoader(dataset, batch_size=train_config['batch_size'])
 
         # Model
         model_params = config['model_parameters'][args.model]
@@ -176,7 +183,7 @@ def main():
         model_dir = train_config['model_dir']
         model_path = run_train(model=model,
                                model_name=args.model,
-                               dataloader=dataloader,
+                               dataset=dataset,
                                logger=logger,
                                config=config,
                                stats_dir=stats_dir,

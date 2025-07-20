@@ -249,8 +249,7 @@ if __name__ == '__main__':
 
         hyperparameters = {}
         if use_global_mass_loss:
-            # GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
-            GLOBAL_LOSS_PERCENTS = [0.01]
+            GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
             hyperparameters['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
         if use_local_mass_loss:
             LOCAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]

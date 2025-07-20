@@ -22,9 +22,9 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
-        if self.mode == 'test':
-            non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
-            self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
+
+        non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
+        self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
 
         t_edge_index = torch.from_numpy(edge_index.copy())
 
@@ -66,7 +66,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                 curr_event_idx = event_idx
 
             # Create Data object for timestep
-            within_event_idx = idx - start_idx
+            within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
             node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
             edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
             label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)

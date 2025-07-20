@@ -32,6 +32,9 @@ training_parameters:
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
+  autoregressive       : False                               # Use autoregressive training
+  autoregressive_timesteps: 4                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 15                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss

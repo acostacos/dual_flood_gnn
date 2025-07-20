@@ -110,6 +110,12 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             if epoch < self.num_epochs_dyn_weight:
                 self.edge_loss_scaler.update_scale_from_epoch()
                 self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
+            elif ((epoch - self.num_epochs_dyn_weight) != 0
+                  and (epoch - self.num_epochs_dyn_weight) % self.curriculum_epochs == 0
+                  and current_num_timesteps < self.num_timesteps):
+                current_num_timesteps += 1
+                dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=current_num_timesteps)
+                self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps')
 
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)

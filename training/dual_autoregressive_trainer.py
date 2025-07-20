@@ -7,13 +7,12 @@ from .dual_regression_trainer import DualRegressionTrainer
 class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def __init__(self,
                  num_timesteps: int = 1,
+                 curriculum_epochs: int = 10,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.num_timesteps = num_timesteps
-        self.dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset,
-                                                   batch_size=self.batch_size,
-                                                   num_timesteps=num_timesteps)
+        self.curriculum_epochs = curriculum_epochs
 
         # Get non-boundary nodes/edges and threshold for metric computation
         ds: FloodEventDataset = self.dataloader.dataset
@@ -31,7 +30,10 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         self.end_target_edges_idx = self.start_target_edges_idx + sliding_window_length
 
     def train(self):
+        '''Multi-step-ahead loss with curriculum learning.'''
         self.training_stats.start_train()
+        current_num_timesteps = 1
+        dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=current_num_timesteps)
         for epoch in range(self.num_epochs):
             self.model.train()
             running_pred_loss = 0.0
@@ -42,10 +44,10 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             group_losses = None
             sliding_window = None
             edge_sliding_window = None
-            for i, batch in enumerate(self.dataloader):
+            for i, batch in enumerate(dataloader):
                 batch = batch.to(self.device)
 
-                if (i % self.num_timesteps == 0):
+                if i % current_num_timesteps == 0:
                     self.optimizer.zero_grad()
                     group_losses = []
                     sliding_window = batch.x.clone()[:, self.start_target_idx:self.end_target_idx]
@@ -86,14 +88,14 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
                 group_losses.append(loss)
 
-                if ((i + 1) % self.num_timesteps == 0) or (i + 1 == len(self.dataloader)):
+                if ((i + 1) % current_num_timesteps == 0) or (i + 1 == len(dataloader)):
                     torch.stack(group_losses).mean().backward()
                     self.optimizer.step()
 
             running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))
-            epoch_loss = running_loss / len(self.dataloader)
-            pred_epoch_loss = running_pred_loss / len(self.dataloader)
-            edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
+            epoch_loss = running_loss / len(dataloader)
+            pred_epoch_loss = running_pred_loss / len(dataloader)
+            edge_pred_epoch_loss = running_edge_pred_loss / len(dataloader)
 
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'

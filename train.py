@@ -77,9 +77,10 @@ def run_train(model: torch.nn.Module,
 
             if train_config.get('autoregressive', False):
                 num_timesteps = train_config['autoregressive_timesteps']
-                logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps')
+                curriculum_epochs = train_config['curriculum_epochs']
+                logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
 
-                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps)
+                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
             else:
                 trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
         else:

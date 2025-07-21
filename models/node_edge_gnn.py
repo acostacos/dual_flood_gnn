@@ -1,7 +1,8 @@
 import torch
+import torch.nn.functional as F
 
 from torch import Tensor
-from torch.nn import Identity, LeakyReLU
+from torch.nn import Linear, Identity
 from torch_geometric.data import Data
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from torch_geometric.utils import softmax
@@ -139,17 +140,14 @@ class NodeEdgeConv(MessagePassing):
         self._attn_user_args: List[str] = self.inspector.get_param_names(
             'attention', exclude=self.special_args)
 
-        self.node_mlp = make_mlp(input_size=node_in_channels, output_size=node_out_channels,
-                                 num_layers=1, bias=False, device=device)
-        self.edge_mlp = make_mlp(input_size=edge_in_channels, output_size=edge_out_channels,
-                                 num_layers=1, bias=False, device=device)
+        hidden_size = 32
+        self.node_mlp = Linear(node_in_channels, hidden_size, bias=False, device=device)
+        self.edge_mlp = Linear(edge_in_channels, hidden_size, bias=False, device=device)
 
-        attn_input_size = (node_in_channels * 2 + edge_in_channels)
-        self.node_attn = make_mlp(input_size=attn_input_size, output_size=1,
-                                  num_layers=1, bias=False, device=device)
-        self.node_attn_act = LeakyReLU(negative_slope=0.2)
+        attn_input_size = (hidden_size * 3)
+        self.node_attn = Linear(attn_input_size, 1, bias=False, device=device)
 
-        msg_input_size = (node_in_channels + edge_in_channels)
+        msg_input_size = (hidden_size + hidden_size * 2)
         msg_hidden_size = msg_input_size * 2
         self.msg_mlp = make_mlp(input_size=msg_input_size, output_size=edge_out_channels,
                             hidden_size=msg_hidden_size, num_layers=num_layers,
@@ -168,12 +166,12 @@ class NodeEdgeConv(MessagePassing):
                                  activation=activation, device=device)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
-        x = self.node_mlp(x)
         alpha = self.compute_attention(edge_index, x=x, edge_attr=edge_attr)
         x, edge_attr = self.propagate(edge_index, x=x, edge_attr=edge_attr, alpha=alpha)
         return x, edge_attr
 
     def compute_attention(self, edge_index, **kwargs):
+        kwargs['x'] = self.node_mlp(kwargs['x'])
         mutable_size = self._check_input(edge_index, size=None)
         coll_dict = self._collect(self._attn_user_args, edge_index, mutable_size, kwargs)
         edge_kwargs = self.inspector.collect_param_data('attention', coll_dict)
@@ -182,9 +180,8 @@ class NodeEdgeConv(MessagePassing):
 
     def attention(self, x_i, x_j, edge_attr, index, ptr, dim_size) -> Tensor:
         edge_attr = self.edge_mlp(edge_attr)
-        concat_feats = torch.concat([x_i, x_j, edge_attr], dim=-1)
-        alpha = self.node_attn(concat_feats)
-        alpha = self.node_attn_act(alpha)
+        alpha = self.node_attn(torch.concat([x_i, edge_attr, x_j], dim=-1))
+        alpha = F.leaky_relu(alpha, negative_slope=0.2)
         alpha = softmax(alpha, index, ptr, dim_size)
         return alpha
 
@@ -206,7 +203,7 @@ class NodeEdgeConv(MessagePassing):
         return node_out, edge_out
 
     def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor, alpha: Tensor):
-        msg = self.msg_mlp(torch.cat([x_j, edge_attr], dim=-1))
+        msg = self.msg_mlp(torch.cat([x_i, edge_attr, x_j], dim=-1))
         msg = msg * alpha
         return msg
 

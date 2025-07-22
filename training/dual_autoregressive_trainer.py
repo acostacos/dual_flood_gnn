@@ -13,6 +13,10 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
         self.num_timesteps = num_timesteps
         self.curriculum_epochs = curriculum_epochs
+        # To check if batch size is valid
+        self.dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset,
+                                                   batch_size=self.batch_size,
+                                                   num_timesteps=num_timesteps)
 
         # Get non-boundary nodes/edges and threshold for metric computation
         ds: FloodEventDataset = self.dataloader.dataset

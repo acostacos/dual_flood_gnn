@@ -141,44 +141,51 @@ class NodeEdgeConv(MessagePassing):
             'attention', exclude=self.special_args)
 
         hidden_size = 32
-        self.node_mlp = Linear(node_in_channels, hidden_size, bias=False, device=device)
-        self.edge_mlp = Linear(edge_in_channels, hidden_size, bias=False, device=device)
+        # self.node_mlp = Linear(node_in_channels, hidden_size, bias=False, device=device)
+        # self.edge_mlp = Linear(edge_in_channels, hidden_size, bias=False, device=device)
 
         attn_input_size = (hidden_size * 3)
         self.node_attn = Linear(attn_input_size, 1, bias=False, device=device)
+        self.edge_attn = Linear(attn_input_size, 1, bias=False, device=device)
 
-        node_update_input_size = (node_in_channels + hidden_size * 3)
+        self.msg_mlp = make_mlp(input_size=(node_in_channels + hidden_size * 2), output_size=edge_out_channels,
+                                hidden_size=hidden_size * 2, num_layers=num_layers,
+                                activation=activation, device=device)
+
+        node_update_input_size = (node_in_channels + edge_out_channels)
         node_update_hidden_size = node_update_input_size * 2
         self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=node_out_channels,
                                  hidden_size=node_update_hidden_size, num_layers=num_layers,
                                  activation=activation, device=device)
 
-        edge_update_input_size = (edge_in_channels + hidden_size * 3)
+        edge_update_input_size = (edge_in_channels + edge_out_channels)
         edge_update_hidden_size = edge_update_input_size * 2
         self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_channels,
                                  hidden_size=edge_update_hidden_size, num_layers=num_layers,
                                  activation=activation, device=device)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
-        w_x = self.node_mlp(x)
-
-        alpha = self.compute_attention(edge_index, w_x=w_x, edge_attr=edge_attr)
-        x, edge_attr = self.propagate(edge_index, x=x, w_x=w_x, edge_attr=edge_attr, alpha=alpha)
+        alpha, beta = self.compute_attention(edge_index, x=x, edge_attr=edge_attr)
+        x, edge_attr = self.propagate(edge_index, x=x, edge_attr=edge_attr, alpha=alpha, beta=beta)
         return x, edge_attr
 
     def compute_attention(self, edge_index, **kwargs):
         mutable_size = self._check_input(edge_index, size=None)
         coll_dict = self._collect(self._attn_user_args, edge_index, mutable_size, kwargs)
         edge_kwargs = self.inspector.collect_param_data('attention', coll_dict)
-        alpha = self.attention(**edge_kwargs)
-        return alpha
+        attn_weights = self.attention(**edge_kwargs)
+        return attn_weights
 
-    def attention(self, w_x_i, w_x_j, edge_attr, index, ptr, dim_size) -> Tensor:
-        edge_attr = self.edge_mlp(edge_attr)
-        alpha = self.node_attn(torch.concat([w_x_i, edge_attr, w_x_j], dim=-1))
+    def attention(self, x_i, x_j, edge_attr, index, ptr, dim_size) -> Tensor:
+        alpha = self.node_attn(torch.concat([x_i, edge_attr, x_j], dim=-1))
         alpha = F.leaky_relu(alpha, negative_slope=0.2)
         alpha = softmax(alpha, index, ptr, dim_size)
-        return alpha
+
+        beta = self.edge_attn(torch.concat([x_i, edge_attr, x_j], dim=-1))
+        beta = F.leaky_relu(beta, negative_slope=0.2)
+        beta = softmax(beta, index, ptr, dim_size)
+
+        return alpha, beta
 
     def propagate(self, edge_index, **kwargs):
         mutable_size = self._check_input(edge_index, size=None)
@@ -197,10 +204,8 @@ class NodeEdgeConv(MessagePassing):
 
         return node_out, edge_out
 
-    def message(self, w_x_i, w_x_j: Tensor, edge_attr: Tensor, alpha: Tensor):
-        edge_attr = self.edge_mlp(edge_attr)
-        attn_term = alpha * torch.cat([edge_attr, w_x_j], dim=-1)
-        return torch.cat([w_x_i, attn_term], dim=-1)
+    def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor, alpha: Tensor, beta: Tensor):
+        return self.msg_mlp(torch.cat([x_i, alpha * x_j, beta * edge_attr], dim=-1))
 
     def update(self, aggr: Tensor, x: Tensor):
         return self.node_update_mlp(torch.cat([x, aggr], dim=-1))

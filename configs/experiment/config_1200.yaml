@@ -9,7 +9,7 @@ dataset_parameters:
   normalize: True
   timestep_interval: 1200                                 # Interval between timesteps in seconds (must be a multiple of 30)
   spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each)
-  timesteps_from_peak: null                             # Number of timesteps to consider from the peak (30 seconds each)
+  timesteps_from_peak: 250                             # Number of timesteps to consider from the peak (30 seconds each)
   inflow_boundary_nodes:
   - 1248
   outflow_boundary_nodes:
@@ -25,11 +25,11 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : null                                # Path to save training logs
-  model_dir            : 'saved_models'                      # Directory to save trained models
-  stats_dir            : 'training_stats'                    # Directory to save training statistics
-  num_epochs           : 100                                 # Number of epochs
-  batch_size           : 128                                 # Batch size
+  log_path             : 'resolution_stc/logs/stc_1200_train.log'                                # Path to save training logs
+  model_dir            : 'resolution_stc/model'                      # Directory to save trained models
+  stats_dir            : 'resolution_stc/train'                    # Directory to save training statistics
+  num_epochs           : 200                                 # Number of epochs
+  batch_size           : 16                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : False                               # Use autoregressive training
@@ -44,8 +44,8 @@ loss_func_parameters:
   local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: null                                        # Path to save testing logs
-  output_dir: 'saved_metrics'                           # Directory to save testing results
+  log_path: 'resolution_stc/logs/stc_1200_test.log'                                        # Path to save testing logs
+  output_dir: 'resolution_stc/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

@@ -159,8 +159,9 @@ def test_autoregressive(model: torch.nn.Module,
         event_end_idx = dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps
         if rollout_timesteps is not None:
             event_end_idx = event_start_idx + rollout_timesteps
-            assert event_end_idx <= (dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
-                f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for event_idx {event_idx}.'
+            dataset_event_length = dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps
+            assert event_end_idx <= dataset_event_length, \
+                f'Rollout length {event_end_idx} exceeds event length {dataset_event_length} for event {dataset.hec_ras_run_ids[event_idx]}.'
         event_dataset = dataset[event_start_idx:event_end_idx]
         dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
 

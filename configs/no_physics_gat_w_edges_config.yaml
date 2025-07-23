@@ -37,7 +37,7 @@ training_parameters:
   curriculum_epochs    : 15                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
+  edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
   use_local_mass_loss: False                                 # Use local mass conservation in loss function
   global_mass_loss_percent: 0.0274                           # Percentage of global mass conservation loss in total loss

@@ -83,7 +83,6 @@ model_parameters:
     activation: 'prelu'
     residual: True
     mlp_layers: 2
-    enforce_flipped_edge_attr: False
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2
@@ -95,7 +94,6 @@ model_parameters:
     activation: 'prelu'
     residual: True
     mlp_layers: 2
-    enforce_flipped_edge_attr: False
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2

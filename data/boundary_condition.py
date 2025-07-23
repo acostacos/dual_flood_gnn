@@ -62,13 +62,23 @@ class BoundaryCondition:
         boundary_dynamic_nodes = dynamic_nodes[:, boundary_nodes, :].copy()
         boundary_dynamic_edges = dynamic_edges[:, boundary_edges, :].copy()
 
-        # Flip inflow boundary edge
-        inflow_boundary_edge_mask = np.any(np.isin(new_boundary_edge_index, self.new_inflow_boundary_nodes), axis=0)
-        inflow_edge_index = new_boundary_edge_index[:, inflow_boundary_edge_mask]
-        inflow_edge_index[[0, 1], :] = inflow_edge_index[[1, 0], :]
-        new_boundary_edge_index[:, inflow_boundary_edge_mask] = inflow_edge_index
-        # Flip the dynamic edge features accordingly
-        boundary_dynamic_edges[:, inflow_boundary_edge_mask, :] *= -1
+        # Ensure inflow boundary edges point away from the boundary node
+        inflow_to_boundary_mask = np.isin(new_boundary_edge_index[1], self.new_inflow_boundary_nodes)
+        if np.any(inflow_to_boundary_mask):
+            inflow_to_boundary = new_boundary_edge_index[:, inflow_to_boundary_mask]
+            inflow_to_boundary[[0, 1], :] = inflow_to_boundary[[1, 0], :]
+            new_boundary_edge_index[:, inflow_to_boundary_mask] = inflow_to_boundary
+            # Flip the dynamic edge features accordingly
+            boundary_dynamic_edges[:, inflow_to_boundary_mask, :] *= -1
+
+        # Ensure outflow boundary edges point towards the boundary node
+        outflow_from_boundary_mask = np.isin(new_boundary_edge_index[0], self.new_outflow_boundary_nodes)
+        if np.any(outflow_from_boundary_mask):
+            outflow_from_boundary = new_boundary_edge_index[:, outflow_from_boundary_mask]
+            outflow_from_boundary[[0, 1], :] = outflow_from_boundary[[1, 0], :]
+            new_boundary_edge_index[:, outflow_from_boundary_mask] = outflow_from_boundary
+            # Flip the dynamic edge features accordingly
+            boundary_dynamic_edges[:, outflow_from_boundary_mask, :] *= -1
 
         self._boundary_edge_index = new_boundary_edge_index
         self._boundary_dynamic_nodes = boundary_dynamic_nodes

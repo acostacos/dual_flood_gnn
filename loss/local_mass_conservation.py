@@ -12,15 +12,14 @@ from .loss_helper import get_batch_mask, get_orig_water_volume
 def get_batch_inflow_outflow(
     edge_index: Tensor,
     face_flow: Tensor,
-    batch_outflow_edges_mask: ndarray,
     batch_non_boundary_nodes_mask: ndarray,
     num_nodes: int,
 ):
-    # Flip outflow edges as these are pointing away from boundary node for message passing.
-    # Physics interpretation is that outflow edges point towards the boundary node.
-    edge_index[0, batch_outflow_edges_mask], edge_index[1, batch_outflow_edges_mask] =\
-        edge_index[1, batch_outflow_edges_mask], edge_index[0, batch_outflow_edges_mask] # Flip edge direction
-    face_flow[batch_outflow_edges_mask] *= -1  # Flip flow direction
+    # Convert edge_index and face_flow to undirected w/ flipped edge features for inflow/outflow calculations
+    row, col = edge_index[0], edge_index[1]
+    row, col = torch.cat([row, col], axis=0), torch.cat([col, row], axis=0)
+    edge_index = torch.stack([row, col], axis=0)
+    face_flow = torch.cat([face_flow, -face_flow], axis=0)
 
     face_flow = torch.relu(face_flow) # Negative flow would just be opposite direction of positive flow; Can be ignored
     total_inflow = scatter(face_flow, edge_index[1], reduce='sum', dim_size=num_nodes)
@@ -47,7 +46,6 @@ def local_mass_conservation_loss(
 
     # Values assumed to be the same for all batches
     non_boundary_nodes_mask = bc_helper.get_non_boundary_nodes_mask()
-    outflow_edges_mask = bc_helper.outflow_edges_mask
 
     # Get predefined information
     rainfall = local_mass_info['rainfall']
@@ -55,11 +53,9 @@ def local_mass_conservation_loss(
     # TODO: Revert once edge prediction is implemented
     face_flow = local_mass_info['face_flow']
     batch_non_boundary_nodes_mask = get_batch_mask(non_boundary_nodes_mask, num_graphs)
-    batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
     total_inflow, total_outflow = get_batch_inflow_outflow(
         edge_index=edge_index,
         face_flow=face_flow,
-        batch_outflow_edges_mask=batch_outflow_edges_mask,
         batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
         num_nodes=num_nodes,
     )
@@ -73,11 +69,9 @@ def local_mass_conservation_loss(
     # # Edge prediction = normalized predicted water flow (t+1)
     # if is_normalized:
     #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
-    # batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
     # total_inflow, total_outflow = get_batch_inflow_outflow(
     #     edge_index=edge_index,
     #     face_flow=batch_edge_pred,
-    #     batch_outflow_edges_mask=batch_outflow_edges_mask,
     #     batch_non_boundary_nodes_mask=batch_non_boundary_nodes_mask,
     #     num_nodes=num_nodes,
     # )

@@ -10,7 +10,7 @@ from optuna.visualization import plot_optimization_history, plot_slice
 from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
-from training import NodeRegressionTrainer, DualRegressionTrainer
+from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
 from typing import List, Optional, Tuple
 from utils import ValidationStats, Logger, file_utils
 from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
@@ -75,7 +75,6 @@ def cross_validate(global_mass_loss_percent: Optional[float],
         delta_t = train_dataset.timestep_interval
 
         # ============ Training Phase ============
-        train_dataloader = DataLoader(train_dataset, batch_size=train_config['batch_size'])
         criterion = MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
 
@@ -87,7 +86,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             edge_pred_loss_percent = config['loss_func_parameters']['edge_pred_loss_percent']
         trainer_params = {
             'model': model,
-            'dataloader': train_dataloader,
+            'dataset': train_dataset,
             'optimizer': optimizer,
             'loss_func': criterion,
             'use_global_loss': use_global_mass_loss,
@@ -95,12 +94,20 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             'use_local_loss': use_local_mass_loss,
             'local_mass_loss_percent': local_mass_loss_percent,
             'delta_t': delta_t,
+            'batch_size': train_config['batch_size'],
             'num_epochs': train_config['num_epochs'],
             'logger': logger,
             'device': args.device,
         }
         if use_edge_pred_loss:
-            trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
+            if train_config.get('autoregressive', False):
+                num_timesteps = train_config['autoregressive_timesteps']
+                curriculum_epochs = train_config['curriculum_epochs']
+                logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
+
+                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+            else:
+                trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
         else:
             trainer = NodeRegressionTrainer(**trainer_params)
 

@@ -25,9 +25,9 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'supervised_vs_autoregressive/logs/auto_3step_train.log'                                # Path to save training logs
-  model_dir            : 'supervised_vs_autoregressive/model'                      # Directory to save trained models
-  stats_dir            : 'supervised_vs_autoregressive/train'                    # Directory to save training statistics
+  log_path             : 'autoregressive_train/logs/auto_3step_train.log'                                # Path to save training logs
+  model_dir            : 'autoregressive_train/model'                      # Directory to save trained models
+  stats_dir            : 'autoregressive_train/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
   batch_size           : 42                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
@@ -44,8 +44,8 @@ loss_func_parameters:
   local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: 'supervised_vs_autoregressive/logs/auto_3step_test.log'                                        # Path to save testing logs
-  output_dir: 'supervised_vs_autoregressive/test'                           # Directory to save testing results
+  log_path: 'autoregressive_train/logs/auto_3step_test.log'                                        # Path to save testing logs
+  output_dir: 'autoregressive_train/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

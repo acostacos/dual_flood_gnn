@@ -2,8 +2,7 @@ import os
 import numpy as np
 
 from numpy import ndarray
-from torch import Tensor
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 from .hecras_data_retrieval import get_min_cell_elevation
 
@@ -12,14 +11,14 @@ class BoundaryCondition:
                  root_dir: str,
                  hec_ras_file: str,
                  inflow_boundary_nodes: List[int],
-                 outflow_boundary_nodes: List[int]):
+                 outflow_boundary_nodes: List[int],
+                 saved_npz_file: str):
         self.hec_ras_path = os.path.join(root_dir, 'raw', hec_ras_file)
+        self.saved_npz_path = os.path.join(root_dir, 'processed', saved_npz_file)
         self.init_inflow_boundary_nodes = inflow_boundary_nodes
         self.init_outflow_boundary_nodes = outflow_boundary_nodes
         self._init()
-
-        self.outflow_edges_mask = None # Used for physics mass conservation loss
-        self.non_boundary_edges_mask = None # Used for testing
+        self._init_masks()
 
         self._boundary_edge_index = None
         self._boundary_dynamic_nodes = None
@@ -44,9 +43,30 @@ class BoundaryCondition:
 
         self.ghost_nodes = ghost_nodes
         self.boundary_nodes_mapping = boundary_nodes_mapping
-        self.new_num_nodes = num_non_ghost_nodes + len(boundary_nodes)
         self.new_inflow_boundary_nodes = new_inflow_boundary_nodes
         self.new_outflow_boundary_nodes = new_outflow_boundary_nodes
+
+    def _init_masks(self) -> None:
+        if os.path.exists(self.saved_npz_path):
+            masks = np.load(self.saved_npz_path)
+            self.boundary_nodes_mask = masks['boundary_nodes_mask']
+            self.boundary_edges_mask = masks['boundary_edges_mask']
+            self.inflow_edges_mask = masks['inflow_edges_mask']
+            self.outflow_edges_mask = masks['outflow_edges_mask']
+            return
+
+        # If masks_npz_path does not exist, assume that this is the first time the boundary condition is being created and process() is being called on dataset
+        self.boundary_nodes_mask = None # Used for autoregressive prediction
+        self.boundary_edges_mask = None # Used for autoregressive prediction
+        self.inflow_edges_mask = None # Used for global physics mass conservation loss
+        self.outflow_edges_mask = None # Used for global physics mass conservation loss
+
+    def save_data(self) -> None:
+        np.savez(self.saved_npz_path,
+                 boundary_nodes_mask=self.boundary_nodes_mask,
+                 boundary_edges_mask=self.boundary_edges_mask,
+                 inflow_edges_mask=self.inflow_edges_mask,
+                 outflow_edges_mask=self.outflow_edges_mask)
 
     def create(self, edge_index: ndarray, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> None:
         boundary_nodes = np.concat([np.array(self.init_inflow_boundary_nodes), np.array(self.init_outflow_boundary_nodes)])
@@ -62,23 +82,13 @@ class BoundaryCondition:
         boundary_dynamic_nodes = dynamic_nodes[:, boundary_nodes, :].copy()
         boundary_dynamic_edges = dynamic_edges[:, boundary_edges, :].copy()
 
-        # Ensure inflow boundary edges point away from the boundary node
-        inflow_to_boundary_mask = np.isin(new_boundary_edge_index[1], self.new_inflow_boundary_nodes)
-        if np.any(inflow_to_boundary_mask):
-            inflow_to_boundary = new_boundary_edge_index[:, inflow_to_boundary_mask]
-            inflow_to_boundary[[0, 1], :] = inflow_to_boundary[[1, 0], :]
-            new_boundary_edge_index[:, inflow_to_boundary_mask] = inflow_to_boundary
-            # Flip the dynamic edge features accordingly
-            boundary_dynamic_edges[:, inflow_to_boundary_mask, :] *= -1
-
-        # Ensure outflow boundary edges point towards the boundary node
-        outflow_from_boundary_mask = np.isin(new_boundary_edge_index[0], self.new_outflow_boundary_nodes)
-        if np.any(outflow_from_boundary_mask):
-            outflow_from_boundary = new_boundary_edge_index[:, outflow_from_boundary_mask]
-            outflow_from_boundary[[0, 1], :] = outflow_from_boundary[[1, 0], :]
-            new_boundary_edge_index[:, outflow_from_boundary_mask] = outflow_from_boundary
-            # Flip the dynamic edge features accordingly
-            boundary_dynamic_edges[:, outflow_from_boundary_mask, :] *= -1
+        # Ensure boundary edges are pointing away from the ghost nodes
+        new_boundary_nodes = np.concat([self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes])
+        to_boundary = np.isin(new_boundary_edge_index[1], new_boundary_nodes)
+        if np.any(to_boundary):
+            flipped_to_boundary = new_boundary_edge_index[:, to_boundary]
+            flipped_to_boundary[[0, 1], :] = flipped_to_boundary[[1, 0], :]
+            new_boundary_edge_index = np.concat([new_boundary_edge_index[:, ~to_boundary], flipped_to_boundary], axis=1)
 
         self._boundary_edge_index = new_boundary_edge_index
         self._boundary_dynamic_nodes = boundary_dynamic_nodes
@@ -89,7 +99,7 @@ class BoundaryCondition:
                dynamic_nodes: ndarray,
                static_edges: ndarray,
                dynamic_edges: ndarray,
-               edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray]:
+               edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
         static_nodes = np.delete(static_nodes, self.ghost_nodes, axis=0)
         dynamic_nodes = np.delete(dynamic_nodes, self.ghost_nodes, axis=1)
 
@@ -106,6 +116,7 @@ class BoundaryCondition:
             dynamic_edges: ndarray,
             edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
         _, num_static_node_feat = static_nodes.shape
+
         num_boundary_nodes = len(self.new_inflow_boundary_nodes) + len(self.new_outflow_boundary_nodes)
         boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat),
                                         dtype=static_nodes.dtype)
@@ -121,6 +132,9 @@ class BoundaryCondition:
 
         edge_index = np.concat([edge_index, self._boundary_edge_index], axis=1)
 
+        new_num_nodes = static_nodes.shape[0]
+        self._create_masks(new_num_nodes, edge_index)
+
         # Clear boundary condition attributes to save memory
         self._boundary_dynamic_edges = None
         self._boundary_dynamic_nodes = None
@@ -128,10 +142,15 @@ class BoundaryCondition:
 
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 
+    def _create_masks(self, new_num_nodes: int, edge_index: ndarray) -> None:
+        boundary_nodes = np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
+        self.boundary_nodes_mask = np.isin(np.arange(new_num_nodes), boundary_nodes)
+
+        self.boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
+
+        self.inflow_edges_mask = np.any(np.isin(edge_index, self.new_inflow_boundary_nodes), axis=0)
+
+        self.outflow_edges_mask = np.any(np.isin(edge_index, self.new_outflow_boundary_nodes), axis=0)
+
     def get_new_boundary_nodes(self) -> ndarray:
         return np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
-
-    def get_non_boundary_nodes_mask(self) -> Union[ndarray, Tensor]:
-        boundary_nodes = self.get_new_boundary_nodes()
-        non_boundary_nodes_mask = ~np.isin(np.arange(self.new_num_nodes), boundary_nodes)
-        return non_boundary_nodes_mask

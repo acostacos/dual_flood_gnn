@@ -45,7 +45,7 @@ def local_mass_conservation_loss(
     local_mass_info: Dict[str, Tensor] = databatch.local_mass_info
 
     # Values assumed to be the same for all batches
-    non_boundary_nodes_mask = bc_helper.get_non_boundary_nodes_mask()
+    non_boundary_nodes_mask = ~bc_helper.boundary_nodes_mask
 
     # Get predefined information
     rainfall = local_mass_info['rainfall']

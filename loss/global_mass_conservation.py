@@ -23,7 +23,7 @@ def global_mass_conservation_loss(
     global_mass_info: Dict[str, Tensor] = databatch.global_mass_info
 
     # Values assumed to be the same for all batches
-    non_boundary_nodes_mask = bc_helper.get_non_boundary_nodes_mask()
+    non_boundary_nodes_mask = ~bc_helper.boundary_nodes_mask
     outflow_edges_mask = bc_helper.outflow_edges_mask
 
     # Get predefined information

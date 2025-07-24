@@ -24,9 +24,10 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
 
-        orig_edges_mask = np.isin(edge_index, dir_edge_index)
-        t_orig_edges_mask = torch.from_numpy(orig_edges_mask)
+        orig_edges_mask = (edge_index[:, :, None] == dir_edge_index[:, None, :]).all(axis=0).any(axis=1)
         t_edge_index = torch.from_numpy(edge_index.copy())
+        t_orig_edges_mask = torch.from_numpy(orig_edges_mask)
+        t_bounadry_edges_mask = torch.from_numpy(self.boundary_condition.boundary_edges_mask)
 
         curr_event_idx = -1
         data_list = []
@@ -90,6 +91,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     y=label_nodes,
                     y_edge=label_edges,
                     orig_edges_mask=t_orig_edges_mask,
+                    boundary_edges_mask=t_bounadry_edges_mask,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)
 

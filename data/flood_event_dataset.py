@@ -252,15 +252,17 @@ class FloodEventDataset(Dataset):
                                                                      edge_face_flow_per_ts,
                                                                      within_event_idx)
 
-        orig_edges_mask = np.isin(edge_index, dir_edge_index)
+        orig_edges_mask = (edge_index[:, :, None] == dir_edge_index[:, None, :]).all(axis=0).any(axis=1)
         edge_index = torch.from_numpy(edge_index)
         orig_edges_mask = torch.from_numpy(orig_edges_mask)
+        boundary_edges_mask = torch.from_numpy(self.boundary_condition.boundary_edges_mask)
         data = Data(x=node_features,
                     edge_index=edge_index,
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
                     orig_edges_mask=orig_edges_mask,
+                    boundary_edges_mask=boundary_edges_mask,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)
 

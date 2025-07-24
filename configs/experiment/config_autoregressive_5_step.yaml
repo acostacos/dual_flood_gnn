@@ -29,12 +29,12 @@ training_parameters:
   model_dir            : 'autoregressive_train/model'                      # Directory to save trained models
   stats_dir            : 'autoregressive_train/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
-  batch_size           : 21                                 # Batch size
+  batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : True                               # Use autoregressive training
-  autoregressive_timesteps: 6                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 15                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  autoregressive_timesteps: 5                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 18                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss

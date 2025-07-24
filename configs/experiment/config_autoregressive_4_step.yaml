@@ -29,7 +29,7 @@ training_parameters:
   model_dir            : 'autoregressive_train/model'                      # Directory to save trained models
   stats_dir            : 'autoregressive_train/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
-  batch_size           : 32                                 # Batch size
+  batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : True                               # Use autoregressive training

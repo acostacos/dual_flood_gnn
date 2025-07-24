@@ -34,7 +34,9 @@ def global_mass_conservation_loss(
     batch_outflow_edges_mask = get_batch_mask(outflow_edges_mask, num_graphs)
     face_flow = global_mass_info['face_flow']
     outflow = face_flow[batch_outflow_edges_mask].squeeze()
-    outflow_node_idxs = edge_index[1, batch_outflow_edges_mask]
+    # Flip direction because edges are pointed away from the outflow boundary
+    outflow *= -1
+    outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
     outflow_batch = batch[outflow_node_idxs]
     total_outflow = scatter(outflow, outflow_batch, reduce='sum')
 
@@ -51,7 +53,9 @@ def global_mass_conservation_loss(
     # if is_normalized:
     #     batch_edge_pred = normalizer.denormalize('face_flow', batch_edge_pred)
     # outflow = batch_edge_pred[batch_outflow_edges_mask].squeeze()
-    # outflow_node_idxs = edge_index[1, batch_outflow_edges_mask]
+    # # Flip direction because edges are pointed away from the outflow boundary
+    # outflow *= -1
+    # outflow_node_idxs = edge_index[0, batch_outflow_edges_mask]
     # outflow_batch = batch[outflow_node_idxs]
     # total_outflow = scatter(outflow, outflow_batch, reduce='sum')
 

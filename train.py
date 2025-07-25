@@ -203,7 +203,6 @@ def main():
 
         # Clear memory before loading test dataset
         del dataset
-        del dataloader
         gc.collect()
 
         dataset = dataset_class(

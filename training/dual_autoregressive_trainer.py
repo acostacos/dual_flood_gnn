@@ -131,45 +131,25 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
         self.training_stats.end_train()
 
-    # TODO: Add pushforward method if needed
     # def train(self):
-    #     '''Stability Loss'''
+    #     '''Pushforward Trick + Stability Loss'''
+    #     # TODO: CURRENT BUG = stability loss is not computed correctly when it reaches the end of the event. Need to check for the last batch of each event.
     #     self.training_stats.start_train()
-    #     dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=interval)
     #     for epoch in range(self.num_epochs):
     #         self.model.train()
     #         running_pred_loss = 0.0
     #         running_edge_pred_loss = 0.0
+    #         running_stability_loss = 0.0
     #         if self.use_physics_loss:
     #             self._reset_epoch_physics_running_loss()
 
-    #         group_losses = None
-    #         sliding_window = None
-    #         edge_sliding_window = None
-    #         for i, batch in enumerate(dataloader):
+    #         prev_pred = None
+    #         prev_edge_pred = None
+    #         for batch in self.dataloader:
     #             batch = batch.to(self.device)
 
-    #             if (i % interval == 0):
-    #                 self.optimizer.zero_grad()
-    #                 group_losses = []
-    #                 sliding_window = batch.x.clone()[:, self.start_target_idx:self.end_target_idx]
-    #                 edge_sliding_window = batch.edge_attr.clone()[:, self.start_target_edges_idx:self.end_target_edges_idx]
-
-    #             # Override graph data with sliding window
-    #             # Only override non-boundary nodes to keep boundary conditions intact
-    #             batch_non_boundary_nodes_mask = np.tile(self.non_boundary_nodes_mask, batch.num_graphs)
-    #             batch.x[batch_non_boundary_nodes_mask, self.start_target_idx:self.end_target_idx] \
-    #                 = sliding_window[batch_non_boundary_nodes_mask]
-
-    #             # Only override non-boundary edges to keep boundary conditions intact
-    #             batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
-    #             batch.edge_attr[batch_non_boundary_edges_mask, self.start_target_edges_idx:self.end_target_edges_idx] \
-    #                 = edge_sliding_window[batch_non_boundary_edges_mask]
-
+    #             # One-step prediction
     #             pred, edge_pred = self.model(batch)
-
-    #             sliding_window = torch.concat((sliding_window[:, 1:], pred.detach()), dim=1)
-    #             edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred.detach()), dim=1)
 
     #             label = batch.y
     #             pred_loss = self.loss_func(pred, label)
@@ -182,83 +162,60 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
     #             edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_pred_loss_percent
     #             running_edge_pred_loss += edge_pred_loss.item()
 
-    #             loss = pred_loss + edge_pred_loss
+    #             one_step_loss = pred_loss + edge_pred_loss
 
+    #             if prev_pred is not None and prev_edge_pred is not None:
+    #                 # Stability Loss
+    #                 # Prediction for timestep t
+    #                 pred_stab, edge_pred_stab = self.model(batch)
+    #                 d_pred_stab, d_edge_pred_stab = pred_stab.detach(), edge_pred_stab.detach()
 
+    #                 # Prediction for timestep t+1
+    #                 next_batch = Batch.from_data_list(batch.to_data_list()[1:]) # Get next batch (t+1) by slicing the batch
 
+    #                 next_ts_node_mask = batch.batch != 0
+    #                 next_batch.x[:, self.target_nodes_idx:self.target_nodes_idx+1] = \
+    #                     d_pred_stab[next_ts_node_mask, :]
+    #                 next_ts_edge_mask = torch.arange(batch.num_edges, device=self.device) >= (batch.num_edges // batch.num_graphs)
+    #                 next_batch.edge_attr[:, self.target_edges_idx:self.target_edges_idx+1] = \
+    #                     d_edge_pred_stab[next_ts_edge_mask, :]
+    #                 pred_stab_next, edge_pred_stab_next = self.model(next_batch)
 
+    #                 stab_pred_loss = self.loss_func(pred_stab_next, next_batch.y)
+    #                 stab_pred_loss =  stab_pred_loss * self.pred_loss_percent
 
-    #             X = graph.ndata["x"]
-    #             n_static = 12  # assumed static features dimension
-    #             n_time = (X.shape[1] - n_static) // 2
-    #             static_part = X[:, :n_static]
-    #             water_depth_full = X[:, n_static:n_static + n_time]
-    #             volume_full = X[:, n_static + n_time:n_static + 2 * n_time]
-    #             # For one-step prediction, use dynamic features from indices 1: (last n_time_steps)
-    #             water_depth_window_one = water_depth_full[:, 1:]
-    #             volume_window_one = volume_full[:, 1:]
-    #             X_one = torch.cat([static_part, water_depth_window_one, volume_window_one], dim=1)
-    #             pred_one = self.model(X_one, graph.edata["x"], graph)
-    #             one_step_loss = self.criterion(pred_one, graph.ndata["y"])
+    #                 stab_edge_pred_loss = self.loss_func(edge_pred_stab_next, next_batch.y_edge)
+    #                 stab_edge_pred_loss = self.edge_loss_scaler.scale_loss(stab_edge_pred_loss) * self.edge_pred_loss_percent
 
-    #             # Stability branch (example implementation)
-    #             water_depth_window_stab = water_depth_full[:, :n_time - 1]
-    #             volume_window_stab = volume_full[:, :n_time - 1]
-    #             X_stab = torch.cat([static_part, water_depth_window_stab, volume_window_stab], dim=1)
-    #             pred_stab = self.model(X_stab, graph.edata["x"], graph)
-    #             pred_stab_detached = pred_stab.detach()
-    #             water_depth_updated = torch.cat(
-    #                 [water_depth_full[:, 1:2], water_depth_full[:, 1:2] + pred_stab_detached[:, 0:1]],
-    #                 dim=1
-    #             )
-    #             volume_updated = torch.cat(
-    #                 [volume_full[:, 1:2], volume_full[:, 1:2] + pred_stab_detached[:, 1:2]],
-    #                 dim=1
-    #             )
-    #             X_stab_updated = torch.cat([static_part, water_depth_updated, volume_updated], dim=1)
-    #             pred_stab2 = self.model(X_stab_updated, graph.edata["x"], graph)
-    #             stability_loss = self.criterion(pred_stab2, graph.ndata["y"])
+    #                 stability_loss = stab_pred_loss + stab_edge_pred_loss
+    #                 running_stability_loss += stability_loss.item()
 
-    #             loss = one_step_loss + stability_loss
-    #             loss_dict = {
-    #                 "total_loss": loss,
-    #                 "loss_one": one_step_loss,
-    #                 "loss_stability": stability_loss
-    #             }
-    #             if self.use_physics_loss and physics_data is not None:
-    #                 phy_loss = compute_physics_loss(pred_one, physics_data, graph, delta_t=self.delta_t)
-    #                 loss = loss + self.physics_loss_weight * phy_loss
-    #                 loss_dict["physics_loss"] = phy_loss
+    #                 loss = one_step_loss + stability_loss
 
-    #             group_losses.append(loss)
-
-    #             if ((i + 1) % interval == 0) or (i + 1 == len(dataloader)):
-    #                 torch.stack(group_losses).mean().backward()
+    #                 loss.backward()
     #                 self.optimizer.step()
 
     #         running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))
-    #         epoch_loss = running_loss / len(dataloader)
-    #         pred_epoch_loss = running_pred_loss / len(dataloader)
-    #         edge_pred_epoch_loss = running_edge_pred_loss / len(dataloader)
+    #         epoch_loss = running_loss / len(self.dataloader)
+    #         pred_epoch_loss = running_pred_loss / len(self.dataloader)
+    #         edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
+    #         epoch_stability_loss = running_stability_loss / len(self.dataloader)
 
     #         logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
     #         logging_str += f'\tLoss: {epoch_loss:.4e}\n'
     #         logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
-    #         logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
+    #         logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}\n'
+    #         logging_str += f'\tStability Loss: {epoch_stability_loss:.4e}'
     #         self.training_stats.log(logging_str)
 
     #         self.training_stats.add_loss(epoch_loss)
     #         self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
     #         self.training_stats.add_loss_component('edge_prediction_loss', edge_pred_epoch_loss)
+    #         self.training_stats.add_loss_component('stability_loss', epoch_stability_loss)
 
     #         if epoch < self.num_epochs_dyn_weight:
     #             self.edge_loss_scaler.update_scale_from_epoch()
     #             self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
-    #         elif(epoch - self.num_epochs_dyn_weight) != 0 and (epoch - self.num_epochs_dyn_weight) % 15 == 0 and interval < self.num_timesteps:
-    #             interval += 1
-    #             dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=interval)
-    #             self.training_stats.log(f'\tIncreased interval to {interval} timesteps')
-
 
     #         if self.use_physics_loss:
     #             self._process_epoch_physics_loss(epoch)

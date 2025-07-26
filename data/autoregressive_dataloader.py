@@ -27,14 +27,13 @@ class AutoRegressiveBatchSampler(BatchSampler):
             group = [*islice(event_iter, self.group_size)]
             while group:
                 if len(group) < self.num_timesteps:
-                    num_complete = 1
-                    num_batch = len(group)
-                else:
-                    num_complete = len(group) // self.num_timesteps
-                    num_batch = self.num_timesteps
+                    # Group does not have enough timesteps for autoregressive training so skip it
+                    group = None
+                    continue
 
+                num_complete = len(group) // self.num_timesteps
                 inc = 0
-                while inc < num_batch:
+                while inc < self.num_timesteps:
                     batch = group[inc::self.num_timesteps]
                     batch = batch[:num_complete]  # Ensure all batches are of equal size
                     yield batch
@@ -44,9 +43,9 @@ class AutoRegressiveBatchSampler(BatchSampler):
 
     def __len__(self) -> int:
         num_complete_batch = (self.event_size // self.group_size) * self.num_timesteps
+        num_remaining_batch = np.array([self.num_timesteps] * len(self.event_size))
         num_remaining = self.event_size % self.group_size
-        temp = np.array([self.num_timesteps] * len(self.event_size))
-        num_remaining_batch = np.min(np.stack([num_remaining, temp]), axis=0)
+        num_remaining_batch[num_remaining < self.num_timesteps] = 0 # Remove groups that do not have enough timesteps
         num_batch = num_complete_batch + num_remaining_batch
         return num_batch.sum().item()
 

@@ -26,9 +26,14 @@ class AutoRegressiveBatchSampler(BatchSampler):
 
             group = [*islice(event_iter, self.group_size)]
             while group:
-                num_complete = len(group) // self.num_timesteps
+                if len(group) < self.num_timesteps:
+                    num_complete = 1
+                    num_batch = len(group)
+                else:
+                    num_complete = len(group) // self.num_timesteps
+                    num_batch = self.num_timesteps
+
                 inc = 0
-                num_batch = min(self.num_timesteps, len(group))
                 while inc < num_batch:
                     batch = group[inc::self.num_timesteps]
                     batch = batch[:num_complete]  # Ensure all batches are of equal size

@@ -18,13 +18,10 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
     def load_to_memory(self) -> List[Data]:
         # Load constant data
-        constant_values = np.load(self.processed_paths[2])
+        constant_values = np.load(self.processed_paths[3])
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
-
-        non_boundary_edges_mask: ndarray = constant_values['non_boundary_edges_mask']
-        self.boundary_condition.non_boundary_edges_mask = non_boundary_edges_mask
 
         t_edge_index = torch.from_numpy(edge_index.copy())
 
@@ -44,7 +41,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
             if event_idx != curr_event_idx:
                 # Load dynamic data
-                dynamic_values_path = self.processed_paths[event_idx + 3]
+                dynamic_values_path = self.processed_paths[event_idx + 4]
                 dynamic_values = np.load(dynamic_values_path)
                 dynamic_nodes = dynamic_values['dynamic_nodes']
                 dynamic_edges = dynamic_values['dynamic_edges']
@@ -55,13 +52,11 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
                     total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
                     edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
-                    outflow_edges_mask: ndarray = constant_values['outflow_edges_mask']
 
                 if self.with_local_mass_loss:
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
                     node_water_volume_per_ts: ndarray = dynamic_values['node_water_volume_per_ts']
                     edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
-                    outflow_edges_mask: ndarray = constant_values['outflow_edges_mask']
 
                 curr_event_idx = event_idx
 
@@ -78,7 +73,6 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                         total_water_volume_per_ts,
                                                                         edge_face_flow_per_ts,
                                                                         within_event_idx)
-                self.boundary_condition.outflow_edges_mask = outflow_edges_mask
 
             local_mass_info = None
             if self.with_local_mass_loss:
@@ -86,7 +80,6 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                          node_water_volume_per_ts,
                                                                          edge_face_flow_per_ts,
                                                                          within_event_idx)
-                self.boundary_condition.outflow_edges_mask = outflow_edges_mask
 
             data = Data(x=node_features,
                     edge_index=t_edge_index,

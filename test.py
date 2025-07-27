@@ -48,7 +48,7 @@ def test_autoregressive_node_only(model: torch.nn.Module,
     delta_t = dataset.timestep_interval
 
     # Get boundary condition masks
-    non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
+    non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
 
     # Assume using the same area for all events in the dataset
     area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
@@ -130,8 +130,8 @@ def test_autoregressive(model: torch.nn.Module,
     delta_t = dataset.timestep_interval
 
     # Get non-boundary nodes/edges and threshold for metric computation
-    non_boundary_nodes_mask = dataset.boundary_condition.get_non_boundary_nodes_mask()
-    non_boundary_edges_mask = dataset.boundary_condition.non_boundary_edges_mask
+    non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
+    non_boundary_edges_mask = ~dataset.boundary_condition.boundary_edges_mask
 
     # Assume using the same area for all events in the dataset
     area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')

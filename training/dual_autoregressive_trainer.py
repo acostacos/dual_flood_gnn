@@ -20,8 +20,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
         # Get non-boundary nodes/edges and threshold for metric computation
         ds: FloodEventDataset = self.dataloader.dataset
-        self.non_boundary_nodes_mask = ds.boundary_condition.get_non_boundary_nodes_mask()
-        self.non_boundary_edges_mask = ds.boundary_condition.non_boundary_edges_mask
+        self.non_boundary_nodes_mask = ~ds.boundary_condition.boundary_nodes_mask
+        self.non_boundary_edges_mask = ~ds.boundary_condition.boundary_edges_mask
 
         # Get sliding window indices
         sliding_window_length = ds.previous_timesteps + 1

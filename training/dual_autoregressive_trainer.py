@@ -51,7 +51,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             for i, batch in enumerate(dataloader):
                 batch = batch.to(self.device)
 
-                if i % current_num_timesteps == 0:
+                reset_autoregressive = i % current_num_timesteps == 0
+                if reset_autoregressive:
                     self.optimizer.zero_grad()
                     group_losses = []
                     sliding_window = batch.x.clone()[:, self.start_target_idx:self.end_target_idx]
@@ -69,6 +70,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                     = edge_sliding_window[batch_non_boundary_edges_mask]
 
                 pred, edge_pred = self.model(batch)
+                pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
 
                 sliding_window = torch.concat((sliding_window[:, 1:], pred.detach()), dim=1)
                 edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred.detach()), dim=1)
@@ -87,7 +89,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 loss = pred_loss + edge_pred_loss
 
                 if self.use_physics_loss:
-                    physics_loss = self._get_epoch_physics_loss(pred, loss, batch)
+                    prev_edge_pred = None if reset_autoregressive else edge_sliding_window[:, [-2]]
+                    physics_loss = self._get_epoch_physics_loss(pred, loss, batch, prev_edge_pred)
                     loss = loss * self.pred_loss_percent + physics_loss
 
                 group_losses.append(loss)

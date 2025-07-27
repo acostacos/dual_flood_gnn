@@ -12,7 +12,8 @@ from torch.nn import MSELoss
 from torch_geometric.loader import DataLoader
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
 from typing import List, Optional, Tuple
-from utils import ValidationStats, Logger, file_utils
+from utils import Logger, file_utils
+from utils.validation_stats import ValidationStats
 from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
     create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
 

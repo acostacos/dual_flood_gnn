@@ -10,7 +10,8 @@ from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
 from typing import Dict, Tuple, Optional, List
-from utils import ValidationStats, Logger, file_utils
+from utils import Logger, file_utils
+from utils.validation_stats import ValidationStats
 from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
     create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
 

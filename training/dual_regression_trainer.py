@@ -1,3 +1,7 @@
+import numpy as np
+
+from data import FloodEventDataset
+from torch import Tensor
 from utils import LossScaler
 
 from .base_trainer import BaseTrainer
@@ -7,6 +11,10 @@ class DualRegressionTrainer(BaseTrainer):
                  edge_pred_loss_percent: float = 0.5,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        ds: FloodEventDataset = self.dataloader.dataset
+        self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
+        self.inflow_edges_mask = ds.boundary_condition.inflow_edges_mask
 
         self.edge_pred_loss_percent = edge_pred_loss_percent
 
@@ -27,6 +35,7 @@ class DualRegressionTrainer(BaseTrainer):
 
                 batch = batch.to(self.device)
                 pred, edge_pred = self.model(batch)
+                pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
 
                 label = batch.y
                 pred_loss = self.loss_func(pred, label)
@@ -71,3 +80,12 @@ class DualRegressionTrainer(BaseTrainer):
                 self._process_epoch_physics_loss(epoch)
 
         self.training_stats.end_train()
+
+    def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch) -> Tensor:
+        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
+        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask]
+
+        # Only override inflow edges as outflow edges are predicted by the model
+        batch_inflow_edges_mask = np.tile(self.inflow_edges_mask, batch.num_graphs)
+        edge_pred[batch_inflow_edges_mask] = batch.y_edge[batch_inflow_edges_mask]
+        return pred, edge_pred

@@ -8,7 +8,8 @@ from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
 from torch_geometric.loader import DataLoader
 from typing import Dict, Optional
-from utils import ValidationStats, Logger, file_utils
+from utils import Logger, file_utils
+from utils.validation_stats import ValidationStats
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -42,12 +43,9 @@ def test_autoregressive_node_only(model: torch.nn.Module,
                         device: str = 'cpu',
                         include_physics_loss: bool = True):
     previous_timesteps = dataset.previous_timesteps
-    normalizer = dataset.normalizer
-    boundary_condition = dataset.boundary_condition
-    is_normalized = dataset.is_normalized
-    delta_t = dataset.timestep_interval
 
     # Get boundary condition masks
+    boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
     non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
 
     # Assume using the same area for all events in the dataset
@@ -87,14 +85,17 @@ def test_autoregressive_node_only(model: torch.nn.Module,
             graph.x[non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[non_boundary_nodes_mask]
 
             pred = model(graph)
+
+            # Override boundary conditions in predictions
+            pred[boundary_nodes_mask] = graph.y[boundary_nodes_mask]
+
             sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 
             # Requires normalized physics-informed loss
             if include_physics_loss:
                 # Requires normalized prediction for physics-informed loss
-                validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
-                                                                            normalizer, boundary_condition,
-                                                                            is_normalized=is_normalized, delta_t=delta_t)
+                prev_edge_pred = graph.global_mass_info['face_flow']
+                validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
 
             label = graph.y
             if dataset.is_normalized:
@@ -124,14 +125,12 @@ def test_autoregressive(model: torch.nn.Module,
                         device: str = 'cpu',
                         include_physics_loss: bool = True):
     previous_timesteps = dataset.previous_timesteps
-    normalizer = dataset.normalizer
-    boundary_condition = dataset.boundary_condition
-    is_normalized = dataset.is_normalized
-    delta_t = dataset.timestep_interval
 
     # Get non-boundary nodes/edges and threshold for metric computation
+    boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
     non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
     non_boundary_edges_mask = ~dataset.boundary_condition.boundary_edges_mask
+    inflow_edges_mask = dataset.boundary_condition.inflow_edges_mask
 
     # Assume using the same area for all events in the dataset
     area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
@@ -168,7 +167,7 @@ def test_autoregressive(model: torch.nn.Module,
         sliding_window = dataset[event_start_idx].x.clone()[:, start_target_idx:end_target_idx]
         edge_sliding_window = dataset[event_start_idx].edge_attr.clone()[:, start_target_edges_idx:end_target_edges_idx]
         sliding_window, edge_sliding_window = sliding_window.to(device), edge_sliding_window.to(device)
-        for graph in dataloader:
+        for i, graph in enumerate(dataloader):
             graph = graph.to(device)
 
             # Override graph data with sliding window
@@ -178,14 +177,19 @@ def test_autoregressive(model: torch.nn.Module,
             graph.edge_attr[non_boundary_edges_mask, start_target_edges_idx:end_target_edges_idx] = edge_sliding_window[non_boundary_edges_mask]
 
             pred, edge_pred = model(graph)
+
+            # Override boundary conditions in predictions
+            pred[boundary_nodes_mask] = graph.y[boundary_nodes_mask]
+            # Only override inflow edges as outflow edges are predicted by the model
+            edge_pred[inflow_edges_mask] = graph.y_edge[inflow_edges_mask]
+
             sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
             edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
 
             if include_physics_loss:
                 # Requires normalized prediction for physics-informed loss
-                validation_stats.update_physics_informed_stats_for_timestep(pred, graph,
-                                                                        normalizer, boundary_condition,
-                                                                        is_normalized=is_normalized, delta_t=delta_t)
+                prev_edge_pred = graph.global_mass_info['face_flow'] if i == 0 else edge_sliding_window[:, [-2]]
+                validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
 
             label = graph.y
             if dataset.is_normalized:
@@ -232,7 +236,11 @@ def run_test(model: torch.nn.Module,
     for event_idx, run_id in enumerate(dataset.hec_ras_run_ids):
         logger.log(f'Validating on run {event_idx + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
 
-        validation_stats = ValidationStats(logger=logger)
+        validation_stats = ValidationStats(logger=logger,
+                                            previous_timesteps=dataset.previous_timesteps,
+                                            normalizer=dataset.normalizer,
+                                            is_normalized=dataset.is_normalized,
+                                            delta_t=dataset.timestep_interval)
 
         if is_dual_model:
             test_autoregressive(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)

@@ -4,15 +4,25 @@ import time
 
 from numpy import ndarray
 from torch import Tensor
-from loss import global_mass_conservation_loss, local_mass_conservation_loss
+from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data.boundary_condition import BoundaryCondition
 from data.dataset_normalizer import DatasetNormalizer
+from typing import Optional
 
 from . import Logger
 from .metric_utils import RMSE, MAE, NSE, CSI
 
 class ValidationStats:
-    def __init__(self, logger: Logger = None):
+    def __init__(self,
+                 logger: Optional[Logger] = None,
+                 previous_timesteps: Optional[int] = None,
+                 normalizer: Optional[DatasetNormalizer] = None,
+                 is_normalized: Optional[bool] = None,
+                 delta_t: Optional[int] = None):
+        self.previous_timesteps = previous_timesteps
+        self.normalizer = normalizer
+        self.is_normalized = is_normalized
+        self.delta_t = delta_t
         self.val_start_time = None
         self.val_end_time = None
 
@@ -106,22 +116,18 @@ class ValidationStats:
         self.edge_nse_list.append(NSE(edge_pred, edge_target))
 
     def update_physics_informed_stats_for_timestep(self,
-                                                   node_pred: Tensor,
+                                                   pred: Tensor,
                                                    databatch,
-                                                   normalizer: DatasetNormalizer,
-                                                   bc_helper: BoundaryCondition,
-                                                   is_normalized: bool = True,
-                                                   delta_t: int = 30):
-        total_water_volume = databatch.global_mass_info['total_water_volume']
-        global_mass_loss = global_mass_conservation_loss(node_pred, None, total_water_volume, databatch,
-                                                            normalizer, bc_helper,
-                                                            is_normalized=is_normalized, delta_t=delta_t)
+                                                   prev_edge_pred: Tensor):
+        assert self.previous_timesteps is not None and self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
+            "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
+
+        global_mass_loss_func = GlobalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
+        global_mass_loss = global_mass_loss_func(pred, prev_edge_pred, databatch)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
-        water_volume = databatch.local_mass_info['water_volume']
-        local_mass_loss = local_mass_conservation_loss(node_pred, None, water_volume, databatch,
-                                                        normalizer, bc_helper,
-                                                        is_normalized=is_normalized, delta_t=delta_t)
+        local_mass_loss_func = LocalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
+        local_mass_loss = local_mass_loss_func(pred, prev_edge_pred, databatch)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())
 
     def print_stats_summary(self):

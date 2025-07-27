@@ -1,8 +1,16 @@
+import numpy as np
+
+from data import FloodEventDataset
+from torch import Tensor
+
 from .base_trainer import BaseTrainer
 
 class NodeRegressionTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        ds: FloodEventDataset = self.dataloader.dataset
+        self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
 
     def train(self):
         self.training_stats.start_train()
@@ -17,6 +25,7 @@ class NodeRegressionTrainer(BaseTrainer):
 
                 batch = batch.to(self.device)
                 pred = self.model(batch)
+                pred = self._override_pred_bc(pred, batch)
 
                 label = batch.y
                 loss = self.loss_func(pred, label)
@@ -44,3 +53,8 @@ class NodeRegressionTrainer(BaseTrainer):
                 self._process_epoch_physics_loss(epoch)
 
         self.training_stats.end_train()
+
+    def _override_pred_bc(self, pred: Tensor, batch) -> Tensor:
+        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
+        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask]
+        return pred

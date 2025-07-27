@@ -48,14 +48,11 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
                 # Load physics-informed loss information
                 if self.with_global_mass_loss:
-                    total_inflow_per_ts: ndarray = dynamic_values['total_inflow_per_ts']
-                    total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
-                    total_water_volume_per_ts: ndarray = dynamic_values['total_water_volume_per_ts']
                     edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
+                    total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
 
                 if self.with_local_mass_loss:
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-                    node_water_volume_per_ts: ndarray = dynamic_values['node_water_volume_per_ts']
                     edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
 
                 curr_event_idx = event_idx
@@ -68,16 +65,13 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
             global_mass_info = None
             if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(total_inflow_per_ts,
-                                                                        total_rainfall_per_ts,
-                                                                        total_water_volume_per_ts,
-                                                                        edge_face_flow_per_ts,
-                                                                        within_event_idx)
+                global_mass_info = self._get_global_mass_info_for_timestep(total_rainfall_per_ts,
+                                                                           edge_face_flow_per_ts,
+                                                                           within_event_idx)
 
             local_mass_info = None
             if self.with_local_mass_loss:
                 local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                         node_water_volume_per_ts,
                                                                          edge_face_flow_per_ts,
                                                                          within_event_idx)
 

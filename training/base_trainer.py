@@ -1,14 +1,15 @@
 import math
 import torch
 
-from loss import global_mass_conservation_loss, local_mass_conservation_loss
+from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data import FloodEventDataset
 from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch_geometric.loader import DataLoader
 from typing import Callable
-from utils import TrainingStats, LossScaler, Logger
+from utils import LossScaler, Logger
+from utils.training_stats import TrainingStats
 
 
 class BaseTrainer:
@@ -39,21 +40,29 @@ class BaseTrainer:
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.device = device
-
         self.training_stats = TrainingStats(logger=logger)
-        self.is_normalized = dataset.is_normalized
-        self.normalizer = dataset.normalizer
-        self.boundary_condition = dataset.boundary_condition
 
         self.num_epochs_dyn_weight = self._get_num_epochs_dynamic_loss_weight(num_epochs)
         self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_weight} epochs')
 
         self.pred_loss_percent = 1.0
         if self.use_global_loss:
+            self.global_loss_func = GlobalMassConservationLoss(
+                previous_timesteps=dataset.previous_timesteps,
+                normalizer=dataset.normalizer,
+                is_normalized=dataset.is_normalized,
+                delta_t=self.delta_t
+            )
             self.global_loss_scaler = LossScaler()
             self.pred_loss_percent -= global_mass_loss_percent
 
         if self.use_local_loss:
+            self.local_loss_func = LocalMassConservationLoss(
+                previous_timesteps=dataset.previous_timesteps,
+                normalizer=dataset.normalizer,
+                is_normalized=dataset.is_normalized,
+                delta_t=self.delta_t,
+            )
             self.local_loss_scaler = LossScaler()
             self.pred_loss_percent -= local_mass_loss_percent
 
@@ -68,28 +77,24 @@ class BaseTrainer:
             self.running_orig_local_physics_loss = 0.0
             self.running_local_physics_loss = 0.0
 
-    def _get_epoch_physics_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
+    def _get_epoch_physics_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
         physics_loss = torch.zeros(1, device=self.device)
         if self.use_global_loss:
-            global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch, edge_pred)
+            global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch, prev_edge_pred)
             physics_loss += global_physics_loss
 
         if self.use_local_loss:
-            local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch, edge_pred)
+            local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch, prev_edge_pred)
             physics_loss += local_physics_loss
 
         return physics_loss
 
-    def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
-        total_water_volume = batch.global_mass_info['total_water_volume']
-        # TODO: Revert once edge prediction is implemented
-        # if edge_pred is None:
-        #     edge_pred = batch.global_mass_info['face_flow']
-        #     mean, std = self.normalizer.get_feature_mean_std('face_flow')
-        #     edge_pred = self.normalizer.normalize(edge_pred, mean, std)
-        global_physics_loss = global_mass_conservation_loss(pred, edge_pred, total_water_volume, batch,
-                                                            self.normalizer, self.boundary_condition,
-                                                            is_normalized=self.is_normalized, delta_t=self.delta_t)
+    def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+        if prev_edge_pred is None:
+            # If previous edge prediction is not provided, use the face flow from batch
+            prev_edge_pred = batch.global_mass_info['face_flow']
+
+        global_physics_loss = self.global_loss_func(pred, prev_edge_pred, batch)
         self.running_orig_global_physics_loss += global_physics_loss.item()
         self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_physics_loss)
 
@@ -97,16 +102,12 @@ class BaseTrainer:
         self.running_global_physics_loss += scaled_global_physics_loss.item()
         return scaled_global_physics_loss
 
-    def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, edge_pred: Tensor = None) -> Tensor:
-        water_volume = batch.local_mass_info['water_volume']
-        # TODO: Revert once edge prediction is implemented
-        # if edge_pred is None:
-        #     edge_pred = batch.global_mass_info['face_flow']
-        #     mean, std = self.normalizer.get_feature_mean_std('face_flow')
-        #     edge_pred = self.normalizer.normalize(edge_pred, mean, std)
-        local_physics_loss = local_mass_conservation_loss(pred, edge_pred, water_volume, batch,
-                                                          self.normalizer, self.boundary_condition,
-                                                          is_normalized=self.is_normalized, delta_t=self.delta_t)
+    def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+        if prev_edge_pred is None:
+            # If previous edge prediction is not provided, use the face flow from batch
+            prev_edge_pred = batch.local_mass_info['face_flow']
+
+        local_physics_loss = self.local_loss_func(pred, prev_edge_pred, batch)
         self.running_orig_local_physics_loss += local_physics_loss.item()
         self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_physics_loss)
 

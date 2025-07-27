@@ -25,7 +25,7 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'physics_informed_stc/logs/global_train.log'                                # Path to save training logs
+  log_path             : 'physics_informed_stc/logs/local_train.log'                                # Path to save training logs
   model_dir            : 'physics_informed_stc/model'                      # Directory to save trained models
   stats_dir            : 'physics_informed_stc/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
@@ -44,7 +44,7 @@ loss_func_parameters:
   local_mass_loss_percent: 0.01                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: 'physics_informed_stc/logs/global_test.log'                                        # Path to save testing logs
+  log_path: 'physics_informed_stc/logs/local_test.log'                                        # Path to save testing logs
   output_dir: 'physics_informed_stc/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)

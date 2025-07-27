@@ -8,9 +8,6 @@
 
 . venv/bin/activate
 
-srun python train.py --config 'configs/experiment/config_supervised.yaml' --model 'NodeEdgeGNN' --with_test True
-srun python train.py --config 'configs/experiment/config_autoregressive_2_step.yaml' --model 'NodeEdgeGNN' --with_test True
-srun python train.py --config 'configs/experiment/config_autoregressive_3_step.yaml' --model 'NodeEdgeGNN' --with_test True
-srun python train.py --config 'configs/experiment/config_autoregressive_4_step.yaml' --model 'NodeEdgeGNN' --with_test True
-srun python train.py --config 'configs/experiment/config_autoregressive_6_step.yaml' --model 'NodeEdgeGNN' --with_test True
-srun python train.py --config 'configs/experiment/config_autoregressive_8_step.yaml' --model 'NodeEdgeGNN' --with_test True
+srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNN'
+srun python train.py --config 'configs/experiment/global_loss_config.yaml' --model 'NodeEdgeGNN'
+srun python train.py --config 'configs/experiment/local_loss_config.yaml' --model 'NodeEdgeGNN'

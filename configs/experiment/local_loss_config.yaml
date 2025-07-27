@@ -25,9 +25,9 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'autoregressive_train/logs/auto_8step_train.log'                                # Path to save training logs
-  model_dir            : 'autoregressive_train/model'                      # Directory to save trained models
-  stats_dir            : 'autoregressive_train/train'                    # Directory to save training statistics
+  log_path             : 'physics_informed_stc/logs/global_train.log'                                # Path to save training logs
+  model_dir            : 'physics_informed_stc/model'                      # Directory to save trained models
+  stats_dir            : 'physics_informed_stc/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
@@ -39,13 +39,13 @@ training_parameters:
 loss_func_parameters:
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
-  use_local_mass_loss: False                                 # Use local mass conservation in loss function
-  global_mass_loss_percent: 0.0274                           # Percentage of global mass conservation loss in total loss
-  local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
+  use_local_mass_loss: True                                 # Use local mass conservation in loss function
+  global_mass_loss_percent: 0.01                           # Percentage of global mass conservation loss in total loss
+  local_mass_loss_percent: 0.01                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: 'autoregressive_train/logs/auto_8step_test.log'                                        # Path to save testing logs
-  output_dir: 'autoregressive_train/test'                           # Directory to save testing results
+  log_path: 'physics_informed_stc/logs/global_test.log'                                        # Path to save testing logs
+  output_dir: 'physics_informed_stc/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

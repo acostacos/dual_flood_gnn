@@ -417,6 +417,16 @@ class FloodEventDataset(Dataset):
     def _get_trimmed_dynamic_data(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
         start = self.spin_up_timesteps if self.spin_up_timesteps is not None else 0
 
+        run_id = self.hec_ras_run_ids[event_idx]
+        if run_id in [1, 2, 3, 4]:
+            start = 4320
+        elif run_id in [5, 6, 7, 8]:
+            start = 8640
+        elif run_id in [9, 10, 11, 12]:
+            start = 8640
+        elif run_id in [13, 14, 15, 16]:
+            start = 10080
+
         end = None
         if self.timesteps_from_peak is not None:
             event_peak = self._event_peak_idx[event_idx]

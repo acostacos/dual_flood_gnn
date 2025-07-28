@@ -6,7 +6,7 @@ import pandas as pd
 from numpy import ndarray
 from torch import Tensor
 from torch_geometric.data import Dataset, Data
-from typing import Callable, Tuple, List, Literal, Dict, Optional
+from typing import Callable, Tuple, List, Literal, Dict, Optional, Union
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
 
@@ -39,7 +39,7 @@ class FloodEventDataset(Dataset):
                  previous_timesteps: int = 2,
                  normalize: bool = True,
                  timestep_interval: int = BASE_TIMESTEP_INTERVAL,
-                 spin_up_timesteps: Optional[int] = None,
+                 spin_up_timesteps: Union[int, Dict[str, int]] = None,
                  timesteps_from_peak: Optional[int] = None,
                  inflow_boundary_nodes: List[int] = [],
                  outflow_boundary_nodes: List[int] = [],
@@ -401,17 +401,14 @@ class FloodEventDataset(Dataset):
         return all_event_data
 
     def _get_trimmed_dynamic_data(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
-        start = self.spin_up_timesteps if self.spin_up_timesteps is not None else 0
-
-        run_id = self.hec_ras_run_ids[event_idx]
-        if run_id in [1, 2, 3, 4]:
-            start = 4320
-        elif run_id in [5, 6, 7, 8]:
-            start = 8640
-        elif run_id in [9, 10, 11, 12]:
-            start = 8640
-        elif run_id in [13, 14, 15, 16]:
-            start = 10080
+        start = 0
+        if self.spin_up_timesteps is not None:
+            if isinstance(self.spin_up_timesteps, int):
+                start = self.spin_up_timesteps
+            elif isinstance(self.spin_up_timesteps, dict):
+                start = self.spin_up_timesteps.get(self.hec_ras_run_ids[event_idx], 0)
+            else:
+                raise ValueError(f'Invalid type for spin_up_timesteps: {type(self.spin_up_timesteps)}')
 
         end = None
         if self.timesteps_from_peak is not None:

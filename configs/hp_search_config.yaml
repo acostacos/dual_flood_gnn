@@ -8,8 +8,25 @@ dataset_parameters:
   previous_timesteps: 2
   normalize: True
   timestep_interval: 30                                 # Interval between timesteps in seconds (must be a multiple of 30)
-  spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each)
-  timesteps_from_peak: null                             # Number of timesteps to consider from the peak (30 seconds each)
+  # spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each); Can be defined per Run ID
+  spin_up_timesteps:
+    1: 4320
+    2: 4320
+    3: 4320
+    4: 4320
+    5: 8640
+    6: 8640
+    7: 8640
+    8: 8640
+    9: 8640
+    10: 8640
+    11: 8640
+    12: 8640
+    13: 10080
+    14: 10080
+    15: 10080
+    16: 10080
+  timesteps_from_peak: 250                             # Number of timesteps to consider from the peak (30 seconds each)
   inflow_boundary_nodes:
   - 1248
   outflow_boundary_nodes:
@@ -33,8 +50,8 @@ training_parameters:
   learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : False                               # Use autoregressive training
-  autoregressive_timesteps: 4                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 15                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  autoregressive_timesteps: 8                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss

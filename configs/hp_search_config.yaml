@@ -45,13 +45,13 @@ training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'hp_stats'                          # Directory to save training statistics
-  num_epochs           : 20                                  # Number of epochs
+  num_epochs           : 50                                  # Number of epochs
   batch_size           : 128                                 # Batch size
-  learning_rate        : 0.0007                              # Learning rate
+  learning_rate        : 0.0005                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  autoregressive       : False                               # Use autoregressive training
+  autoregressive       : True                               # Use autoregressive training
   autoregressive_timesteps: 8                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  curriculum_epochs    : 5                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss

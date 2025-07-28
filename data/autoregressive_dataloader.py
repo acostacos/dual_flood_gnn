@@ -16,7 +16,7 @@ class AutoRegressiveBatchSampler(BatchSampler):
 
         self.num_timesteps = num_timesteps
         self.group_size = self.batch_size * self.num_timesteps
-        assert np.min(self.event_size) > self.group_size, "Number of datapoints for each event must be greater than the group size (batch size * num timesteps) for autoregressive training."
+        assert np.min(self.event_size) >= self.group_size, "Number of datapoints for each event must be greater than the group size (batch size * num timesteps) for autoregressive training."
 
     def __iter__(self) -> Iterator[list[int]]:
         sampler_iter = iter(self.sampler)
@@ -51,8 +51,6 @@ class AutoRegressiveBatchSampler(BatchSampler):
 
 class AutoRegressiveDataLoader(DataLoader):
     def __init__(self, dataset: FloodEventDataset, batch_size: int = 1, num_timesteps: int = 1, **kwargs):
-        assert batch_size > num_timesteps, "Batch size must be greater than number of timesteps for autoregressive data loading."
-
         kwargs.pop('collate_fn', None)
         kwargs.pop('shuffle', False)
 

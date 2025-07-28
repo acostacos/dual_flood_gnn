@@ -152,10 +152,9 @@ def cross_validate(global_mass_loss_percent: Optional[float],
 
     def get_avg_rmse(rmses: List[float]) -> float:
         np_rmses = np.array(rmses)
-        is_finite = np.isfinite(np_rmses)
-        if np.any(is_finite):
-            return np_rmses[is_finite].mean()
-        return 1e10
+        is_not_finite = ~np.isfinite(np_rmses)
+        np_rmses[is_not_finite] = 1e10  # Replace non-finite values with a large number
+        return np_rmses.mean()
 
     avg_val_rmse = get_avg_rmse(val_rmses)
     logger.log(f'\nAverage RMSE across all events: {avg_val_rmse:.4e}')
@@ -188,22 +187,22 @@ def plot_hyperparameter_search_results(study: optuna.Study):
 
     if use_edge_pred_loss:
         fig = plot_optimization_history(study, target=lambda t: t.values[0], target_name='Node RMSE')
-        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_optimization_history.html'))
 
         fig = plot_optimization_history(study, target=lambda t: t.values[1], target_name='Edge RMSE')
-        fig.write_html(os.path.join(stats_dir, 'edge_optimization_history.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_edge_optimization_history.html'))
 
         fig = plot_slice(study, target=lambda t: t.values[0], target_name='Node RMSE')
-        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_slice_plot.html'))
 
         fig = plot_slice(study, target=lambda t: t.values[1], target_name='Edge RMSE')
-        fig.write_html(os.path.join(stats_dir, 'edge_slice_plot.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_edge_slice_plot.html'))
     else:
         fig = plot_optimization_history(study, target_name='RMSE')
-        fig.write_html(os.path.join(stats_dir, 'optimization_history.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_optimization_history.html'))
 
         fig = plot_slice(study, target_name='RMSE')
-        fig.write_html(os.path.join(stats_dir, 'slice_plot.html'))
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_slice_plot.html'))
 
 if __name__ == '__main__':
     args = parse_args()
@@ -236,7 +235,8 @@ if __name__ == '__main__':
         raw_temp_dir_path, processed_temp_dir_path = create_temp_dirs(root_dir)
         hec_ras_run_ids = create_cross_val_dataset_files(root_dir, args.summary_file)
 
-        study_kwargs = {}
+        study_name = f'{"_".join(args.hyperparameters)}'
+        study_kwargs = {'study_name': study_name }
         if use_edge_pred_loss:
             study_kwargs['directions'] = ['minimize', 'minimize']
         else:

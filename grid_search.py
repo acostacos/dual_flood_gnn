@@ -256,13 +256,13 @@ if __name__ == '__main__':
 
         hyperparameters = {}
         if use_global_mass_loss:
-            GLOBAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
+            GLOBAL_LOSS_PERCENTS = [0.001, 0.00008, 0.00005, 0.00003, 0.00001, 0.000008, 0.000005, 0.000001]
             hyperparameters['global_mass_loss_percent'] = GLOBAL_LOSS_PERCENTS
         if use_local_mass_loss:
-            LOCAL_LOSS_PERCENTS = [0.3, 0.2, 0.1, 0.05, 0.01, 0.008, 0.005, 0.001, 0.00008, 0.00005, 0.00003, 0.00001]
+            LOCAL_LOSS_PERCENTS = [0.001, 0.00008, 0.00005, 0.00003, 0.00001, 0.000008, 0.000005, 0.000001]
             hyperparameters['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
         if use_edge_pred_loss:
-            EDGE_LOSS_PERCENTS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+            EDGE_LOSS_PERCENTS = [0.3, 0.4, 0.5, 0.6, 0.7]
             hyperparameters['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
 
         logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(list(hyperparameters.keys()))}')

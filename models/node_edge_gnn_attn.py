@@ -11,7 +11,7 @@ from utils.model_utils import make_mlp, get_activation_func
 
 from .base_model import BaseModel
 
-class NodeEdgeGNN(BaseModel):
+class NodeEdgeGNNAttn(BaseModel):
     '''
     Model that uses message passing to update both node and edge features. Can predict for both simultaneously.
     '''
@@ -129,7 +129,7 @@ class NodeEdgeConv(MessagePassing):
                                 hidden_size=hidden_size * 2, num_layers=num_layers,
                                 activation=activation, device=device)
 
-        node_update_input_size = (node_in_channels + edge_out_channels)
+        node_update_input_size = (edge_out_channels)
         node_update_hidden_size = node_update_input_size * 2
         self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=node_out_channels,
                                  hidden_size=node_update_hidden_size, num_layers=num_layers,
@@ -185,7 +185,7 @@ class NodeEdgeConv(MessagePassing):
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         node_out = self.update(aggr, **update_kwargs)
 
-        coll_dict = self._collect(self._edge_user_args, edge_index, mutable_size, {'node_out': node_out, **kwargs})
+        coll_dict = self._collect(self._edge_user_args, edge_index, mutable_size, {'node_out': node_out, 'msg': msg, **kwargs})
         edge_update_kwargs = self.inspector.collect_param_data('edge_update', coll_dict)
         edge_out = self.edge_update(**edge_update_kwargs)
 
@@ -195,7 +195,9 @@ class NodeEdgeConv(MessagePassing):
         return self.msg_mlp(torch.cat([x_i, alpha * x_j, beta * edge_attr], dim=-1))
 
     def update(self, aggr: Tensor, x: Tensor):
-        return self.node_update_mlp(torch.cat([x, aggr], dim=-1))
+        node_update = self.node_update_mlp(aggr)
+        return x + node_update
 
-    def edge_update(self, edge_attr, node_out_i: Tensor, node_out_j: Tensor, gamma: Tensor, delta: Tensor):
-        return self.edge_update_mlp(torch.cat([edge_attr, (node_out_i * gamma), (node_out_j * delta)], dim=-1))
+    def edge_update(self, msg, edge_attr, node_out_i: Tensor, node_out_j: Tensor, gamma: Tensor, delta: Tensor):
+        edge_update = self.edge_update_mlp(torch.cat([msg, (node_out_i * gamma), (node_out_j * delta)], dim=-1))
+        return edge_attr + edge_update

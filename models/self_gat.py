@@ -12,11 +12,12 @@ from utils.model_utils import make_mlp, get_activation_func
 from .base_model import BaseModel
 from typing import Optional
 
-class SelfGAT(BaseModel):
+class NodeEdgeGNNGAT(BaseModel):
     def __init__(self,
                  input_features: int = None,
                  input_edge_features: int = None,
                  output_features: int = None,
+                 output_edge_features: int = None,
                  hidden_features: int = None,
                  num_layers: int = 1,
                  activation: str = 'prelu',
@@ -48,10 +49,13 @@ class SelfGAT(BaseModel):
             output_features = self.output_node_features
         if input_edge_features is None:
             input_edge_features = self.input_edge_features
+        if output_edge_features is None:
+            output_edge_features = self.output_edge_features
 
         input_size = hidden_features if self.with_encoder else input_features
         output_size = hidden_features if self.with_decoder else output_features
         input_edge_size = hidden_features if self.with_encoder else input_edge_features
+        output_edge_size = hidden_features if self.with_decoder else output_edge_features
 
         # Encoder
         if self.with_encoder:
@@ -73,7 +77,7 @@ class SelfGAT(BaseModel):
         }
 
         self.convs = self._make_gnn(input_size=input_size, output_size=output_size, input_edge_size=input_edge_size,
-                              hidden_size=hidden_features, num_layers=num_layers,
+                              output_edge_size=output_edge_size, hidden_size=hidden_features, num_layers=num_layers,
                               activation=activation, **conv_kwargs)
         self.convs = self.convs.to(self.device)
 
@@ -82,36 +86,39 @@ class SelfGAT(BaseModel):
             self.node_decoder = make_mlp(input_size=hidden_features, output_size=output_features,
                                         hidden_size=hidden_features, num_layers=encoder_layers,
                                         activation=decoder_activation, bias=False, device=self.device)
+            self.edge_decoder = make_mlp(input_size=hidden_features, output_size=output_edge_features,
+                                        hidden_size=hidden_features, num_layers=encoder_layers,
+                                        activation=decoder_activation, bias=False, device=self.device)
 
         if residual:
             self.residual = Identity()
 
-    def _make_gnn(self, input_size: int, output_size: int, input_edge_size: int,
+    def _make_gnn(self, input_size: int, output_size: int, input_edge_size: int, output_edge_size: int,
                   hidden_size: int = None, num_layers: int = 1, activation: str = None,
                   heads: int = 1, **conv_kwargs) -> Module:
         is_multihead = heads > 1
 
         if num_layers == 1:
-            return GATLayer(input_size, output_size, input_edge_size, activation, **conv_kwargs)
+            return GATLayer(input_size, output_size, input_edge_size, output_edge_size, activation, **conv_kwargs)
 
         hidden_size = hidden_size if hidden_size is not None else (input_size * 2)
 
         layers = []
         layers.append(
-            (GATLayer(input_size, hidden_size, input_edge_size, activation, heads=heads, **conv_kwargs),
-             'x, edge_index, edge_attr -> x')
+            (GATLayer(input_size, hidden_size, input_edge_size, output_edge_size, activation, heads=heads, **conv_kwargs),
+             'x, edge_index, edge_attr -> x, edge_attr')
         ) # Input Layer
 
         for _ in range(num_layers-2):
             layers.append(
-                (GATLayer((hidden_size * heads), hidden_size, input_edge_size, activation, heads=heads, **conv_kwargs),
-                 'x, edge_index, edge_attr -> x')
+                (GATLayer((hidden_size * heads), hidden_size, input_edge_size, output_edge_size, activation, heads=heads, **conv_kwargs),
+                 'x, edge_index, edge_attr -> x, edge_attr')
             ) # Hidden Layers
 
         concat = not is_multihead
         layers.append(
-            (GATLayer((hidden_size * heads), hidden_size, input_edge_size, activation, heads=heads, concat=concat,
-                      **conv_kwargs), 'x, edge_index, edge_attr -> x')
+            (GATLayer((hidden_size * heads), hidden_size, input_edge_size, output_edge_size, activation, heads=heads, concat=concat,
+                      **conv_kwargs), 'x, edge_index, edge_attr -> x, edge_attr')
         ) # Output Layer
         return PygSequential('x, edge_index, edge_attr', layers)
 
@@ -123,26 +130,28 @@ class SelfGAT(BaseModel):
             x = self.node_encoder(x)
             edge_attr = self.edge_encoder(edge_attr)
 
-        x = self.convs(x, edge_index, edge_attr)
+        x, edge_attr = self.convs(x, edge_index, edge_attr)
 
         if self.with_decoder:
             x = self.node_decoder(x)
+            edge_attr = self.edge_decoder(edge_attr)
 
         if hasattr(self, 'residual'):
             x = x + self.residual(x0[:, -self.output_node_features:])
 
-        return x
+        return x, edge_attr
 
 class GATLayer(Module):
     def __init__(self,
                  in_features: int,
                  out_features: int,
                  in_edge_features: int,
+                 out_edge_features: int,
                  activation: str = None,
                  return_attn_weights: bool = False,
                  **conv_kwargs):
         super().__init__()
-        self.conv = GATConv(in_features, out_features, in_edge_features, **conv_kwargs)
+        self.conv = GATConv(in_features, out_features, in_edge_features, out_edge_features, **conv_kwargs)
         if activation is not None:
             self.activation = get_activation_func(activation)
         self.return_attn_weights = return_attn_weights
@@ -155,7 +164,7 @@ class GATLayer(Module):
             'edge_attr': edge_attr,
         }
 
-        out = self.conv(**kwargs)
+        out, edge_attr = self.conv(**kwargs)
         if self.return_attn_weights:
             x, attn_out = out
             attn_edge_index = attn_out[0].detach().cpu()
@@ -166,7 +175,8 @@ class GATLayer(Module):
 
         if hasattr(self, 'activation'):
             x = self.activation(x)
-        return x
+            edge_attr = self.activation(edge_attr)
+        return x, edge_attr
 
 class GATConv(MessagePassing):
     '''Based on https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gat_conv.py'''
@@ -174,6 +184,7 @@ class GATConv(MessagePassing):
                  in_features: int,
                  out_features: int,
                  edge_in_features: int = None,
+                 edge_out_features: int = None,
                  heads: int = 1,
                  concat: bool = True,
                  dropout: float = 0.0,
@@ -193,8 +204,11 @@ class GATConv(MessagePassing):
         self.out_features = out_features
 
         self.lin = Linear(in_features, (heads*out_features), bias=False, device=device)
-        self.attn_s = Linear(out_features, 1)
-        self.attn_t = Linear(out_features, 1)
+        self.attn_s = Linear(out_features, 1, device=device)
+        self.attn_t = Linear(out_features, 1, device=device)
+
+        edge_update_input_size = (edge_in_features * 2)
+        self.edge_update_mlp = Linear(edge_update_input_size, edge_out_features)
 
         if self.has_edge_features:
             self.lin_edge = Linear(edge_in_features, (heads*out_features), bias=False, device=device)
@@ -227,7 +241,10 @@ class GATConv(MessagePassing):
 
         alpha = self.edge_updater(edge_index, alpha=alpha, edge_attr=edge_attr)
 
-        out = self.propagate(edge_index, x=x, alpha=alpha)
+        out, edge_out = self.propagate(edge_index, x=x, alpha=alpha, edge_attr=edge_attr)
+
+        if self.add_self_loops:
+            edge_index, edge_out = remove_self_loops(edge_index, edge_out)
 
         if self.concat:
             out = out.view(-1, self.heads * self.out_features)
@@ -249,7 +266,7 @@ class GATConv(MessagePassing):
         #     else:
         #         return out, (edge_index, alpha)
 
-        return out
+        return out, edge_out
 
     def edge_update(self,
                     alpha_j: Tensor,
@@ -275,6 +292,24 @@ class GATConv(MessagePassing):
         alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
         return alpha
+    
+    def propagate(self, edge_index, **kwargs):
+        coll_dict = self._collect(self._user_args, edge_index, [None, None], kwargs)
+
+        msg_kwargs = self.inspector.collect_param_data('message', coll_dict)
+        msg = self.message(**msg_kwargs)
+
+        aggr_kwargs = self.inspector.collect_param_data('aggregate', coll_dict)
+        aggr = self.aggregate(msg, **aggr_kwargs)
+
+        update_kwargs = self.inspector.collect_param_data('update', coll_dict)
+        node_out = self.update(aggr, **update_kwargs)
+
+        in_edge_attr = kwargs['edge_attr'][:, None, :]
+        edge_out = self.edge_update_mlp(torch.cat([in_edge_attr, msg], dim=-1))
+        edge_out = edge_out.squeeze(1) if edge_out.dim() == 3 else edge_out
+
+        return node_out, edge_out
 
     def message(self, x_j: Tensor, alpha: Tensor) -> Tensor:
         return alpha.unsqueeze(-1) * x_j

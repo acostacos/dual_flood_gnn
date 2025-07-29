@@ -64,59 +64,64 @@ class NodeEdgeGNNAttn(BaseModel):
                                             hidden_size=hidden_features, num_layers=encoder_layers,
                                             activation=encoder_activation, device=self.device)
 
+        # Processor
         conv_kwargs = {
+            'input_size': input_size,
+            'output_size': output_size,
+            'input_edge_size': input_edge_size,
+            'output_edge_size': output_edge_size,
+            'hidden_size': hidden_features,
             'dropout': dropout,
             'add_self_loops': add_self_loops,
             'negative_slope': negative_slope,
             'bias': attn_bias,
             'residual': attn_residual,
+            'num_layers': num_layers,
+            'activation': activation,
         }
-
-        self.convs = self._make_gnn(input_size=input_size, output_size=output_size, input_edge_size=input_edge_size,
-                              output_edge_size=output_edge_size, hidden_size=hidden_features, num_layers=num_layers,
-                              activation=activation, **conv_kwargs)
+        self.convs = self._make_gnn(**conv_kwargs)
         self.convs = self.convs.to(self.device)
 
         # Decoder
         if self.with_decoder:
             self.node_decoder = make_mlp(input_size=hidden_features, output_size=output_features,
                                         hidden_size=hidden_features, num_layers=encoder_layers,
-                                        activation=decoder_activation, bias=False, device=self.device)
+                                        activation=decoder_activation, device=self.device)
             self.edge_decoder = make_mlp(input_size=hidden_features, output_size=output_edge_features,
                                         hidden_size=hidden_features, num_layers=encoder_layers,
-                                        activation=decoder_activation, bias=False, device=self.device)
+                                        activation=decoder_activation, device=self.device)
 
         if residual:
             self.residual = Identity()
 
     def _make_gnn(self, input_size: int, output_size: int, input_edge_size: int, output_edge_size: int,
-                  hidden_size: int = None, num_layers: int = 1, activation: str = None, **conv_kwargs) -> Module:
+                  hidden_size: int = None, num_layers: int = 1, **conv_kwargs) -> Module:
         if num_layers == 1:
-            return NodeEdgeLayer(input_size, output_size, input_edge_size, output_edge_size, activation, **conv_kwargs)
+            return NodeEdgeAttnConv(input_size, output_size, input_edge_size, output_edge_size, **conv_kwargs)
 
         hidden_size = hidden_size if hidden_size is not None else (input_size * 2)
 
         layers = []
         layers.append(
-            (NodeEdgeLayer(input_size, hidden_size, input_edge_size, output_edge_size, activation, **conv_kwargs),
+            (NodeEdgeAttnConv(input_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
              'x, edge_index, edge_attr -> x, edge_attr')
         ) # Input Layer
 
         for _ in range(num_layers-2):
             layers.append(
-                (NodeEdgeLayer(hidden_size, hidden_size, input_edge_size, output_edge_size, activation, **conv_kwargs),
+                (NodeEdgeAttnConv(hidden_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
                  'x, edge_index, edge_attr -> x, edge_attr')
             ) # Hidden Layers
 
         layers.append(
-            (NodeEdgeLayer(hidden_size, hidden_size, input_edge_size, output_edge_size, activation, **conv_kwargs),
+            (NodeEdgeAttnConv(hidden_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
              'x, edge_index, edge_attr -> x, edge_attr')
         ) # Output Layer
         return PygSequential('x, edge_index, edge_attr', layers)
 
     def forward(self, graph: Data) -> Tensor:
         x, edge_index, edge_attr = graph.x.clone(), graph.edge_index.clone(), graph.edge_attr.clone()
-        x0 = x
+        x0, edge_attr0 = x, edge_attr
 
         if self.with_encoder:
             x = self.node_encoder(x)
@@ -130,38 +135,17 @@ class NodeEdgeGNNAttn(BaseModel):
 
         if hasattr(self, 'residual'):
             x = x + self.residual(x0[:, -self.output_node_features:])
+            edge_attr = edge_attr + self.residual(edge_attr0[:, -self.output_edge_features:])
 
         return x, edge_attr
 
-class NodeEdgeLayer(Module):
-    def __init__(self,
-                 in_features: int,
-                 out_features: int,
-                 in_edge_features: int,
-                 out_edge_features: int,
-                 activation: str = None,
-                 **conv_kwargs):
-        super().__init__()
-        self.conv = NodeEdgeConv(in_features, out_features, in_edge_features, out_edge_features, **conv_kwargs)
-        if activation is not None:
-            self.activation = get_activation_func(activation)
-
-    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor = None) -> Tensor:
-        x, edge_attr = self.conv(x=x, edge_index=edge_index, edge_attr=edge_attr)
-
-        if hasattr(self, 'activation'):
-            x = self.activation(x)
-            edge_attr = self.activation(edge_attr)
-
-        return x, edge_attr
-
-class NodeEdgeConv(MessagePassing):
+class NodeEdgeAttnConv(MessagePassing):
     '''Based on https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gat_conv.py'''
     def __init__(self,
                  in_features: int,
                  out_features: int,
-                 edge_in_features: int = None,
-                 edge_out_features: int = None,
+                 edge_in_features: int,
+                 edge_out_features: int,
                  dropout: float = 0.0,
                  add_self_loops: bool = True,
                  negative_slope: float = 0.2,
@@ -183,7 +167,7 @@ class NodeEdgeConv(MessagePassing):
         self.lin = Linear(in_features, out_features, bias=False) 
         self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
         self.node_attn = Linear((out_features * 2 + edge_out_features), 1, bias=False)
-        self.node_update_lin = Linear((out_features + edge_out_features), out_features, bias=False,)
+        self.node_update_lin = Linear((out_features + edge_out_features), out_features, bias=False)
 
         self.edge_attn = Linear((out_features * 2), 1, bias=False)
         self.edge_update_lin = Linear((out_features + edge_out_features), edge_out_features, bias=False)
@@ -252,6 +236,10 @@ class NodeEdgeConv(MessagePassing):
         if self.has_bias:
             out = out + self.bias
             edge_out = edge_out + self.bias_edge
+        
+        if self.has_activation:
+            out = self.activation(out)
+            edge_out = self.edge_activation(edge_out)
 
         return out, edge_out
 

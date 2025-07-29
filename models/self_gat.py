@@ -203,39 +203,37 @@ class GATConv(MessagePassing):
         self.out_features = out_features
 
         self.lin = Linear(in_features, out_features, bias=False, device=device) 
-        self.node_attn = Linear((out_features * 3), 1, bias=bias, device=device)
+        self.node_attn = Linear((out_features * 3), 1, bias=False, device=device)
 
-        node_update_input_size = (in_features + out_features * 2)
-        node_update_hidden_size = node_update_input_size * 2
-        self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
-                                 hidden_size=node_update_hidden_size, num_layers=2,
-                                 activation='prelu', device=device)
+        self.msg_lin = Linear((out_features * 2), edge_out_features, bias=False, device=device)
 
-        edge_update_input_size = (edge_in_features * 2)
-        edge_update_hidden_size = edge_update_input_size * 2
-        self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
-                                 hidden_size=edge_update_hidden_size, num_layers=2,
-                                 activation='prelu', device=device)
+        node_update_input_size = (out_features * 2)
+        self.node_update_mlp = Linear(node_update_input_size, out_features, bias=False, device=device)
+
+        edge_update_input_size = (out_features * 2)
+        self.edge_update_mlp = Linear(edge_update_input_size, edge_out_features, bias=False, device=device)
 
         if self.has_edge_features:
             self.lin_edge = Linear(edge_in_features, out_features, bias=False, device=device)
-            self.attn_edge = Linear(out_features, 1)
 
         total_out_channels = out_features
         if residual:
             self.residual = Linear(in_features, total_out_channels, bias=False, device=device)
+            self.residual_edge = Linear(edge_in_features, total_out_channels, bias=False, device=device)
 
         if bias:
             self.bias = Parameter(torch.empty(total_out_channels))
+            self.bias_edge = Parameter(torch.empty(total_out_channels))
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Optional[Tensor] = None):
         res: Optional[Tensor] = None
         res_edge: Optional[Tensor] = None
         if hasattr(self, 'residual'):
             res = self.residual(x)
-            res_edge = self.residual(edge_attr) if edge_attr is not None else None
+            res_edge = self.residual_edge(edge_attr)
 
         x = self.lin(x)
+        edge_attr = self.lin_edge(edge_attr)
 
         if self.add_self_loops:
             # Only add self-loops for nodes that are both source and target
@@ -252,10 +250,11 @@ class GATConv(MessagePassing):
 
         if res is not None:
             out = out + res
-            edge_out = res_edge
+            edge_out = edge_out + res_edge
 
         if hasattr(self, 'bias'):
             out = out + self.bias
+            edge_out = edge_out + self.bias_edge
 
         # TODO: Support returning attention weights
         # if isinstance(return_attention_weights, bool):
@@ -269,14 +268,14 @@ class GATConv(MessagePassing):
         return out, edge_out
 
     def edge_update(self,
-                    x_j: Tensor,
                     x_i: Tensor,
+                    x_j: Tensor,
                     edge_attr: Tensor,
                     index: Tensor,
                     ptr,
                     dim_size: Optional[int]) -> Tensor:
-        edge_attr = self.lin_edge(edge_attr)
-        alpha = self.node_attn(torch.cat([x_i, x_j, edge_attr], dim=-1)).sum(dim=-1)
+        # Sum is used to emulate concatenation
+        alpha = self.node_attn(torch.cat([x_i, x_j, edge_attr], dim=-1))
 
         # if self.has_edge_features and edge_attr is not None:
         #     if edge_attr.dim() == 1:
@@ -289,9 +288,10 @@ class GATConv(MessagePassing):
         alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
         return alpha
-    
+
     def propagate(self, edge_index, **kwargs):
-        coll_dict = self._collect(self._user_args, edge_index, [None, None], kwargs)
+        mutable_size = self._check_input(edge_index, size=None)
+        coll_dict = self._collect(self._user_args, edge_index, mutable_size, kwargs)
 
         msg_kwargs = self.inspector.collect_param_data('message', coll_dict)
         msg = self.message(**msg_kwargs)
@@ -302,13 +302,12 @@ class GATConv(MessagePassing):
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         node_out = self.update(aggr, **update_kwargs)
 
-        edge_out = self.edge_update_mlp(torch.cat([kwargs['edge_attr'], msg], dim=-1))
+        edge_out = self.edge_update_mlp(msg)
 
         return node_out, edge_out
 
     def message(self, x_j: Tensor, edge_attr: Tensor, alpha: Tensor) -> Tensor:
-        # return alpha.unsqueeze(-1) * x_j
-        return alpha.unsqueeze(-1) * torch.cat([x_j, edge_attr], dim=-1)
-
-    def update(self, aggr: Tensor, x: Tensor) -> Tensor:
-        return self.node_update_mlp(torch.cat([x, aggr], dim=-1))
+        return alpha * torch.cat([x_j, edge_attr], dim=-1)
+    
+    def update(self, aggr_out: Tensor) -> Tensor:
+        return self.node_update_mlp(aggr_out)

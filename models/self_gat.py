@@ -10,7 +10,7 @@ from torch_geometric.utils.sparse import set_sparse_value
 from utils.model_utils import make_mlp, get_activation_func
 
 from .base_model import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 class NodeEdgeGNNGAT(BaseModel):
     def __init__(self,
@@ -195,6 +195,10 @@ class GATConv(MessagePassing):
                  return_attn_weights: bool = False,
                  device: str = 'cpu'):
         super().__init__(aggr='sum', node_dim=0)
+        self.inspector.inspect_signature(self.attention)
+        self._attn_user_args: List[str] = self.inspector.get_param_names(
+            'attention', exclude=self.special_args)
+
         self.concat = concat
         self.dropout = dropout
         self.add_self_loops = add_self_loops
@@ -209,6 +213,9 @@ class GATConv(MessagePassing):
 
         node_update_input_size = (out_features * 2)
         self.node_update_mlp = Linear(node_update_input_size, out_features, bias=False, device=device)
+
+        self.out_lin = Linear(out_features, out_features, bias=False, device=device)
+        self.edge_attn = Linear((out_features * 2), 1, bias=False, device=device)
 
         edge_update_input_size = (out_features * 2)
         self.edge_update_mlp = Linear(edge_update_input_size, edge_out_features, bias=False, device=device)
@@ -241,7 +248,7 @@ class GATConv(MessagePassing):
             edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
             edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value='mean', num_nodes=num_nodes)
 
-        alpha = self.edge_updater(edge_index, x=x, edge_attr=edge_attr)
+        alpha = self.compute_attention(edge_index, x=x, edge_attr=edge_attr)
 
         out, edge_out = self.propagate(edge_index, x=x, alpha=alpha, edge_attr=edge_attr)
 
@@ -267,23 +274,22 @@ class GATConv(MessagePassing):
 
         return out, edge_out
 
-    def edge_update(self,
-                    x_i: Tensor,
-                    x_j: Tensor,
-                    edge_attr: Tensor,
-                    index: Tensor,
-                    ptr,
-                    dim_size: Optional[int]) -> Tensor:
-        # Sum is used to emulate concatenation
+    def compute_attention(self, edge_index, **kwargs):
+        mutable_size = self._check_input(edge_index, size=None)
+        coll_dict = self._collect(self._attn_user_args, edge_index, mutable_size, kwargs)
+        edge_kwargs = self.inspector.collect_param_data('attention', coll_dict)
+        alpha = self.attention(**edge_kwargs)
+        return alpha
+
+    def attention(self,
+                  x_i: Tensor,
+                  x_j: Tensor,
+                  edge_attr:
+                  Tensor,
+                  index: Tensor,
+                  ptr,
+                  dim_size: Optional[int]) -> Tensor:
         alpha = self.node_attn(torch.cat([x_i, x_j, edge_attr], dim=-1))
-
-        # if self.has_edge_features and edge_attr is not None:
-        #     if edge_attr.dim() == 1:
-        #         edge_attr = edge_attr.view(-1, 1)
-        #     edge_attr = self.lin_edge(edge_attr)
-        #     alpha_edge = self.attn_edge(edge_attr).sum(dim=-1)
-        #     alpha = alpha + alpha_edge
-
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
@@ -302,12 +308,23 @@ class GATConv(MessagePassing):
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         node_out = self.update(aggr, **update_kwargs)
 
-        edge_out = self.edge_update_mlp(msg)
+        out = self.out_lin(node_out)
+        edge_kwargs = {**kwargs, 'out': out, 'msg': msg}
+        edge_coll_dict = self._collect(self._edge_user_args, edge_index, mutable_size, edge_kwargs)
+        edge_update_kwargs = self.inspector.collect_param_data('edge_update', edge_coll_dict)
+        edge_out = self.edge_update(**edge_update_kwargs)
 
         return node_out, edge_out
 
     def message(self, x_j: Tensor, edge_attr: Tensor, alpha: Tensor) -> Tensor:
         return alpha * torch.cat([x_j, edge_attr], dim=-1)
-    
+
     def update(self, aggr_out: Tensor) -> Tensor:
         return self.node_update_mlp(aggr_out)
+
+    def edge_update(self, msg: Tensor, out_i: Tensor, out_j: Tensor, index, ptr, dim_size) -> Tensor:
+        beta = self.edge_attn(torch.cat([out_i, out_j], dim=-1))
+        beta = F.leaky_relu(beta, self.negative_slope)
+        beta = softmax(beta, index, ptr, dim_size)
+        beta = F.dropout(beta, p=self.dropout, training=self.training)
+        return self.edge_update_mlp(beta * msg)

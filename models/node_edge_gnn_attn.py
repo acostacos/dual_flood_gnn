@@ -7,7 +7,7 @@ from torch_geometric.data import Data
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from torch_geometric.nn.inits import zeros
 from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from utils.model_utils import make_mlp, get_activation_func
 
 from .base_model import BaseModel
@@ -145,20 +145,14 @@ class NodeEdgeLayer(Module):
         self.conv = NodeEdgeConv(in_features, out_features, in_edge_features, out_edge_features, **conv_kwargs)
         if activation is not None:
             self.activation = get_activation_func(activation)
-        self.attn_weights = []
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor = None) -> Tensor:
-        kwargs = {
-            'x': x,
-            'edge_index': edge_index,
-            'edge_attr': edge_attr,
-        }
-
-        x, edge_attr = self.conv(**kwargs)
+        x, edge_attr = self.conv(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
         if hasattr(self, 'activation'):
             x = self.activation(x)
             edge_attr = self.activation(edge_attr)
+
         return x, edge_attr
 
 class NodeEdgeConv(MessagePassing):
@@ -172,7 +166,8 @@ class NodeEdgeConv(MessagePassing):
                  add_self_loops: bool = True,
                  negative_slope: float = 0.2,
                  bias: bool = True,
-                 residual: bool = True):
+                 residual: bool = True,
+                 activation: str = None):
         super().__init__(aggr='sum', node_dim=0)
         self.inspector.inspect_signature(self.attention)
         self._attn_user_args: List[str] = self.inspector.get_param_names(
@@ -181,43 +176,59 @@ class NodeEdgeConv(MessagePassing):
         self.dropout = dropout
         self.add_self_loops = add_self_loops
         self.negative_slope = negative_slope
-        self.bias = bias
-        self.residual = residual
+        self.has_bias = bias
+        self.has_residual = residual
+        self.has_activation = activation is not None
 
         self.lin = Linear(in_features, out_features, bias=False) 
-        self.lin_edge = Linear(edge_in_features, out_features, bias=False)
-        self.node_attn = Linear((out_features * 3), 1, bias=False)
+        self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
+        self.node_attn = Linear((out_features * 2 + edge_out_features), 1, bias=False)
+        self.node_update_lin = Linear((out_features + edge_out_features), out_features, bias=False,)
 
-        self.msg_lin = Linear((out_features * 2), edge_out_features, bias=False)
-
-        node_update_input_size = (out_features * 2)
-        self.node_update_mlp = Linear(node_update_input_size, out_features, bias=False,)
-
-        self.out_lin = Linear(out_features, out_features, bias=False)
         self.edge_attn = Linear((out_features * 2), 1, bias=False)
+        self.edge_update_lin = Linear((out_features + edge_out_features), edge_out_features, bias=False)
 
-        edge_update_input_size = (out_features * 2)
-        self.edge_update_mlp = Linear(edge_update_input_size, edge_out_features, bias=False)
-
-        if residual:
+        if self.has_residual:
             self.residual = Linear(in_features, out_features, bias=False)
-            self.residual_edge = Linear(edge_in_features, out_features, bias=False)
+            self.residual_edge = Linear(edge_in_features, edge_out_features, bias=False)
 
-        if bias:
+        if self.has_bias:
             self.bias = Parameter(torch.empty(out_features))
-            self.bias_edge = Parameter(torch.empty(out_features))
+            self.bias_edge = Parameter(torch.empty(edge_out_features))
+
+        if self.has_activation:
+            self.activation = get_activation_func(activation)
+            self.edge_activation = get_activation_func(activation)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        super().reset_parameters()
+
+        self.lin.reset_parameters()
+        self.edge_lin.reset_parameters()
+        self.node_attn.reset_parameters()
+        self.node_update_lin.reset_parameters()
+        self.edge_attn.reset_parameters()
+        self.edge_update_lin.reset_parameters()
+
+        if self.has_residual:
+            self.residual.reset_parameters()
+            self.residual_edge.reset_parameters()
+
+        if self.has_bias:
             zeros(self.bias)
             zeros(self.bias_edge)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
         res: Optional[Tensor] = None
         res_edge: Optional[Tensor] = None
-        if hasattr(self, 'residual'):
+        if self.has_residual:
             res = self.residual(x)
             res_edge = self.residual_edge(edge_attr)
 
         x = self.lin(x)
-        edge_attr = self.lin_edge(edge_attr)
+        edge_attr = self.edge_lin(edge_attr)
 
         if self.add_self_loops:
             # Only add self-loops for nodes that are both source and target
@@ -234,37 +245,31 @@ class NodeEdgeConv(MessagePassing):
         if self.add_self_loops:
             edge_index, edge_out = remove_self_loops(edge_index, edge_out)
 
-        if res is not None:
+        if self.has_residual:
             out = out + res
             edge_out = edge_out + res_edge
 
-        if hasattr(self, 'bias'):
+        if self.has_bias:
             out = out + self.bias
             edge_out = edge_out + self.bias_edge
 
         return out, edge_out
 
-    def compute_attention(self, edge_index, **kwargs):
+    def compute_attention(self, edge_index: Tensor, **kwargs):
         mutable_size = self._check_input(edge_index, size=None)
         coll_dict = self._collect(self._attn_user_args, edge_index, mutable_size, kwargs)
         edge_kwargs = self.inspector.collect_param_data('attention', coll_dict)
         alpha = self.attention(**edge_kwargs)
         return alpha
 
-    def attention(self,
-                  x_i: Tensor,
-                  x_j: Tensor,
-                  edge_attr: Tensor,
-                  index: Tensor,
-                  ptr,
-                  dim_size: Optional[int]) -> Tensor:
+    def attention(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor, index: Tensor, ptr, dim_size: Optional[int]) -> Tensor:
         alpha = self.node_attn(torch.cat([x_i, x_j, edge_attr], dim=-1))
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, index, ptr, dim_size)
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
         return alpha
 
-    def propagate(self, edge_index, **kwargs):
+    def propagate(self, edge_index: Tensor, **kwargs) -> Tuple[Tensor, Tensor]:
         mutable_size = self._check_input(edge_index, size=None)
         coll_dict = self._collect(self._user_args, edge_index, mutable_size, kwargs)
 
@@ -283,11 +288,11 @@ class NodeEdgeConv(MessagePassing):
         return alpha * torch.cat([x_j, edge_attr], dim=-1)
 
     def update(self, aggr_out: Tensor) -> Tensor:
-        return self.node_update_mlp(aggr_out)
+        return self.node_update_lin(aggr_out)
 
-    def edge_update(self, msg: Tensor, out_i: Tensor, out_j: Tensor, index, ptr, dim_size) -> Tensor:
+    def edge_update(self, msg: Tensor, out_i: Tensor, out_j: Tensor, index: Tensor, ptr, dim_size: Optional[int]) -> Tensor:
         beta = self.edge_attn(torch.cat([out_i, out_j], dim=-1))
         beta = F.leaky_relu(beta, self.negative_slope)
         beta = softmax(beta, index, ptr, dim_size)
         beta = F.dropout(beta, p=self.dropout, training=self.training)
-        return self.edge_update_mlp(beta * msg)
+        return self.edge_update_lin(beta * msg)

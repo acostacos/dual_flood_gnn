@@ -195,7 +195,6 @@ class GATConv(MessagePassing):
                  return_attn_weights: bool = False,
                  device: str = 'cpu'):
         super().__init__(aggr='sum', node_dim=0)
-        self.heads = heads
         self.concat = concat
         self.dropout = dropout
         self.add_self_loops = add_self_loops
@@ -203,18 +202,26 @@ class GATConv(MessagePassing):
         self.has_edge_features = edge_in_features is not None
         self.out_features = out_features
 
-        self.lin = Linear(in_features, (heads*out_features), bias=False, device=device)
-        self.attn_s = Linear(out_features, 1, device=device)
-        self.attn_t = Linear(out_features, 1, device=device)
+        self.lin = Linear(in_features, out_features, bias=False, device=device) 
+        self.node_attn = Linear((out_features * 3), 1, bias=bias, device=device)
+
+        node_update_input_size = (in_features + out_features * 2)
+        node_update_hidden_size = node_update_input_size * 2
+        self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
+                                 hidden_size=node_update_hidden_size, num_layers=2,
+                                 activation='prelu', device=device)
 
         edge_update_input_size = (edge_in_features * 2)
-        self.edge_update_mlp = Linear(edge_update_input_size, edge_out_features)
+        edge_update_hidden_size = edge_update_input_size * 2
+        self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
+                                 hidden_size=edge_update_hidden_size, num_layers=2,
+                                 activation='prelu', device=device)
 
         if self.has_edge_features:
-            self.lin_edge = Linear(edge_in_features, (heads*out_features), bias=False, device=device)
+            self.lin_edge = Linear(edge_in_features, out_features, bias=False, device=device)
             self.attn_edge = Linear(out_features, 1)
 
-        total_out_channels = out_features * (heads if concat else 1)
+        total_out_channels = out_features
         if residual:
             self.residual = Linear(in_features, total_out_channels, bias=False, device=device)
 
@@ -223,36 +230,29 @@ class GATConv(MessagePassing):
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Optional[Tensor] = None):
         res: Optional[Tensor] = None
+        res_edge: Optional[Tensor] = None
         if hasattr(self, 'residual'):
             res = self.residual(x)
+            res_edge = self.residual(edge_attr) if edge_attr is not None else None
 
-        x_s = x_t = self.lin(x).view(-1, self.heads, self.out_features)
-        x = (x_s, x_t)
-
-        alpha_s = self.attn_s(x_s).sum(dim=-1)
-        alpha_t = self.attn_t(x_t).sum(dim=-1)
-        alpha = (alpha_s, alpha_t)
+        x = self.lin(x)
 
         if self.add_self_loops:
             # Only add self-loops for nodes that are both source and target
-            num_nodes = x_s.shape[0]
+            num_nodes = x.shape[0]
             edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
             edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value='mean', num_nodes=num_nodes)
 
-        alpha = self.edge_updater(edge_index, alpha=alpha, edge_attr=edge_attr)
+        alpha = self.edge_updater(edge_index, x=x, edge_attr=edge_attr)
 
         out, edge_out = self.propagate(edge_index, x=x, alpha=alpha, edge_attr=edge_attr)
 
         if self.add_self_loops:
             edge_index, edge_out = remove_self_loops(edge_index, edge_out)
 
-        if self.concat:
-            out = out.view(-1, self.heads * self.out_features)
-        else:
-            out = out.mean(dim=1)
-
         if res is not None:
             out = out + res
+            edge_out = res_edge
 
         if hasattr(self, 'bias'):
             out = out + self.bias
@@ -269,24 +269,21 @@ class GATConv(MessagePassing):
         return out, edge_out
 
     def edge_update(self,
-                    alpha_j: Tensor,
-                    alpha_i: Tensor,
+                    x_j: Tensor,
+                    x_i: Tensor,
                     edge_attr: Tensor,
                     index: Tensor,
                     ptr,
                     dim_size: Optional[int]) -> Tensor:
-        # Sum is used to emulate concatenation
-        alpha = alpha_j if alpha_i is None else alpha_j + alpha_i
-        if index.numel() == 0:
-            return alpha
+        edge_attr = self.lin_edge(edge_attr)
+        alpha = self.node_attn(torch.cat([x_i, x_j, edge_attr], dim=-1)).sum(dim=-1)
 
-        if self.has_edge_features and edge_attr is not None:
-            if edge_attr.dim() == 1:
-                edge_attr = edge_attr.view(-1, 1)
-            edge_attr = self.lin_edge(edge_attr)
-            edge_attr = edge_attr.view(-1, self.heads, self.out_features)
-            alpha_edge = self.attn_edge(edge_attr).sum(dim=-1)
-            alpha = alpha + alpha_edge
+        # if self.has_edge_features and edge_attr is not None:
+        #     if edge_attr.dim() == 1:
+        #         edge_attr = edge_attr.view(-1, 1)
+        #     edge_attr = self.lin_edge(edge_attr)
+        #     alpha_edge = self.attn_edge(edge_attr).sum(dim=-1)
+        #     alpha = alpha + alpha_edge
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, index, ptr, dim_size)
@@ -305,11 +302,13 @@ class GATConv(MessagePassing):
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         node_out = self.update(aggr, **update_kwargs)
 
-        in_edge_attr = kwargs['edge_attr'][:, None, :]
-        edge_out = self.edge_update_mlp(torch.cat([in_edge_attr, msg], dim=-1))
-        edge_out = edge_out.squeeze(1) if edge_out.dim() == 3 else edge_out
+        edge_out = self.edge_update_mlp(torch.cat([kwargs['edge_attr'], msg], dim=-1))
 
         return node_out, edge_out
 
-    def message(self, x_j: Tensor, alpha: Tensor) -> Tensor:
-        return alpha.unsqueeze(-1) * x_j
+    def message(self, x_j: Tensor, edge_attr: Tensor, alpha: Tensor) -> Tensor:
+        # return alpha.unsqueeze(-1) * x_j
+        return alpha.unsqueeze(-1) * torch.cat([x_j, edge_attr], dim=-1)
+
+    def update(self, aggr: Tensor, x: Tensor) -> Tensor:
+        return self.node_update_mlp(torch.cat([x, aggr], dim=-1))

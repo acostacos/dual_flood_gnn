@@ -105,12 +105,16 @@ model_parameters:
     decoder_layers: 2
     decoder_activation: 'prelu'
 
-  NodeEdgeGNN2:
+  NodeEdgeGNNAttn:
     hidden_features: 32
     num_layers: 2
     activation: 'prelu'
     residual: True
-    mlp_layers: 2
+    dropout: 0.0
+    add_self_loops: True
+    negative_slope: 0.2
+    attn_bias: True
+    attn_residual: True
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2

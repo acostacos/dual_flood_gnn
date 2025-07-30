@@ -107,7 +107,7 @@ model_parameters:
 
   NodeEdgeGNNAttn:
     hidden_features: 32
-    num_layers: 2
+    num_layers: 3
     activation: 'prelu'
     residual: True
     dropout: 0.0

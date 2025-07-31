@@ -17,6 +17,6 @@ srun python train.py --config 'configs/experiment_auto/config_autoregressive_8_s
 srun python train.py --config 'configs/experiment_auto/config_autoregressive_10_step.yaml' --model 'NodeEdgeGNNAttn'
 srun python train.py --config 'configs/experiment_auto/config_autoregressive_12_step.yaml' --model 'NodeEdgeGNNAttn'
 
-# srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNNAttn'
-# srun python train.py --config 'configs/experiment/global_loss_config.yaml' --model 'NodeEdgeGNNAttn'
-# srun python train.py --config 'configs/experiment/local_loss_config.yaml' --model 'NodeEdgeGNNAttn'
+# srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/experiment/global_loss_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/experiment/local_loss_config.yaml' --model 'NodeEdgeGNN'

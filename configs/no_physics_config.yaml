@@ -46,7 +46,7 @@ training_parameters:
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'training_stats'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
-  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually set to 10% of num_epochs
+  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay

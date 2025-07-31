@@ -8,8 +8,8 @@
 
 . venv/bin/activate
 
-srun python train.py --config 'configs\experiment_attn\config_stc_no_attn.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs\experiment_attn\config_stc_attn.yaml' --model 'NodeEdgeGNNAttn'
+srun python train.py --config 'configs/experiment_attn/config_stc_no_attn.yaml' --model 'NodeEdgeGNN'
+srun python train.py --config 'configs/experiment_attn/config_stc_attn.yaml' --model 'NodeEdgeGNNAttn'
 
 # srun python train.py --config 'configs/experiment_auto/config_supervised.yaml' --model 'NodeEdgeGNNAttn'
 # srun python train.py --config 'configs/experiment_auto/config_autoregressive_2_step.yaml' --model 'NodeEdgeGNNAttn'

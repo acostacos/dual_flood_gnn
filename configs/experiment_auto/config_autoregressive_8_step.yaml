@@ -46,13 +46,13 @@ training_parameters:
   model_dir            : 'autoregressive_train/model'                      # Directory to save trained models
   stats_dir            : 'autoregressive_train/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
-  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually set to 10% of num_epochs
+  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : True                               # Use autoregressive training
   autoregressive_timesteps: 8                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  curriculum_epochs    : 12                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling

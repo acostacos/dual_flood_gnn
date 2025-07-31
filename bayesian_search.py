@@ -79,36 +79,45 @@ def cross_validate(global_mass_loss_percent: Optional[float],
         criterion = MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
 
+        loss_func_config = config['loss_func_parameters']
         if global_mass_loss_percent is None:
-            global_mass_loss_percent = config['loss_func_parameters']['global_mass_loss_percent']
+            global_mass_loss_percent = loss_func_config['global_mass_loss_percent']
         if local_mass_loss_percent is None:
-            local_mass_loss_percent = config['loss_func_parameters']['local_mass_loss_percent']
+            local_mass_loss_percent = loss_func_config['local_mass_loss_percent']
         if edge_pred_loss_percent is None:
-            edge_pred_loss_percent = config['loss_func_parameters']['edge_pred_loss_percent']
+            edge_pred_loss_percent = loss_func_config['edge_pred_loss_percent']
         trainer_params = {
             'model': model,
             'dataset': train_dataset,
             'optimizer': optimizer,
             'loss_func': criterion,
             'use_global_loss': use_global_mass_loss,
+            'global_mass_loss_scale': loss_func_config['global_mass_loss_scale'],
             'global_mass_loss_percent': global_mass_loss_percent,
             'use_local_loss': use_local_mass_loss,
+            'local_mass_loss_scale': loss_func_config['local_mass_loss_scale'],
             'local_mass_loss_percent': local_mass_loss_percent,
             'delta_t': delta_t,
             'batch_size': train_config['batch_size'],
             'num_epochs': train_config['num_epochs'],
+            'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
             'logger': logger,
             'device': args.device,
         }
         if use_edge_pred_loss:
+            trainer_params.update({
+                'edge_pred_loss_scale': loss_func_config['edge_pred_loss_scale'],
+                'edge_pred_loss_percent': edge_pred_loss_percent,
+            })
+
             if train_config.get('autoregressive', False):
                 num_timesteps = train_config['autoregressive_timesteps']
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
 
-                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+                trainer = DualAutoRegressiveTrainer(**trainer_params, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
             else:
-                trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
+                trainer = DualRegressionTrainer(**trainer_params)
         else:
             trainer = NodeRegressionTrainer(**trainer_params)
 

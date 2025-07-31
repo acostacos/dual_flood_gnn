@@ -38,7 +38,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         self.training_stats.start_train()
         current_num_timesteps = 1
         dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=current_num_timesteps)
-        for epoch in range(self.num_epochs):
+        for epoch in range(self.total_num_epochs):
             self.model.train()
             running_pred_loss = 0.0
             running_edge_pred_loss = 0.0
@@ -82,16 +82,15 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
                 edge_label = batch.y_edge
                 edge_pred_loss = self.loss_func(edge_pred, edge_label)
-                self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-                edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_pred_loss_percent
+                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
                 loss = pred_loss + edge_pred_loss
 
                 if self.use_physics_loss:
                     prev_edge_pred = None if reset_autoregressive else edge_sliding_window[:, [-2]]
-                    physics_loss = self._get_epoch_physics_loss(pred, loss, batch, prev_edge_pred)
-                    loss = loss * self.pred_loss_percent + physics_loss
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch, prev_edge_pred)
+                    loss = loss + physics_loss
 
                 group_losses.append(loss)
 
@@ -109,7 +108,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             pred_epoch_loss = running_pred_loss / len(dataloader)
             edge_pred_epoch_loss = running_edge_pred_loss / len(dataloader)
 
-            logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
+            logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
             logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
             logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
@@ -119,11 +118,11 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
             self.training_stats.add_loss_component('edge_prediction_loss', edge_pred_epoch_loss)
 
-            if epoch < self.num_epochs_dyn_weight:
+            if epoch < self.num_epochs_dyn_loss:
                 self.edge_loss_scaler.update_scale_from_epoch()
                 self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
-            elif ((epoch - self.num_epochs_dyn_weight) != 0
-                  and (epoch - self.num_epochs_dyn_weight) % self.curriculum_epochs == 0
+            elif ((epoch - self.num_epochs_dyn_loss) != 0
+                  and (epoch - self.num_epochs_dyn_loss) % self.curriculum_epochs == 0
                   and current_num_timesteps < self.num_timesteps):
                 current_num_timesteps += 1
                 dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=current_num_timesteps)
@@ -133,6 +132,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 self._process_epoch_physics_loss(epoch)
 
         self.training_stats.end_train()
+        self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)
+        self._add_scaled_physics_loss_history()
 
     # def train(self):
     #     '''Pushforward Trick + Stability Loss'''

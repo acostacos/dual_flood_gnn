@@ -37,8 +37,9 @@ def run_train(model: torch.nn.Module,
 
         # Loss function and optimizer
         num_epochs = train_config['num_epochs']
+        num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
         batch_size = train_config['batch_size']
-        log_train_config = {'num_epochs': num_epochs, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
+        log_train_config = {'num_epochs': num_epochs, 'num_epochs_dyn_loss': num_epochs_dyn_loss, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         delta_t = dataset.timestep_interval
@@ -59,30 +60,48 @@ def run_train(model: torch.nn.Module,
             'delta_t': delta_t,
             'batch_size': batch_size,
             'num_epochs': num_epochs,
+            'num_epochs_dyn_loss': num_epochs_dyn_loss,
             'logger': logger,
             'device': device,
         }
         if use_global_mass_loss:
+            global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
             global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
-            logger.log(f'Using global mass conservation loss with target percentage {global_mass_loss_percent}')
-            trainer_params['global_mass_loss_percent'] = global_mass_loss_percent
+            logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
+            trainer_params.update({
+                'global_mass_loss_scale': global_mass_loss_scale,
+                'global_mass_loss_percent': global_mass_loss_percent,
+            })
         if use_local_mass_loss:
+            local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
             local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
-            logger.log(f'Using local mass conservation loss with target percentage {local_mass_loss_percent}')
-            trainer_params['local_mass_loss_percent'] = local_mass_loss_percent
+            logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
+            trainer_params.update({
+                'local_mass_loss_scale': local_mass_loss_scale,
+                'local_mass_loss_percent': local_mass_loss_percent,
+            })
 
         if 'NodeEdgeGNN' in model_name:
+            edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
             edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
-            logger.log(f'Using edge prediction loss with target percentage {edge_pred_loss_percent}')
+            logger.log(f'Using edge prediction loss with initial scale {edge_pred_loss_scale} and loss percentage {edge_pred_loss_percent}')
+            trainer_params.update({
+                'edge_pred_loss_scale': edge_pred_loss_scale,
+                'edge_pred_loss_percent': edge_pred_loss_percent,
+            })
 
             if train_config.get('autoregressive', False):
                 num_timesteps = train_config['autoregressive_timesteps']
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
+                trainer_params.update({
+                    'num_timesteps': num_timesteps,
+                    'curriculum_epochs': curriculum_epochs,
+                })
 
-                trainer = DualAutoRegressiveTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+                trainer = DualAutoRegressiveTrainer(**trainer_params)
             else:
-                trainer = DualRegressionTrainer(**trainer_params, edge_pred_loss_percent=edge_pred_loss_percent)
+                trainer = DualRegressionTrainer(**trainer_params)
         else:
             trainer = NodeRegressionTrainer(**trainer_params)
         trainer.train()

@@ -19,12 +19,15 @@ class BaseTrainer:
                  optimizer: Optimizer,
                  loss_func: Callable,
                  use_global_loss: bool = False,
+                 global_mass_loss_scale: float = 1.0,
                  global_mass_loss_percent: float = 0.1,
                  use_local_loss: bool = False,
+                 local_mass_loss_scale: float = 1.0,
                  local_mass_loss_percent: float = 0.1,
                  delta_t: int = 30,
                  batch_size: int = 64,
                  num_epochs: int = 100,
+                 num_epochs_dyn_loss: int = 10,
                  logger: Logger = None,
                  device: str = 'cpu'):
         self.dataloader = DataLoader(dataset, batch_size=batch_size)
@@ -38,12 +41,12 @@ class BaseTrainer:
         self.local_mass_loss_percent = local_mass_loss_percent
         self.delta_t = delta_t
         self.batch_size = batch_size
-        self.num_epochs = num_epochs
+        self.num_epochs_dyn_loss = num_epochs_dyn_loss
         self.device = device
         self.training_stats = TrainingStats(logger=logger)
 
-        self.num_epochs_dyn_weight = self._get_num_epochs_dynamic_loss_weight(num_epochs)
-        self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_weight} epochs')
+        self.total_num_epochs = num_epochs_dyn_loss + num_epochs
+        self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_loss}/{self.total_num_epochs} epochs')
 
         self.pred_loss_percent = 1.0
         if self.use_global_loss:
@@ -53,7 +56,7 @@ class BaseTrainer:
                 is_normalized=dataset.is_normalized,
                 delta_t=self.delta_t
             )
-            self.global_loss_scaler = LossScaler()
+            self.global_loss_scaler = LossScaler(initial_scale=global_mass_loss_scale)
             self.pred_loss_percent -= global_mass_loss_percent
 
         if self.use_local_loss:
@@ -63,11 +66,8 @@ class BaseTrainer:
                 is_normalized=dataset.is_normalized,
                 delta_t=self.delta_t,
             )
-            self.local_loss_scaler = LossScaler()
+            self.local_loss_scaler = LossScaler(initial_scale=local_mass_loss_scale)
             self.pred_loss_percent -= local_mass_loss_percent
-
-    def _get_num_epochs_dynamic_loss_weight(self, num_epochs: int) -> int:
-        return int(math.ceil(num_epochs * 0.1))
 
     def _reset_epoch_physics_running_loss(self):
         if self.use_global_loss:
@@ -77,44 +77,58 @@ class BaseTrainer:
             self.running_orig_local_physics_loss = 0.0
             self.running_local_physics_loss = 0.0
 
-    def _get_epoch_physics_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+    def _get_epoch_physics_loss(self, epoch, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
         physics_loss = torch.zeros(1, device=self.device)
         if self.use_global_loss:
-            global_physics_loss = self._get_epoch_global_mass_loss(pred, pred_loss, batch, prev_edge_pred)
+            global_physics_loss = self._get_epoch_global_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
             physics_loss += global_physics_loss
 
         if self.use_local_loss:
-            local_physics_loss = self._get_epoch_local_mass_loss(pred, pred_loss, batch, prev_edge_pred)
+            local_physics_loss = self._get_epoch_local_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
             physics_loss += local_physics_loss
 
         return physics_loss
 
-    def _get_epoch_global_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+    def _get_epoch_global_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
         if prev_edge_pred is None:
             # If previous edge prediction is not provided, use the face flow from batch
             prev_edge_pred = batch.global_mass_info['face_flow']
 
         global_physics_loss = self.global_loss_func(pred, prev_edge_pred, batch)
         self.running_orig_global_physics_loss += global_physics_loss.item()
-        self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_physics_loss)
 
-        scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_physics_loss) * self.global_mass_loss_percent
+        scaled_global_physics_loss = self._scale_global_mass_loss(epoch, pred_loss, global_physics_loss)
         self.running_global_physics_loss += scaled_global_physics_loss.item()
         return scaled_global_physics_loss
 
-    def _get_epoch_local_mass_loss(self, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+    def _scale_global_mass_loss(self, epoch: int, pred_loss: Tensor, global_mass_loss: Tensor) -> Tensor:
+        if epoch < self.num_epochs_dyn_loss:
+            self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_mass_loss)
+            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
+        else:
+            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss) * self.global_mass_loss_percent
+        return scaled_global_physics_loss
+
+    def _get_epoch_local_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
         if prev_edge_pred is None:
             # If previous edge prediction is not provided, use the face flow from batch
             prev_edge_pred = batch.local_mass_info['face_flow']
 
         local_physics_loss = self.local_loss_func(pred, prev_edge_pred, batch)
         self.running_orig_local_physics_loss += local_physics_loss.item()
-        self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_physics_loss)
 
-        scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_physics_loss) * self.local_mass_loss_percent
+        scaled_local_physics_loss = self._scale_local_mass_loss(epoch, pred_loss, local_physics_loss)
         self.running_local_physics_loss += scaled_local_physics_loss.item()
         return scaled_local_physics_loss
-    
+
+    def _scale_local_mass_loss(self, epoch: int, pred_loss: Tensor, local_mass_loss: Tensor) -> Tensor:
+        if epoch < self.num_epochs_dyn_loss:
+            self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_mass_loss)
+            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
+        else:
+            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss) * self.local_mass_loss_percent
+        return scaled_local_physics_loss
+
     def _get_epoch_total_running_loss(self, current_running_loss: float) -> float:
         total_loss = current_running_loss
         if self.use_global_loss:
@@ -132,7 +146,7 @@ class BaseTrainer:
             orig_global_physics_epoch_loss = self.running_orig_global_physics_loss / len(self.dataloader)
             self.training_stats.add_loss_component('orig_global_physics_loss', orig_global_physics_epoch_loss)
 
-            if epoch < self.num_epochs_dyn_weight:
+            if epoch < self.num_epochs_dyn_loss:
                 self.global_loss_scaler.update_scale_from_epoch()
                 self.training_stats.log(f'\tAdjusted Global Mass Loss Weight to {self.global_loss_scaler.scale:.4e}')
 
@@ -144,9 +158,16 @@ class BaseTrainer:
             orig_local_physics_epoch_loss = self.running_orig_local_physics_loss / len(self.dataloader)
             self.training_stats.add_loss_component('orig_local_physics_loss', orig_local_physics_epoch_loss)
 
-            if epoch < self.num_epochs_dyn_weight:
+            if epoch < self.num_epochs_dyn_loss:
                 self.local_loss_scaler.update_scale_from_epoch()
                 self.training_stats.log(f'\tAdjusted Local Mass Loss Weight to {self.local_loss_scaler.scale:.4e}')
+
+    def _add_scaled_physics_loss_history(self):
+        if self.use_global_loss:
+            self.training_stats.add_additional_info('global_scaled_loss_ratios', self.global_loss_scaler.scaled_loss_ratio_history)
+
+        if self.use_local_loss:
+            self.training_stats.add_additional_info('local_scaled_loss_ratios', self.local_loss_scaler.scaled_loss_ratio_history)
 
     def train(self):
         raise NotImplementedError("Train method not implemented.")

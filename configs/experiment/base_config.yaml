@@ -46,6 +46,7 @@ training_parameters:
   model_dir            : 'physics_informed_stc/model'                      # Directory to save trained models
   stats_dir            : 'physics_informed_stc/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
+  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually set to 10% of num_epochs
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
@@ -54,10 +55,13 @@ training_parameters:
   curriculum_epochs    : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
+  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
-  use_local_mass_loss: False                                 # Use local mass conservation in loss function
+  global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
   global_mass_loss_percent: 0.001                           # Percentage of global mass conservation loss in total loss
+  use_local_mass_loss: False                                 # Use local mass conservation in loss function
+  local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
   local_mass_loss_percent: 0.001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:

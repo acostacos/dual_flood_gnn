@@ -23,8 +23,10 @@ class LossScaler:
     def add_epoch_loss_ratio(self, basis_loss: Tensor, loss: Tensor):
         ratio = self.get_ratio(basis_loss, loss)
         self.epoch_loss_ratios.append(ratio)
+
         scaled_loss = self.scale_loss(loss)
-        self.epoch_scaled_loss_ratios.append(scaled_loss.item())
+        scaled_loss_ratio = basis_loss / (scaled_loss + 1e-8)
+        self.epoch_scaled_loss_ratios.append(scaled_loss_ratio.item())
 
     def update_scale_from_epoch(self):
         scaled_loss_ratio = np.mean(self.epoch_scaled_loss_ratios)

@@ -261,7 +261,7 @@ if __name__ == '__main__':
             LOCAL_LOSS_PERCENTS = [0.001, 0.0005, 0.0001, 0.00008, 0.00005, 0.00003, 0.00001, 0.000005, 0.000001]
             hyperparameters['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
         if use_edge_pred_loss:
-            EDGE_LOSS_PERCENTS = [0.1, 0.2, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9]
+            EDGE_LOSS_PERCENTS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9]
             hyperparameters['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
 
         logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(list(hyperparameters.keys()))}')

@@ -45,17 +45,17 @@ training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'hp_stats'                          # Directory to save training statistics
-  num_epochs           : 20                                  # Number of epochs
-  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
+  num_epochs           : 36                                  # Number of epochs
+  num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  autoregressive       : False                               # Use autoregressive training
-  autoregressive_timesteps: 8                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 5                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  autoregressive       : True                                # Use autoregressive training
+  autoregressive_timesteps: 12                               # Number of timesteps for autoregressive training
+  curriculum_epochs    : 3                                   # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_scale: 7.0e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: True                                 # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling

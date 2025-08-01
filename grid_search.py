@@ -21,6 +21,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--config", type=str, required=True, help='Path to training config file')
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
+    parser.add_argument("--top_k", type=int, default=5, help='Number of top results to keep for hyperparameter search')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -191,10 +192,10 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     return avg_val_rmse, avg_val_edge_rmse
 
 def search(hyperparameters: Dict[str, List[float]]):
-    best_rmse = float('inf')
+    best_rmses = np.full(args.top_k, np.inf)
     if use_edge_pred_loss:
-        best_edge_rmse = float('inf')
-    best_hyperparameters = {}
+        best_edge_rmses = np.full(args.top_k, np.inf)
+    best_hyperparameters = [{}] * args.top_k
 
     hyperparameter_list = list(hyperparameters.keys())
     hyperparameter_values = [hyperparameters[key] for key in hyperparameter_list]
@@ -213,30 +214,34 @@ def search(hyperparameters: Dict[str, List[float]]):
                                  save_stats_for_first=True)
         if use_edge_pred_loss:
             avg_val_rmse, avg_val_edge_rmse = results
-            is_best = avg_val_rmse < best_rmse and avg_val_edge_rmse < best_edge_rmse
+            is_best = avg_val_rmse < best_rmses.max() and avg_val_edge_rmse < best_edge_rmses.max()
+            worst_idx = np.argmax(best_rmses) if avg_val_rmse < best_rmses.max() else np.argmax(best_edge_rmses)
         else:
             avg_val_rmse = results
-            is_best = avg_val_rmse < best_rmse
+            is_best = avg_val_rmse < best_rmses.max()
+            worst_idx = np.argmax(best_rmses)
 
         if is_best:
-            best_rmse = avg_val_rmse
+            best_rmses[worst_idx] = avg_val_rmse
             if use_edge_pred_loss:
-                best_edge_rmse = avg_val_edge_rmse
+                best_edge_rmses[worst_idx] = avg_val_edge_rmse
 
+            new_best_hp = {}
             if use_global_mass_loss:
-                best_hyperparameters['global_mass_loss_percent'] = global_mass_loss_percent
+                new_best_hp['global_mass_loss_percent'] = global_mass_loss_percent
             if use_local_mass_loss:
-                best_hyperparameters['local_mass_loss_percent'] = local_mass_loss_percent
+                new_best_hp['local_mass_loss_percent'] = local_mass_loss_percent
             if use_edge_pred_loss:
-                best_hyperparameters['edge_pred_loss_percent'] = edge_pred_loss_percent
+                new_best_hp['edge_pred_loss_percent'] = edge_pred_loss_percent
+            best_hyperparameters[worst_idx] = new_best_hp
 
             logger.log(f'New best RMSE for hyperparameter combination:')
             for key, value in zip(hyperparameter_list, comb):
                 logger.log(f'\t{key}: {value}')
 
     if use_edge_pred_loss:
-        return (best_rmse, best_edge_rmse), best_hyperparameters
-    return best_rmse, best_hyperparameters
+        return (best_rmses, best_edge_rmses), best_hyperparameters
+    return best_rmses, best_hyperparameters
 
 if __name__ == '__main__':
     args = parse_args()
@@ -286,14 +291,18 @@ if __name__ == '__main__':
         best_rmse_values, best_hyperparameters = search(hyperparameters)
 
         if use_edge_pred_loss:
-            best_rmse, best_edge_rmse = best_rmse_values
-            logger.log(f'Best RMSE: {best_rmse:.4e}, Best Edge RMSE: {best_edge_rmse:.4e}')
+            best_rmses, best_edge_rmses = best_rmse_values
         else:
-            best_rmse = best_rmse_values
-            logger.log(f'Best RMSE: {best_rmse:.4e}')
-        logger.log('Best hyperparameters found:')
-        for key, value in best_hyperparameters.items():
-            logger.log(f'{key}: {value}')
+            best_rmses = best_rmse_values
+
+        for i in range(len(best_rmses)):
+            logger.log(f'Best hyperparameter combination {i+1}:')
+            logger.log(f'\tRMSE: {best_rmses[i]:.4e}')
+            if use_edge_pred_loss:
+                logger.log(f'\tEdge RMSE: {best_edge_rmses[i]:.4e}')
+            logger.log('\tHyperparameters:')
+            for key, value in best_hyperparameters[i].items():
+                logger.log(f'\t\t{key}: {value}')
 
         # Clean up temporary directories
         delete_temp_dirs(raw_temp_dir_path, processed_temp_dir_path)

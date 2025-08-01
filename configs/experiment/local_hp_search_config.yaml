@@ -44,7 +44,7 @@ dataset_parameters:
 training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
-  stats_dir            : 'hp_stats/08-01_global'                          # Directory to save training statistics
+  stats_dir            : 'hp_stats/08-01_local'                          # Directory to save training statistics
   num_epochs           : 36                                  # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 128                                 # Batch size
@@ -55,18 +55,18 @@ training_parameters:
   curriculum_epochs    : 3                                   # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 2.5e+2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_scale: 2.0e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.3                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: True                                 # Use global mass conservation in loss function
-  global_mass_loss_scale: 8.0e-6                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
+  global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
   global_mass_loss_percent: 0.0274                           # Percentage of global mass conservation loss in total loss
   use_local_mass_loss: True                                  # Use local mass conservation in loss function
-  local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
+  local_mass_loss_scale: 3.0e-9                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
   local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
   log_path: null                                        # Path to save testing logs
-  output_dir: 'hp_stats/08-01_global'                                # Directory to save testing results
+  output_dir: 'hp_stats/08-01_local'                                # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

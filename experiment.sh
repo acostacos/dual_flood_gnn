@@ -38,6 +38,6 @@ srun python train.py --config 'configs/global_experiment/global_loss_0.00000001_
 srun python train.py --config 'configs/global_experiment/global_loss_0.000000005_config.yaml' --model 'NodeEdgeGNN'
 srun python train.py --config 'configs/global_experiment/global_loss_0.000000001_config.yaml' --model 'NodeEdgeGNN'
 
-srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/experiment/global_loss_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/experiment/local_loss_config.yaml' --model 'NodeEdgeGNN'

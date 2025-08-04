@@ -42,7 +42,7 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'local_weight_search/logs/local_0.005_train.log'                                # Path to save training logs
+  log_path             : 'local_weight_search/logs/local_0.05_train.log'                                # Path to save training logs
   model_dir            : 'local_weight_search/model'                      # Directory to save trained models
   stats_dir            : 'local_weight_search/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
@@ -62,10 +62,10 @@ loss_func_parameters:
   global_mass_loss_percent: 0.001                           # Percentage of global mass conservation loss in total loss
   use_local_mass_loss: True                                 # Use local mass conservation in loss function
   local_mass_loss_scale: 3.0e-9                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  local_mass_loss_percent: 0.005                            # Percentage of local mass conservation loss in total loss
+  local_mass_loss_percent: 0.05                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: 'local_weight_search/logs/local_0.005_test.log'                                        # Path to save testing logs
+  log_path: 'local_weight_search/logs/local_0.05_test.log'                                        # Path to save testing logs
   output_dir: 'local_weight_search/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)

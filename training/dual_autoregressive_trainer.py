@@ -45,6 +45,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             self.model.train()
             running_pred_loss = 0.0
             running_edge_pred_loss = 0.0
+            running_grad_norm = 0.0
             if self.use_physics_loss:
                 self._reset_epoch_physics_running_loss()
 
@@ -100,7 +101,9 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 if ((i + 1) % current_num_timesteps == 0) or (i + 1 == len(dataloader)):
                     torch.stack(group_losses).mean().backward()
 
-                    # TODO: See if you need this
+                    total_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                    running_grad_norm += total_norm.item()
+
                     # # Gradient clipping (avoid exploding gradients)
                     # torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=0.5)
 
@@ -115,6 +118,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
             logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
             logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
+            logging_str += f'\tAverage Gradient Norm: {(running_grad_norm / len(dataloader)):.4e}'
             self.training_stats.log(logging_str)
 
             self.training_stats.add_loss(epoch_loss)

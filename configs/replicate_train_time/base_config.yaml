@@ -45,14 +45,14 @@ training_parameters:
   log_path             : 'replicate_train_time/logs/base_train.log'                                # Path to save training logs
   model_dir            : 'replicate_train_time/model'                      # Directory to save trained models
   stats_dir            : 'replicate_train_time/train'                    # Directory to save training statistics
-  num_epochs           : 25                                 # Number of epochs
-  num_epochs_dyn_loss  : 5                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
+  num_epochs           : 100                                 # Number of epochs
+  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   autoregressive       : True                               # Use autoregressive training
   autoregressive_timesteps: 12                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 2                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  curriculum_epochs    : 8                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_scale: 7.0e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling

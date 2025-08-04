@@ -93,7 +93,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 if self.use_physics_loss:
                     prev_edge_pred = None if reset_autoregressive else edge_sliding_window[:, [-2]]
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch, prev_edge_pred)
-                    loss = loss + physics_loss
+                    loss += physics_loss
 
                 group_losses.append(loss)
 

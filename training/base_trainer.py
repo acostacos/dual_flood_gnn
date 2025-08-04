@@ -78,16 +78,22 @@ class BaseTrainer:
             self.running_local_physics_loss = 0.0
 
     def _get_epoch_physics_loss(self, epoch, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
-        physics_loss = torch.zeros(1, device=self.device)
+        if not self.use_global_loss and not self.use_local_loss:
+            raise ValueError("At least one of global or local physics loss must be enabled.")
+
         if self.use_global_loss:
             global_physics_loss = self._get_epoch_global_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
-            physics_loss += global_physics_loss
+
+        if not self.use_local_loss:
+            return global_physics_loss
 
         if self.use_local_loss:
             local_physics_loss = self._get_epoch_local_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
-            physics_loss += local_physics_loss
 
-        return physics_loss
+        if not self.use_global_loss:
+            return local_physics_loss
+
+        return local_physics_loss + global_physics_loss
 
     def _get_epoch_global_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
         if prev_edge_pred is None:

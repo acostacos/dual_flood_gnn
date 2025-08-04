@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import torch
 from data import AutoRegressiveDataLoader, FloodEventDataset
@@ -39,6 +40,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         current_num_timesteps = 1
         dataloader = AutoRegressiveDataLoader(dataset=self.dataloader.dataset, batch_size=self.batch_size, num_timesteps=current_num_timesteps)
         for epoch in range(self.total_num_epochs):
+            epoch_start_time = time.time()
+
             self.model.train()
             running_pred_loss = 0.0
             running_edge_pred_loss = 0.0
@@ -130,6 +133,10 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)
+
+            epoch_end_time = time.time()
+            epoch_duration = epoch_end_time - epoch_start_time
+            self.training_stats.log(f'\tEpoch Duration: {epoch_duration:.2f} seconds')
 
         self.training_stats.end_train()
         self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)

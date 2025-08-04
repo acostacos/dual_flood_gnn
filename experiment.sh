@@ -8,9 +8,15 @@
 
 . venv/bin/activate
 
+# Debug Train Time
+srun python train.py --config 'configs/replicate_train_time/base_config.yaml' --model 'NodeEdgeGNN'
+srun python train.py --config 'configs/replicate_train_time/global_loss_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/replicate_train_time/local_loss_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/replicate_train_time/dual_phyics_loss_config.yaml' --model 'NodeEdgeGNN'
+
 # Local Weight Search
-srun python train.py --config 'configs/local_experiment/local_loss_0.05_config.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs/local_experiment/local_loss_0.01_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/local_experiment/local_loss_0.05_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/local_experiment/local_loss_0.01_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/local_experiment/local_loss_0.005_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/local_experiment/local_loss_0.001_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/local_experiment/local_loss_0.0005_config.yaml' --model 'NodeEdgeGNN'
@@ -33,10 +39,10 @@ srun python train.py --config 'configs/local_experiment/local_loss_0.01_config.y
 # srun python train.py --config 'configs/global_experiment/global_loss_0.000001_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/global_experiment/global_loss_0.0000005_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/global_experiment/global_loss_0.0000001_config.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs/global_experiment/global_loss_0.00000005_config.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs/global_experiment/global_loss_0.00000001_config.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs/global_experiment/global_loss_0.000000005_config.yaml' --model 'NodeEdgeGNN'
-srun python train.py --config 'configs/global_experiment/global_loss_0.000000001_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/global_experiment/global_loss_0.00000005_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/global_experiment/global_loss_0.00000001_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/global_experiment/global_loss_0.000000005_config.yaml' --model 'NodeEdgeGNN'
+# srun python train.py --config 'configs/global_experiment/global_loss_0.000000001_config.yaml' --model 'NodeEdgeGNN'
 
 # srun python train.py --config 'configs/experiment/base_config.yaml' --model 'NodeEdgeGNN'
 # srun python train.py --config 'configs/experiment/global_loss_config.yaml' --model 'NodeEdgeGNN'

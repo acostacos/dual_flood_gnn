@@ -63,7 +63,7 @@ loss_func_parameters:
   global_mass_loss_percent: 0.001                           # Percentage of global mass conservation loss in total loss
   use_local_mass_loss: True                                 # Use local mass conservation in loss function
   local_mass_loss_scale: 3.0e-9                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  local_mass_loss_percent: 0.05                             # Percentage of local mass conservation loss in total loss
+  local_mass_loss_percent: 0.2                             # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
   log_path: 'physics_informed_stc/logs/local_test.log'                                        # Path to save testing logs

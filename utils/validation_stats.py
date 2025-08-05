@@ -78,6 +78,12 @@ class ValidationStats:
     def get_avg_edge_rmse(self) -> float:
         return float(np.mean(self.edge_rmse_list))
 
+    def get_avg_global_mass_loss(self) -> float:
+        return float(np.mean(self.global_mass_loss_list))
+
+    def get_avg_local_mass_loss(self) -> float:
+        return float(np.mean(self.local_mass_loss_list))
+
     def update_stats_for_timestep(self, pred: Tensor, target: Tensor, water_threshold: ndarray):
         self.pred_list.append(pred)
         self.target_list.append(target)
@@ -160,9 +166,9 @@ class ValidationStats:
             self.log(f'Average Edge NSE (flooded): {np.mean(self.edge_nse_flooded_list):.4e}')
 
         if len(self.global_mass_loss_list) > 0:
-            self.log(f'\nAverage Global Mass Conservation Loss: {np.mean(self.global_mass_loss_list):.4e}')
+            self.log(f'\nAverage Global Mass Conservation Loss: {self.get_avg_global_mass_loss():.4e}')
         if len(self.local_mass_loss_list) > 0:
-            self.log(f'\nAverage Local Mass Conservation Loss: {np.mean(self.local_mass_loss_list):.4e}')
+            self.log(f'\nAverage Local Mass Conservation Loss: {self.get_avg_local_mass_loss():.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'\nValidation time: {self.val_end_time - self.val_start_time:.2f} seconds')

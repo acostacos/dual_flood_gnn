@@ -231,6 +231,8 @@ def run_test(model: torch.nn.Module,
     is_dual_model = 'NodeEdgeGNN' in model.__class__.__name__
 
     avg_rmses = []
+    avg_global_mass_losses = []
+    avg_local_mass_losses = []
     if is_dual_model:
         avg_edge_rmses = []
     for event_idx, run_id in enumerate(dataset.hec_ras_run_ids):
@@ -249,6 +251,8 @@ def run_test(model: torch.nn.Module,
         validation_stats.print_stats_summary()
 
         avg_rmses.append(validation_stats.get_avg_rmse())
+        avg_global_mass_losses.append(validation_stats.get_avg_global_mass_loss())
+        avg_local_mass_losses.append(validation_stats.get_avg_local_mass_loss())
         if is_dual_model:
             avg_edge_rmses.append(validation_stats.get_avg_edge_rmse())
 
@@ -265,6 +269,8 @@ def run_test(model: torch.nn.Module,
     logger.log(f'Average RMSE across events: {np.mean(avg_rmses):.4e}')
     if is_dual_model:
         logger.log(f'Average Edge RMSE across events: {np.mean(avg_edge_rmses):.4e}')
+    logger.log(f'Average Global Mass Conservation Loss across events: {np.mean(avg_global_mass_losses):.4e}')
+    logger.log(f'Average Local Mass Conservation Loss across events: {np.mean(avg_local_mass_losses):.4e}')
 
 def main():
     args = parse_args()

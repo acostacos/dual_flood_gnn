@@ -7,7 +7,7 @@ from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch_geometric.loader import DataLoader
-from typing import Callable
+from typing import Callable, Optional
 from utils import LossScaler, Logger
 from utils.training_stats import TrainingStats
 
@@ -28,6 +28,7 @@ class BaseTrainer:
                  batch_size: int = 64,
                  num_epochs: int = 100,
                  num_epochs_dyn_loss: int = 10,
+                 gradient_clip_value: Optional[float] = None,
                  logger: Logger = None,
                  device: str = 'cpu'):
         self.dataloader = DataLoader(dataset, batch_size=batch_size)
@@ -42,6 +43,7 @@ class BaseTrainer:
         self.delta_t = delta_t
         self.batch_size = batch_size
         self.num_epochs_dyn_loss = num_epochs_dyn_loss
+        self.gradient_clip_value = gradient_clip_value
         self.device = device
         self.training_stats = TrainingStats(logger=logger)
 

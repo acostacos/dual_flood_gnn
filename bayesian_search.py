@@ -101,6 +101,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             'batch_size': train_config['batch_size'],
             'num_epochs': train_config['num_epochs'],
             'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
+            'gradient_clip_value': train_config['gradient_clip_value'],
             'logger': logger,
             'device': args.device,
         }

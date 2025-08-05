@@ -50,6 +50,7 @@ training_parameters:
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
+  gradient_clip_value : null                                 # Gradient clipping value; If None, no gradient clipping is applied
   autoregressive       : True                                # Use autoregressive training
   autoregressive_timesteps: 12                               # Number of timesteps for autoregressive training
   curriculum_epochs    : 3                                   # Number of epochs before increasing the autoregressive timesteps in curriculum learning

@@ -39,7 +39,8 @@ def run_train(model: torch.nn.Module,
         num_epochs = train_config['num_epochs']
         num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
         batch_size = train_config['batch_size']
-        log_train_config = {'num_epochs': num_epochs, 'num_epochs_dyn_loss': num_epochs_dyn_loss, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'] }
+        gradient_clip_value = train_config['gradient_clip_value']
+        log_train_config = {'num_epochs': num_epochs, 'num_epochs_dyn_loss': num_epochs_dyn_loss, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'], 'gradient_clip_value': gradient_clip_value }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         delta_t = dataset.timestep_interval
@@ -61,6 +62,7 @@ def run_train(model: torch.nn.Module,
             'batch_size': batch_size,
             'num_epochs': num_epochs,
             'num_epochs_dyn_loss': num_epochs_dyn_loss,
+            'gradient_clip_value': gradient_clip_value,
             'logger': logger,
             'device': device,
         }

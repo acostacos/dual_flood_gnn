@@ -100,8 +100,8 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 if ((i + 1) % current_num_timesteps == 0) or (i + 1 == len(dataloader)):
                     torch.stack(group_losses).mean().backward()
 
-                    # Gradient clipping (avoid exploding gradients)
-                    torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=1.0)
+                    if self.gradient_clip_value is not None:
+                        torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=self.gradient_clip_value)
 
                     self.optimizer.step()
 

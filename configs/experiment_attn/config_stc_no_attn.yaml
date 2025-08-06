@@ -42,32 +42,32 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'physics_informed_stc/logs/local_train.log'                                # Path to save training logs
-  model_dir            : 'physics_informed_stc/model'                      # Directory to save trained models
-  stats_dir            : 'physics_informed_stc/train'                    # Directory to save training statistics
+  log_path             : 'attention/logs/no_attn_train.log'                                # Path to save training logs
+  model_dir            : 'attention/model'                      # Directory to save trained models
+  stats_dir            : 'attention/train'                    # Directory to save training statistics
   num_epochs           : 100                                 # Number of epochs
-  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
+  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually set to 10% of num_epochs
   batch_size           : 128                                 # Batch size
   learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   gradient_clip_value : null                                 # Gradient clipping value; If None, no gradient clipping is applied
-  autoregressive       : True                               # Use autoregressive training
-  autoregressive_timesteps: 12                                # Number of timesteps for autoregressive training
-  curriculum_epochs    : 8                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  autoregressive       : False                               # Use autoregressive training
+  autoregressive_timesteps: 8                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 2.0e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
-  edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
-  use_global_mass_loss: False                                # Use global mass conservation in loss function
+  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
+  use_global_mass_loss: False                                 # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  global_mass_loss_percent: 0.001                           # Percentage of global mass conservation loss in total loss
-  use_local_mass_loss: True                                 # Use local mass conservation in loss function
-  local_mass_loss_scale: 3.0e-9                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  local_mass_loss_percent: 0.05                             # Percentage of local mass conservation loss in total loss
+  global_mass_loss_percent: 0.0274                           # Percentage of global mass conservation loss in total loss
+  use_local_mass_loss: False                                  # Use local mass conservation in loss function
+  local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
+  local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: 'physics_informed_stc/logs/local_test.log'                                        # Path to save testing logs
-  output_dir: 'physics_informed_stc/test'                           # Directory to save testing results
+  log_path: 'attention/logs/no_attn_test.log'                                        # Path to save testing logs
+  output_dir: 'attention/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 
@@ -123,3 +123,4 @@ model_parameters:
     encoder_activation: 'prelu'
     decoder_layers: 2
     decoder_activation: 'prelu'
+  

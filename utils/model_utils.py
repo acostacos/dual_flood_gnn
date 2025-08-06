@@ -64,6 +64,8 @@ class LinearLayer(Module):
 
     def reset_parameters(self):
         self.linear.reset_parameters()
+        if hasattr(self, 'activation') and hasattr(self.activation, 'reset_parameters'):
+            self.activation.reset_parameters()
 
 class GNNLayer(Module):
     def __init__(self,
@@ -90,4 +92,6 @@ class GNNLayer(Module):
         return x
 
     def reset_parameters(self):
-        self.linear.reset_parameters()
+        self.conv.reset_parameters()
+        if hasattr(self, 'activation') and hasattr(self.activation, 'reset_parameters'):
+            self.activation.reset_parameters()

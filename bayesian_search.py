@@ -3,6 +3,7 @@ import numpy as np
 import traceback
 import torch
 import optuna
+import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
@@ -231,8 +232,11 @@ if __name__ == '__main__':
         assert not use_edge_pred_loss or 'NodeEdgeGNN' in args.model, 'Edge prediction loss can only be used with NodeEdgeGNN model'
 
         if args.seed is not None:
+            random.seed(args.seed)
             np.random.seed(args.seed)
             torch.manual_seed(args.seed)
+            torch.cuda.manual_seed_all(args.seed)
+            logger.log(f'Setting random seed to {args.seed}')
 
         current_device = torch.cuda.get_device_name(args.device) if args.device != 'cpu' else 'CPU'
         logger.log(f'Using device: {current_device}')

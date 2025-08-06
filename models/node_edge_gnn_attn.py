@@ -6,9 +6,9 @@ from torch.nn import Identity, Linear, Parameter, Module
 from torch_geometric.data import Data
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from torch_geometric.nn.inits import zeros
-from torch_geometric.utils import add_self_loops, remove_self_loops, softmax
+from torch_geometric.utils import softmax
 from typing import List, Optional, Tuple
-from utils.model_utils import make_mlp, get_activation_func
+from utils.model_utils import make_mlp
 
 from .base_model import BaseModel
 
@@ -25,10 +25,9 @@ class NodeEdgeGNNAttn(BaseModel):
 
                  # Attention Parameters
                  dropout: float = 0.0,
-                 add_self_loops: bool = True,
                  negative_slope: float = 0.2,
+                 attn_mlp_layers: float = 2,
                  attn_bias: bool = True,
-                 attn_residual: bool = True,
 
                  # Encoder Decoder Parameters
                  encoder_layers: int = 0,
@@ -72,11 +71,10 @@ class NodeEdgeGNNAttn(BaseModel):
             'output_edge_size': output_edge_size,
             'hidden_size': hidden_features,
             'dropout': dropout,
-            'add_self_loops': add_self_loops,
             'negative_slope': negative_slope,
+            'mlp_layers': attn_mlp_layers,
             'bias': attn_bias,
-            'residual': attn_residual,
-            'num_layers': num_layers,
+            'gnn_layers': num_layers,
             'activation': activation,
         }
         self.convs = self._make_gnn(**conv_kwargs)
@@ -95,8 +93,8 @@ class NodeEdgeGNNAttn(BaseModel):
             self.residual = Identity()
 
     def _make_gnn(self, input_size: int, output_size: int, input_edge_size: int, output_edge_size: int,
-                  hidden_size: int = None, num_layers: int = 1, **conv_kwargs) -> Module:
-        if num_layers == 1:
+                  hidden_size: int = None, gnn_layers: int = 1, **conv_kwargs) -> Module:
+        if gnn_layers == 1:
             return NodeEdgeAttnConv(input_size, output_size, input_edge_size, output_edge_size, **conv_kwargs)
 
         hidden_size = hidden_size if hidden_size is not None else (input_size * 2)
@@ -107,7 +105,7 @@ class NodeEdgeGNNAttn(BaseModel):
              'x, edge_index, edge_attr -> x, edge_attr')
         ) # Input Layer
 
-        for _ in range(num_layers-2):
+        for _ in range(gnn_layers-2):
             layers.append(
                 (NodeEdgeAttnConv(hidden_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
                  'x, edge_index, edge_attr -> x, edge_attr')
@@ -147,10 +145,9 @@ class NodeEdgeAttnConv(MessagePassing):
                  edge_in_features: int,
                  edge_out_features: int,
                  dropout: float = 0.0,
-                 add_self_loops: bool = True,
                  negative_slope: float = 0.2,
+                 mlp_layers: float = 2,
                  bias: bool = True,
-                 residual: bool = True,
                  activation: str = None):
         super().__init__(aggr='sum', node_dim=0)
         self.inspector.inspect_signature(self.attention)
@@ -158,31 +155,35 @@ class NodeEdgeAttnConv(MessagePassing):
             'attention', exclude=self.special_args)
 
         self.dropout = dropout
-        self.add_self_loops = add_self_loops
         self.negative_slope = negative_slope
         self.has_bias = bias
-        self.has_residual = residual
-        self.has_activation = activation is not None
 
         self.lin = Linear(in_features, out_features, bias=False) 
         self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
         self.node_attn = Linear((out_features * 2 + edge_out_features), 1, bias=False)
-        self.node_update_lin = Linear((out_features + edge_out_features), out_features, bias=False)
-
         self.edge_attn = Linear((out_features * 2), 1, bias=False)
-        self.edge_update_lin = Linear((out_features + edge_out_features), edge_out_features, bias=False)
 
-        if self.has_residual:
-            self.residual = Linear(in_features, out_features, bias=False)
-            self.residual_edge = Linear(edge_in_features, edge_out_features, bias=False)
+        msg_input_size = (out_features * 2 + edge_out_features)
+        msg_hidden_size = msg_input_size * 2
+        self.msg_mlp = make_mlp(input_size=msg_input_size, output_size=edge_out_features,
+                            hidden_size=msg_hidden_size, num_layers=mlp_layers,
+                            activation=activation)
+
+        node_update_input_size = (edge_out_features)
+        node_update_hidden_size = node_update_input_size * 2
+        self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
+                                 hidden_size=node_update_hidden_size, num_layers=mlp_layers,
+                                 activation=activation)
+
+        edge_update_input_size = (edge_out_features)
+        edge_update_hidden_size = edge_update_input_size * 2
+        self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
+                                 hidden_size=edge_update_hidden_size, num_layers=mlp_layers,
+                                 activation=activation)
 
         if self.has_bias:
             self.bias = Parameter(torch.empty(out_features))
             self.bias_edge = Parameter(torch.empty(edge_out_features))
-
-        if self.has_activation:
-            self.activation = get_activation_func(activation)
-            self.edge_activation = get_activation_func(activation)
 
         self.reset_parameters()
 
@@ -192,33 +193,27 @@ class NodeEdgeAttnConv(MessagePassing):
         self.lin.reset_parameters()
         self.edge_lin.reset_parameters()
         self.node_attn.reset_parameters()
-        self.node_update_lin.reset_parameters()
         self.edge_attn.reset_parameters()
-        self.edge_update_lin.reset_parameters()
 
-        if self.has_residual:
-            self.residual.reset_parameters()
-            self.residual_edge.reset_parameters()
+        for layer in self.msg_mlp.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+
+        for layer in self.node_update_mlp.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+
+        for layer in self.edge_update_mlp.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
 
         if self.has_bias:
             zeros(self.bias)
             zeros(self.bias_edge)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
-        res: Optional[Tensor] = None
-        res_edge: Optional[Tensor] = None
-        if self.has_residual:
-            res = self.residual(x)
-            res_edge = self.residual_edge(edge_attr)
-
         x = self.lin(x)
         edge_attr = self.edge_lin(edge_attr)
-
-        if self.add_self_loops:
-            # Only add self-loops for nodes that are both source and target
-            num_nodes = x.shape[0]
-            edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
-            edge_index, edge_attr = add_self_loops(edge_index, edge_attr, fill_value='mean', num_nodes=num_nodes)
 
         alpha = self.compute_attention(edge_index, x=x, edge_attr=edge_attr)
 
@@ -226,20 +221,9 @@ class NodeEdgeAttnConv(MessagePassing):
 
         edge_out = self.edge_updater(edge_index, out=out, msg=msg)
 
-        if self.add_self_loops:
-            edge_index, edge_out = remove_self_loops(edge_index, edge_out)
-
-        if self.has_residual:
-            out = out + res
-            edge_out = edge_out + res_edge
-
         if self.has_bias:
             out = out + self.bias
             edge_out = edge_out + self.bias_edge
-        
-        if self.has_activation:
-            out = self.activation(out)
-            edge_out = self.edge_activation(edge_out)
 
         return out, edge_out
 
@@ -264,23 +248,24 @@ class NodeEdgeAttnConv(MessagePassing):
         msg_kwargs = self.inspector.collect_param_data('message', coll_dict)
         msg = self.message(**msg_kwargs)
 
+        node_msg = kwargs['alpha'] * msg
         aggr_kwargs = self.inspector.collect_param_data('aggregate', coll_dict)
-        aggr = self.aggregate(msg, **aggr_kwargs)
+        aggr = self.aggregate(node_msg, **aggr_kwargs)
 
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         node_out = self.update(aggr, **update_kwargs)
 
         return node_out, msg
 
-    def message(self, x_j: Tensor, edge_attr: Tensor, alpha: Tensor) -> Tensor:
-        return alpha * torch.cat([x_j, edge_attr], dim=-1)
+    def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor) -> Tensor:
+        return self.msg_mlp(torch.cat([x_i, edge_attr, x_j], dim=-1))
 
     def update(self, aggr_out: Tensor) -> Tensor:
-        return self.node_update_lin(aggr_out)
+        return self.node_update_mlp(aggr_out)
 
     def edge_update(self, msg: Tensor, out_i: Tensor, out_j: Tensor, index: Tensor, ptr, dim_size: Optional[int]) -> Tensor:
         beta = self.edge_attn(torch.cat([out_i, out_j], dim=-1))
         beta = F.leaky_relu(beta, self.negative_slope)
         beta = softmax(beta, index, ptr, dim_size)
         beta = F.dropout(beta, p=self.dropout, training=self.training)
-        return self.edge_update_lin(beta * msg)
+        return self.edge_update_mlp(beta * msg)

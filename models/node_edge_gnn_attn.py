@@ -158,8 +158,10 @@ class NodeEdgeAttnConv(MessagePassing):
             'attention', exclude=self.special_args)
 
         self.dropout = dropout
+        self.add_self_loops = add_self_loops
         self.negative_slope = negative_slope
         self.has_bias = bias
+        self.has_residual = residual
         self.has_activation = activation is not None
 
         self.lin = Linear(in_features, out_features, bias=False) 
@@ -173,13 +175,13 @@ class NodeEdgeAttnConv(MessagePassing):
                             hidden_size=msg_hidden_size, num_layers=2,
                             activation=activation)
 
-        node_update_input_size = (edge_out_features * 2)
+        node_update_input_size = (edge_out_features)
         node_update_hidden_size = node_update_input_size * 2
         self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
                                  hidden_size=node_update_hidden_size, num_layers=2,
                                  activation=activation)
 
-        edge_update_input_size = (edge_out_features * 2)
+        edge_update_input_size = (edge_out_features)
         edge_update_hidden_size = edge_update_input_size * 2
         self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
                                  hidden_size=edge_update_hidden_size, num_layers=2,
@@ -227,7 +229,7 @@ class NodeEdgeAttnConv(MessagePassing):
 
         out, msg = self.propagate(edge_index, x=x, alpha=alpha, edge_attr=edge_attr)
 
-        edge_out = self.edge_updater(edge_index, out=out, msg=msg, edge_attr=edge_attr)
+        edge_out = self.edge_updater(edge_index, out=out, msg=msg)
 
         if self.has_bias:
             out = out + self.bias
@@ -272,12 +274,12 @@ class NodeEdgeAttnConv(MessagePassing):
     def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor) -> Tensor:
         return self.msg_mlp(torch.cat([x_i, edge_attr, x_j], dim=-1))
 
-    def update(self, aggr_out: Tensor, x: Tensor) -> Tensor:
-        return self.node_update_mlp(torch.cat([x, aggr_out], dim=-1))
+    def update(self, aggr_out: Tensor) -> Tensor:
+        return self.node_update_mlp(aggr_out)
 
-    def edge_update(self, edge_attr: Tensor, msg: Tensor, out_i: Tensor, out_j: Tensor, index: Tensor, ptr, dim_size: Optional[int]) -> Tensor:
+    def edge_update(self, msg: Tensor, out_i: Tensor, out_j: Tensor, index: Tensor, ptr, dim_size: Optional[int]) -> Tensor:
         beta = self.edge_attn(torch.cat([out_i, out_j], dim=-1))
         beta = F.leaky_relu(beta, self.negative_slope)
         beta = softmax(beta, index, ptr, dim_size)
         beta = F.dropout(beta, p=self.dropout, training=self.training)
-        return self.edge_update_mlp(torch.cat([edge_attr,  (beta * msg)], dim=-1))
+        return self.edge_update_mlp(beta * msg)

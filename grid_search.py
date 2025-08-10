@@ -54,7 +54,7 @@ def get_hyperparameters_for_search(hyperparam_comb: Tuple) -> Dict:
         index += 1
     return global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent
 
-def save_cross_val_results(trainer, validation_stats: ValidationStats, run_id: str, model_postfix: str):
+def save_cross_val_results(trainer, validation_stats: ValidationStats, group_id: str, model_postfix: str):
     curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     model_name = f'{args.model}_{curr_date_str}{model_postfix}'
     stats_dir = train_config['stats_dir']
@@ -71,7 +71,7 @@ def save_cross_val_results(trainer, validation_stats: ValidationStats, run_id: s
             os.makedirs(output_dir)
 
         # Get filename from model path
-        saved_metrics_path = os.path.join(output_dir, f'{model_name}_runid_{run_id}_test_metrics.npz')
+        saved_metrics_path = os.path.join(output_dir, f'{model_name}_runid_{group_id}_test_metrics.npz')
         validation_stats.save_stats(saved_metrics_path)
 
 def cross_validate(global_mass_loss_percent: Optional[float],
@@ -81,11 +81,11 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     val_rmses = []
     if use_edge_pred_loss:
         val_edge_rmses = []
-    for i, run_id in enumerate(hec_ras_run_ids):
-        logger.log(f'Cross-validating with Run ID {run_id} as the test set...\n')
+    for i, group_id in enumerate(cross_val_groups):
+        logger.log(f'Cross-validating with Group {group_id} as the test set...\n')
 
         storage_mode = config['dataset_parameters']['storage_mode']
-        train_dataset, test_dataset = load_datasets(run_id,
+        train_dataset, test_dataset = load_datasets(group_id,
                                                     base_dataset_config,
                                                     use_global_mass_loss,
                                                     use_local_mass_loss,
@@ -159,12 +159,12 @@ def cross_validate(global_mass_loss_percent: Optional[float],
 
         avg_rmse = validation_stats.get_avg_rmse()
         val_rmses.append(avg_rmse)
-        logger.log(f'Event {run_id} RMSE: {avg_rmse:.4e}')
+        logger.log(f'Group {group_id} RMSE: {avg_rmse:.4e}')
 
         if use_edge_pred_loss:
             avg_edge_rmse = validation_stats.get_avg_edge_rmse()
             val_edge_rmses.append(avg_edge_rmse)
-            logger.log(f'Event {run_id} Edge RMSE: {avg_edge_rmse:.4e}')
+            logger.log(f'Group {group_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
         # ============ Saving stats (optional) ============
         if save_stats_for_first and i == 0:
@@ -176,7 +176,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             if use_edge_pred_loss:
                 model_postfix += f'_e{edge_pred_loss_percent}'
 
-            save_cross_val_results(trainer, validation_stats, run_id, model_postfix)
+            save_cross_val_results(trainer, validation_stats, group_id, model_postfix)
 
     def get_avg_rmse(rmses: List[float]) -> float:
         np_rmses = np.array(rmses)
@@ -280,7 +280,7 @@ if __name__ == '__main__':
             LOCAL_LOSS_PERCENTS = [0.01, 0.005, 0.001, 0.0005, 0.0001, 0.00005, 0.00001, 0.000005, 0.000001]
             hyperparameters['local_mass_loss_percent'] = LOCAL_LOSS_PERCENTS
         if use_edge_pred_loss:
-            EDGE_LOSS_PERCENTS = [0.5, 0.6, 0.7, 0.8]
+            EDGE_LOSS_PERCENTS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9]
             hyperparameters['edge_pred_loss_percent'] = EDGE_LOSS_PERCENTS
 
         logger.log(f'Performing hyperparameter search for the following hyperparameters: {', '.join(list(hyperparameters.keys()))}')
@@ -291,7 +291,7 @@ if __name__ == '__main__':
         # Begin hyperparameter search
         root_dir = base_dataset_config['root_dir']
         raw_temp_dir_path, processed_temp_dir_path = create_temp_dirs(root_dir)
-        hec_ras_run_ids = create_cross_val_dataset_files(root_dir, args.summary_file)
+        cross_val_groups = create_cross_val_dataset_files(root_dir, args.summary_file)
 
         best_rmse_values, best_hyperparameters = search(hyperparameters)
 

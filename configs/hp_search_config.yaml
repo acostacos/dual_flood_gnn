@@ -7,7 +7,7 @@ dataset_parameters:
 
   previous_timesteps: 2
   normalize: True
-  timestep_interval: 30                                 # Interval between timesteps in seconds (must be a multiple of 30)
+  timestep_interval: 1800                                 # Interval between timesteps in seconds (must be a multiple of 30)
   # spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each); Can be defined per Run ID
   spin_up_timesteps:
     1: 4320
@@ -45,18 +45,18 @@ training_parameters:
   log_path             : null                                # Path to save training logs
   model_dir            : 'saved_models'                      # Directory to save trained models
   stats_dir            : 'hp_stats'                          # Directory to save training statistics
-  num_epochs           : 36                                  # Number of epochs
+  num_epochs           : 100                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
-  batch_size           : 128                                 # Batch size
+  batch_size           : 16                                  # Batch size
   learning_rate        : 0.0007                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   gradient_clip_value : null                                 # Gradient clipping value; If None, no gradient clipping is applied
   autoregressive       : True                                # Use autoregressive training
-  autoregressive_timesteps: 12                               # Number of timesteps for autoregressive training
-  curriculum_epochs    : 3                                   # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  autoregressive_timesteps: 4                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 25                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_scale: 4.1e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: True                                 # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling

@@ -73,24 +73,21 @@ def create_cross_val_dataset_files(root_dir: str, dataset_summary_file: str) -> 
     assert os.path.exists(dataset_summary_path), f'Dataset summary file does not exist: {dataset_summary_path}'
     summary_df = pd.read_csv(dataset_summary_path)
     assert len(summary_df) > 0, f'No data found in summary file: {dataset_summary_path}'
+    assert 'Group' in summary_df.columns, f'Missing Group column in summary file: {dataset_summary_path}'
+
+    groups = summary_df['Group'].unique()
 
     raw_temp_dir_path = os.path.join(root_dir, 'raw', TEMP_DIR_NAME)
-    hec_ras_run_ids = []
-    for _, row in summary_df.iterrows():
-        run_id = row['Run_ID']
-        assert run_id not in hec_ras_run_ids, f'Duplicate Run_ID found: {run_id}'
+    for group in groups:
+        other_rows = summary_df[summary_df['Group'] != group]
+        train_df_path = os.path.join(raw_temp_dir_path, f'train_{group}.csv')
+        other_rows.to_csv(train_df_path, index=False)
 
-        other_rows_df: pd.DataFrame = summary_df[summary_df['Run_ID'] != run_id]
-        train_df_path = os.path.join(raw_temp_dir_path, f'train_{run_id}.csv') 
-        other_rows_df.to_csv(train_df_path, index=False)
+        group_rows = summary_df[summary_df['Group'] == group]
+        test_df_path = os.path.join(raw_temp_dir_path, f'test_{group}.csv')
+        group_rows.to_csv(test_df_path, index=False)
 
-        event_df = pd.DataFrame([row])
-        test_df_path = os.path.join(raw_temp_dir_path, f'test_{run_id}.csv')
-        event_df.to_csv(test_df_path, index=False)
-
-        hec_ras_run_ids.append(run_id)
-
-    return hec_ras_run_ids
+    return groups
 
 def load_datasets(
         run_id: str,

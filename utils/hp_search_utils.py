@@ -90,17 +90,17 @@ def create_cross_val_dataset_files(root_dir: str, dataset_summary_file: str) -> 
     return groups
 
 def load_datasets(
-        run_id: str,
+        group_id: str,
         base_dataset_config: Dict,
         use_global_mass_loss: bool,
         use_local_mass_loss: bool,
         storage_mode: str) -> Tuple[FloodEventDataset, FloodEventDataset]:
-    if f'train_{run_id}' in dataset_cache and f'test_{run_id}' in dataset_cache:
-        return dataset_cache[f'train_{run_id}'], dataset_cache[f'test_{run_id}']
+    if f'train_{group_id}' in dataset_cache and f'test_{group_id}' in dataset_cache:
+        return dataset_cache[f'train_{group_id}'], dataset_cache[f'test_{group_id}']
 
-    features_stats_file = os.path.join(TEMP_DIR_NAME, f'features_stats_{run_id}.yaml')
-    train_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'train_{run_id}.csv')
-    train_event_stats_file = os.path.join(TEMP_DIR_NAME, f'train_event_stats_{run_id}.yaml')
+    features_stats_file = os.path.join(TEMP_DIR_NAME, f'features_stats_{group_id}.yaml')
+    train_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'train_{group_id}.csv')
+    train_event_stats_file = os.path.join(TEMP_DIR_NAME, f'train_event_stats_{group_id}.yaml')
     train_dataset_config = {
         **base_dataset_config,
         'mode': 'train',
@@ -111,8 +111,8 @@ def load_datasets(
         'with_local_mass_loss': use_local_mass_loss,
     }
 
-    test_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'test_{run_id}.csv')
-    test_event_stats_file = os.path.join(TEMP_DIR_NAME, f'test_event_stats_{run_id}.yaml')
+    test_dataset_summary_file = os.path.join(TEMP_DIR_NAME, f'test_{group_id}.csv')
+    test_event_stats_file = os.path.join(TEMP_DIR_NAME, f'test_event_stats_{group_id}.yaml')
     test_dataset_config = {
         **base_dataset_config,
         'mode': 'test',
@@ -127,10 +127,10 @@ def load_datasets(
     dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
 
     train_dataset = dataset_class(**train_dataset_config)
-    dataset_cache[f'train_{run_id}'] = train_dataset
+    dataset_cache[f'train_{group_id}'] = train_dataset
 
     test_dataset = dataset_class(**test_dataset_config)
-    dataset_cache[f'test_{run_id}'] = test_dataset
+    dataset_cache[f'test_{group_id}'] = test_dataset
 
     return train_dataset, test_dataset
 

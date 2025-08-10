@@ -71,7 +71,7 @@ def save_cross_val_results(trainer, validation_stats: ValidationStats, group_id:
             os.makedirs(output_dir)
 
         # Get filename from model path
-        saved_metrics_path = os.path.join(output_dir, f'{model_name}_runid_{group_id}_test_metrics.npz')
+        saved_metrics_path = os.path.join(output_dir, f'{model_name}_groupid_{group_id}_test_metrics.npz')
         validation_stats.save_stats(saved_metrics_path)
 
 def cross_validate(global_mass_loss_percent: Optional[float],

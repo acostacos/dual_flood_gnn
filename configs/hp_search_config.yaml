@@ -48,9 +48,9 @@ training_parameters:
   num_epochs           : 100                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 16                                  # Batch size
-  learning_rate        : 0.0007                              # Learning rate
+  learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  gradient_clip_value : null                                 # Gradient clipping value; If None, no gradient clipping is applied
+  gradient_clip_value  : 1.0                                 # Gradient clipping value; If None, no gradient clipping is applied
   autoregressive       : True                                # Use autoregressive training
   autoregressive_timesteps: 4                                # Number of timesteps for autoregressive training
   curriculum_epochs    : 25                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning

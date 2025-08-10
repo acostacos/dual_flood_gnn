@@ -7,7 +7,7 @@ dataset_parameters:
 
   previous_timesteps: 2
   normalize: True
-  timestep_interval: 30                                 # Interval between timesteps in seconds (must be a multiple of 30)
+  timestep_interval: 1800                                 # Interval between timesteps in seconds (must be a multiple of 30)
   # spin_up_timesteps: 2880                               # Number of timesteps to spin up the model (30 seconds each); Can be defined per Run ID
   spin_up_timesteps:
     1: 4320
@@ -42,32 +42,32 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : null                                # Path to save training logs
-  model_dir            : 'saved_models'                      # Directory to save trained models
-  stats_dir            : 'hp_stats/08-01_edge_pred'                          # Directory to save training statistics
-  num_epochs           : 36                                  # Number of epochs
+  log_path             : 'stc/logs/gcn_train.log'                                # Path to save training logs
+  model_dir            : 'stc/model'                      # Directory to save trained models
+  stats_dir            : 'stc/train'                    # Directory to save training statistics
+  num_epochs           : 100                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
-  batch_size           : 128                                 # Batch size
-  learning_rate        : 0.0007                              # Learning rate
+  batch_size           : 16                                  # Batch size
+  learning_rate        : 0.0001                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  gradient_clip_value : null                                 # Gradient clipping value; If None, no gradient clipping is applied
-  autoregressive       : True                                # Use autoregressive training
-  autoregressive_timesteps: 12                               # Number of timesteps for autoregressive training
-  curriculum_epochs    : 3                                   # Number of epochs before increasing the autoregressive timesteps in curriculum learning
+  gradient_clip_value  : 1.0                                 # Gradient clipping value; If None, no gradient clipping is applied
+  autoregressive       : False                               # Use autoregressive training
+  autoregressive_timesteps: 4                                # Number of timesteps for autoregressive training
+  curriculum_epochs    : 25                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 7.0e-2                               # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
-  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
-  use_global_mass_loss: True                                 # Use global mass conservation in loss function
+  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
+  use_global_mass_loss: False                                # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  global_mass_loss_percent: 0.001                            # Percentage of global mass conservation loss in total loss
-  use_local_mass_loss: True                                  # Use local mass conservation in loss function
+  global_mass_loss_percent: 0.001                           # Percentage of global mass conservation loss in total loss
+  use_local_mass_loss: False                                 # Use local mass conservation in loss function
   local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  local_mass_loss_percent: 0.001                             # Percentage of local mass conservation loss in total loss
+  local_mass_loss_percent: 0.001                            # Percentage of local mass conservation loss in total loss
 
 testing_parameters:
-  log_path: null                                        # Path to save testing logs
-  output_dir: 'hp_stats/08-01_edge_pred'                                # Directory to save testing results
+  log_path: 'stc/logs/gcn_test.log'                                        # Path to save testing logs
+  output_dir: 'stc/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

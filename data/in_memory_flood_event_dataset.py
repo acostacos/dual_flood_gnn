@@ -42,9 +42,10 @@ class InMemoryFloodEventDataset(FloodEventDataset):
             if event_idx != curr_event_idx:
                 # Load dynamic data
                 dynamic_values_path = self.processed_paths[event_idx + 4]
-                dynamic_values = np.load(dynamic_values_path)
-                dynamic_nodes = dynamic_values['dynamic_nodes']
-                dynamic_edges = dynamic_values['dynamic_edges']
+                dynamic_values = np.load(dynamic_values_path, allow_pickle=True)
+                event_timesteps: ndarray = dynamic_values['event_timesteps']
+                dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
+                dynamic_edges: ndarray = dynamic_values['dynamic_edges']
 
                 # Load physics-informed loss information
                 if self.with_global_mass_loss:
@@ -59,6 +60,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
 
             # Create Data object for timestep
             within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
+            timestep = event_timesteps[within_event_idx]
             node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
             edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
             label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
@@ -80,6 +82,7 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
+                    timestep=timestep,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)
 

@@ -116,7 +116,7 @@ class FloodEventDataset(Dataset):
     def process(self):
         self.log_func('Processing Flood Event Dataset...')
 
-        self._set_event_properties()
+        all_event_timesteps = self._set_event_properties()
         edge_index = self._get_edge_index()
 
         static_nodes = self._get_static_node_features()
@@ -157,6 +157,7 @@ class FloodEventDataset(Dataset):
         for i, run_id in enumerate(self.hec_ras_run_ids):
             end_idx = start_idx + self._event_num_timesteps[i]
 
+            event_timesteps = all_event_timesteps[start_idx:end_idx].copy()
             event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
 
@@ -170,6 +171,7 @@ class FloodEventDataset(Dataset):
 
             save_path = self.processed_paths[i + 4]
             np.savez(save_path,
+                     event_timesteps=event_timesteps,
                      dynamic_nodes=event_dynamic_nodes,
                      dynamic_edges=event_dynamic_edges,
                      total_rainfall_per_ts=event_total_rainfall_per_ts,
@@ -210,11 +212,13 @@ class FloodEventDataset(Dataset):
         # Load dynamic data
         dynamic_values_path = self.processed_paths[event_idx + 4]
         dynamic_values = np.load(dynamic_values_path)
+        event_timesteps: ndarray = dynamic_values['event_timesteps']
         dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
         dynamic_edges: ndarray = dynamic_values['dynamic_edges']
 
         # Create Data object for timestep
         within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
+        timestep = event_timesteps[within_event_idx]
         node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
         edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
@@ -242,6 +246,7 @@ class FloodEventDataset(Dataset):
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
+                    timestep=timestep,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)
 
@@ -287,11 +292,13 @@ class FloodEventDataset(Dataset):
 
     # =========== process() methods ===========
 
-    def _set_event_properties(self) -> None:
+    def _set_event_properties(self) -> ndarray:
         self._event_peak_idx = []
         self._event_num_timesteps = []
         self.event_start_idx = []
+
         current_total_ts = 0
+        all_event_timesteps = []
         for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
             water_volume = get_water_volume(hec_ras_path)
             total_water_volume = water_volume.sum(axis=1)
@@ -300,6 +307,8 @@ class FloodEventDataset(Dataset):
 
             timesteps = get_event_timesteps(hec_ras_path)
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
+            all_event_timesteps.append(timesteps)
+
             num_timesteps = len(timesteps)
             self._event_num_timesteps.append(num_timesteps)
 
@@ -315,6 +324,9 @@ class FloodEventDataset(Dataset):
         assert len(self.event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
         assert np.all((np.array(self._event_peak_idx) - (self.timesteps_from_peak if self.timesteps_from_peak is not None else 0)) >= 0),\
             'Timesteps from peak exceed available timesteps.'
+
+        all_event_timesteps = np.concatenate(all_event_timesteps, axis=0)
+        return all_event_timesteps
 
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])

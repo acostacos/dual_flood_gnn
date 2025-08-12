@@ -7,10 +7,9 @@ import random
 from argparse import ArgumentParser, Namespace
 from data import FloodEventDataset, InMemoryFloodEventDataset
 from models import model_factory
-from torch_geometric.loader import DataLoader
+from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Optional
 from utils import Logger, file_utils
-from utils.validation_stats import ValidationStats
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -35,189 +34,6 @@ def get_test_dataset_config(base_datset_params: Dict, config: Dict) -> Dict:
     }
     return test_dataset_config
 
-def test_autoregressive_node_only(model: torch.nn.Module,
-                        dataset: FloodEventDataset,
-                        event_idx: int,
-                        validation_stats: ValidationStats,
-                        rollout_start: int = 0,
-                        rollout_timesteps: Optional[int] = None,
-                        device: str = 'cpu',
-                        include_physics_loss: bool = True):
-    previous_timesteps = dataset.previous_timesteps
-
-    # Get boundary condition masks
-    boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
-    non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
-
-    # Assume using the same area for all events in the dataset
-    area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
-    area = dataset[0].x.clone()[:, area_nodes_idx]
-    if dataset.is_normalized:
-        area = dataset.normalizer.denormalize('area', area)
-    area = area[non_boundary_nodes_mask, None]
-    threshold_per_cell = area * 0.05 # 5% of cell area
-
-    # Get sliding window indices
-    target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
-    sliding_window_length = previous_timesteps + 1
-    start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
-    end_target_idx = start_target_idx + sliding_window_length
-
-    validation_stats.start_validate()
-
-    model.eval()
-    with torch.no_grad():
-        event_start_idx = dataset.event_start_idx[event_idx] + rollout_start
-        event_end_idx = dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps
-        if rollout_timesteps is not None:
-            event_end_idx = event_start_idx + rollout_timesteps
-            assert event_end_idx <= (dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps), \
-                f'Event end index {event_end_idx} exceeds dataset length {dataset.total_rollout_timesteps} for event_idx {event_idx}.'
-        event_dataset = dataset[event_start_idx:event_end_idx]
-        dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
-
-        sliding_window = dataset[event_start_idx].x.clone()[:, start_target_idx:end_target_idx]
-        sliding_window = sliding_window.to(device)
-        for graph in dataloader:
-            graph = graph.to(device)
-
-            # Override graph data with sliding window
-            # Only override non-boundary nodes to keep boundary conditions intact
-            graph.x[non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[non_boundary_nodes_mask]
-
-            pred = model(graph)
-
-            # Override boundary conditions in predictions
-            pred[boundary_nodes_mask] = graph.y[boundary_nodes_mask]
-
-            sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
-
-            # Requires normalized physics-informed loss
-            if include_physics_loss:
-                # Requires normalized prediction for physics-informed loss
-                prev_edge_pred = graph.global_mass_info['face_flow']
-                validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
-
-            label = graph.y
-            if dataset.is_normalized:
-                pred = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, pred)
-                label = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, label)
-
-            # Ensure water volume is non-negative
-            pred = torch.clip(pred, min=0)
-            label = torch.clip(label, min=0)
-
-            # Filter boundary conditions for metric computation
-            pred = pred[non_boundary_nodes_mask]
-            label = label[non_boundary_nodes_mask]
-
-            validation_stats.update_stats_for_timestep(pred.cpu(),
-                                                       label.cpu(),
-                                                       water_threshold=threshold_per_cell)
-
-    validation_stats.end_validate()
-
-def test_autoregressive(model: torch.nn.Module,
-                        dataset: FloodEventDataset,
-                        event_idx: int,
-                        validation_stats: ValidationStats,
-                        rollout_start: int = 0,
-                        rollout_timesteps: Optional[int] = None,
-                        device: str = 'cpu',
-                        include_physics_loss: bool = True):
-    previous_timesteps = dataset.previous_timesteps
-
-    # Get non-boundary nodes/edges and threshold for metric computation
-    boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
-    non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
-    non_boundary_edges_mask = ~dataset.boundary_condition.boundary_edges_mask
-    inflow_edges_mask = dataset.boundary_condition.inflow_edges_mask
-
-    # Assume using the same area for all events in the dataset
-    area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
-    area = dataset[0].x.clone()[:, area_nodes_idx]
-    if dataset.is_normalized:
-        area = dataset.normalizer.denormalize('area', area)
-    area = area[non_boundary_nodes_mask, None]
-    threshold_per_cell = area * 0.05 # 5% of cell area
-
-    # Get sliding window indices
-    sliding_window_length = previous_timesteps + 1
-    target_nodes_idx = dataset.DYNAMIC_NODE_FEATURES.index(dataset.NODE_TARGET_FEATURE)
-    start_target_idx = dataset.num_static_node_features + (target_nodes_idx * sliding_window_length)
-    end_target_idx = start_target_idx + sliding_window_length
-
-    target_edges_idx = dataset.DYNAMIC_EDGE_FEATURES.index(dataset.EDGE_TARGET_FEATURE)
-    start_target_edges_idx = dataset.num_static_edge_features + (target_edges_idx * sliding_window_length)
-    end_target_edges_idx = start_target_edges_idx + sliding_window_length
-
-    validation_stats.start_validate()
-
-    model.eval()
-    with torch.no_grad():
-        event_start_idx = dataset.event_start_idx[event_idx] + rollout_start
-        event_end_idx = dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps
-        if rollout_timesteps is not None:
-            event_end_idx = event_start_idx + rollout_timesteps
-            dataset_event_length = dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(dataset.event_start_idx) else dataset.total_rollout_timesteps
-            assert event_end_idx <= dataset_event_length, \
-                f'Rollout length {event_end_idx} exceeds event length {dataset_event_length} for event {dataset.hec_ras_run_ids[event_idx]}.'
-        event_dataset = dataset[event_start_idx:event_end_idx]
-        dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
-
-        sliding_window = dataset[event_start_idx].x.clone()[:, start_target_idx:end_target_idx]
-        edge_sliding_window = dataset[event_start_idx].edge_attr.clone()[:, start_target_edges_idx:end_target_edges_idx]
-        sliding_window, edge_sliding_window = sliding_window.to(device), edge_sliding_window.to(device)
-        for i, graph in enumerate(dataloader):
-            graph = graph.to(device)
-
-            # Override graph data with sliding window
-            # Only override non-boundary nodes to keep boundary conditions intact
-            graph.x[non_boundary_nodes_mask, start_target_idx:end_target_idx] = sliding_window[non_boundary_nodes_mask]
-            # Only override non-boundary edges to keep boundary conditions intact
-            graph.edge_attr[non_boundary_edges_mask, start_target_edges_idx:end_target_edges_idx] = edge_sliding_window[non_boundary_edges_mask]
-
-            pred, edge_pred = model(graph)
-
-            # Override boundary conditions in predictions
-            pred[boundary_nodes_mask] = graph.y[boundary_nodes_mask]
-            # Only override inflow edges as outflow edges are predicted by the model
-            edge_pred[inflow_edges_mask] = graph.y_edge[inflow_edges_mask]
-
-            sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
-            edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
-
-            if include_physics_loss:
-                # Requires normalized prediction for physics-informed loss
-                prev_edge_pred = graph.global_mass_info['face_flow'] if i == 0 else edge_sliding_window[:, [-2]]
-                validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
-
-            label = graph.y
-            if dataset.is_normalized:
-                pred = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, pred)
-                label = dataset.normalizer.denormalize(dataset.NODE_TARGET_FEATURE, label)
-
-            # Ensure water volume is non-negative
-            pred = torch.clip(pred, min=0)
-            label = torch.clip(label, min=0)
-
-            # Filter boundary conditions for metric computation
-            pred = pred[non_boundary_nodes_mask]
-            label = label[non_boundary_nodes_mask]
-
-            validation_stats.update_stats_for_timestep(pred.cpu(),
-                                                       label.cpu(),
-                                                       water_threshold=threshold_per_cell)
-
-            label_edge = graph.y_edge
-            if dataset.is_normalized:
-                edge_pred = dataset.normalizer.denormalize(dataset.EDGE_TARGET_FEATURE, edge_pred)
-                label_edge = dataset.normalizer.denormalize(dataset.EDGE_TARGET_FEATURE, label_edge)
-
-            validation_stats.update_edge_stats_for_timestep(edge_pred.cpu(), label_edge.cpu())
-
-    validation_stats.end_validate()
-
 def run_test(model: torch.nn.Module,
              model_path: str,
              dataset: FloodEventDataset,
@@ -229,49 +45,27 @@ def run_test(model: torch.nn.Module,
     log_test_config = {'rollout_start': rollout_start, 'rollout_timesteps': rollout_timesteps}
     logger.log(f'Using testing configuration: {log_test_config}')
 
+    tester_params = {
+        'model': model,
+        'dataset': dataset,
+        'rollout_start': rollout_start,
+        'rollout_timesteps': rollout_timesteps,
+        'include_physics_loss': True,
+        'logger': logger,
+        'device': device,
+    }
+
     is_dual_model = 'NodeEdgeGNN' in model.__class__.__name__
-
-    avg_rmses = []
-    avg_global_mass_losses = []
-    avg_local_mass_losses = []
     if is_dual_model:
-        avg_edge_rmses = []
-    for event_idx, run_id in enumerate(dataset.hec_ras_run_ids):
-        logger.log(f'Validating on run {event_idx + 1}/{len(dataset.hec_ras_run_ids)} with Run ID {run_id}')
+        tester = DualAutoregressiveTester(**tester_params)
+    else:
+        tester = NodeAutoregressiveTester(**tester_params)
+    tester.test()
 
-        validation_stats = ValidationStats(logger=logger,
-                                            previous_timesteps=dataset.previous_timesteps,
-                                            normalizer=dataset.normalizer,
-                                            is_normalized=dataset.is_normalized,
-                                            delta_t=dataset.timestep_interval)
-
-        if is_dual_model:
-            test_autoregressive(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)
-        else:
-            test_autoregressive_node_only(model, dataset, event_idx, validation_stats, rollout_start, rollout_timesteps, device)
-        validation_stats.print_stats_summary()
-
-        avg_rmses.append(validation_stats.get_avg_rmse())
-        avg_global_mass_losses.append(validation_stats.get_avg_global_mass_loss())
-        avg_local_mass_losses.append(validation_stats.get_avg_local_mass_loss())
-        if is_dual_model:
-            avg_edge_rmses.append(validation_stats.get_avg_edge_rmse())
-
-        # Save validation stats
-        if output_dir is not None:
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-
-            # Get filename from model path
-            model_filename = os.path.splitext(os.path.basename(model_path))[0]  # Remove file extension
-            saved_metrics_path = os.path.join(output_dir, f'{model_filename}_runid_{run_id}_test_metrics.npz') if output_dir is not None else None
-            validation_stats.save_stats(saved_metrics_path)
-
-    logger.log(f'Average RMSE across events: {np.mean(avg_rmses):.4e}')
-    if is_dual_model:
-        logger.log(f'Average Edge RMSE across events: {np.mean(avg_edge_rmses):.4e}')
-    logger.log(f'Average Global Mass Conservation Loss across events: {np.mean(avg_global_mass_losses):.4e}')
-    logger.log(f'Average Local Mass Conservation Loss across events: {np.mean(avg_local_mass_losses):.4e}')
+    if output_dir is not None:
+        # Save model filename without extension
+        model_filename = os.path.splitext(os.path.basename(model_path))[0] # Remove file extension
+        tester.save_stats(output_dir, stats_filename_prefix=model_filename)
 
 def main():
     args = parse_args()

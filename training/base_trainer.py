@@ -178,7 +178,7 @@ class BaseTrainer:
             self.training_stats.add_additional_info('local_scaled_loss_ratios', self.local_loss_scaler.scaled_loss_ratio_history)
 
     def train(self):
-        raise NotImplementedError("Train method not implemented.")
+        raise NotImplementedError("Subclasses should implement this method.")
 
     def print_stats_summary(self):
         self.training_stats.print_stats_summary()

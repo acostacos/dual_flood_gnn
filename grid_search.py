@@ -5,11 +5,12 @@ import torch
 import random
 
 from argparse import ArgumentParser, Namespace
+from contextlib import redirect_stdout
 from datetime import datetime
 from itertools import product
-from test import test_autoregressive, test_autoregressive_node_only
 from torch.nn import MSELoss
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
+from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Tuple, Optional, List
 from utils import Logger, file_utils
 from utils.validation_stats import ValidationStats
@@ -54,7 +55,9 @@ def get_hyperparameters_for_search(hyperparam_comb: Tuple) -> Dict:
         index += 1
     return global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent
 
-def save_cross_val_results(trainer, validation_stats: ValidationStats, group_id: str, model_postfix: str):
+def save_cross_val_results(trainer: DualAutoRegressiveTrainer,
+                           tester: DualAutoregressiveTester,
+                           model_postfix: str):
     curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     model_name = f'{args.model}_{curr_date_str}{model_postfix}'
     stats_dir = train_config['stats_dir']
@@ -70,9 +73,7 @@ def save_cross_val_results(trainer, validation_stats: ValidationStats, group_id:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        # Get filename from model path
-        saved_metrics_path = os.path.join(output_dir, f'{model_name}_groupid_{group_id}_test_metrics.npz')
-        validation_stats.save_stats(saved_metrics_path)
+        tester.save_stats(output_dir, stats_filename_prefix=model_name)
 
 def cross_validate(global_mass_loss_percent: Optional[float],
                    local_mass_loss_percent: Optional[float],
@@ -120,7 +121,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             'num_epochs': train_config['num_epochs'],
             'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
             'gradient_clip_value': train_config['gradient_clip_value'],
-            'logger': logger,
+            'logger': None,
             'device': args.device,
         }
         if use_edge_pred_loss:
@@ -140,29 +141,37 @@ def cross_validate(global_mass_loss_percent: Optional[float],
         else:
             trainer = NodeRegressionTrainer(**trainer_params)
 
-        trainer.training_stats.log = lambda x : None  # Suppress training stats logging to console
-        trainer.train()
+        with open(os.devnull, "w") as f, redirect_stdout(f):
+            trainer.train()
         trainer.training_stats.log = logger.log  # Restore logging to console
-
         trainer.print_stats_summary()
 
         # ============ Testing Phase ============
         logger.log('\nValidating model...')
 
-        rollout_start = test_config['rollout_start']
-        rollout_timesteps = test_config['rollout_timesteps']
-        validation_stats = ValidationStats(logger=logger)
+        tester_params = {
+            'model': model,
+            'dataset': test_dataset,
+            'rollout_start': test_config['rollout_start'],
+            'rollout_timesteps': test_config['rollout_timesteps'],
+            'include_physics_loss': False,
+            'logger': None,
+            'device': args.device,
+        }
         if use_edge_pred_loss:
-            test_autoregressive(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
+            tester = DualAutoregressiveTester(**tester_params)
         else:
-            test_autoregressive_node_only(model, test_dataset, 0, validation_stats, rollout_start, rollout_timesteps, args.device, include_physics_loss=False)
+            tester = NodeAutoregressiveTester(**tester_params)
 
-        avg_rmse = validation_stats.get_avg_rmse()
+        with open(os.devnull, "w") as f, redirect_stdout(f):
+            tester.test()
+
+        avg_rmse = tester.get_avg_rmse()
         val_rmses.append(avg_rmse)
         logger.log(f'Group {group_id} RMSE: {avg_rmse:.4e}')
 
         if use_edge_pred_loss:
-            avg_edge_rmse = validation_stats.get_avg_edge_rmse()
+            avg_edge_rmse = tester.get_avg_edge_rmse()
             val_edge_rmses.append(avg_edge_rmse)
             logger.log(f'Group {group_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
@@ -176,7 +185,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
             if use_edge_pred_loss:
                 model_postfix += f'_e{edge_pred_loss_percent}'
 
-            save_cross_val_results(trainer, validation_stats, group_id, model_postfix)
+            save_cross_val_results(trainer, tester, model_postfix)
 
     def get_avg_rmse(rmses: List[float]) -> float:
         np_rmses = np.array(rmses)
@@ -210,10 +219,7 @@ def search(hyperparameters: Dict[str, List[float]]):
         search_hyperparams = get_hyperparameters_for_search(comb)
         global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent = search_hyperparams
 
-        results = cross_validate(global_mass_loss_percent,
-                                 local_mass_loss_percent,
-                                 edge_pred_loss_percent,
-                                 save_stats_for_first=True)
+        results = cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
         if use_edge_pred_loss:
             avg_val_rmse, avg_val_edge_rmse = results
             is_best = avg_val_rmse < best_rmses.max() and avg_val_edge_rmse < best_edge_rmses.max()

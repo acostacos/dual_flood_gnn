@@ -7,12 +7,13 @@ import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import FloodEventDataset, InMemoryFloodEventDataset
+from data import FloodEventDataset, InMemoryFloodEventDataset, \
+    AutoregressiveFloodEventDataset, InMemoryAutoregressiveFloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from torch.nn import MSELoss
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
-from typing import Dict, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 from utils import Logger, file_utils, train_utils
 
 def parse_args() -> Namespace:
@@ -24,6 +25,20 @@ def parse_args() -> Namespace:
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
+
+def get_dataset_class(storage_mode: Literal['memory', 'disk'], autoregressive: bool = False) -> type:
+    if autoregressive:
+        if storage_mode == 'memory':
+            return InMemoryAutoregressiveFloodEventDataset
+        elif storage_mode == 'disk':
+            return AutoregressiveFloodEventDataset
+
+    if storage_mode == 'memory':
+        return InMemoryFloodEventDataset
+    elif storage_mode == 'disk':
+        return FloodEventDataset
+
+    raise ValueError(f'Dataset class is not defined.')
 
 def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEventDataset, Optional[FloodEventDataset]]:
     dataset_parameters = config['dataset_parameters']
@@ -52,9 +67,9 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     dataset_summary_file = train_dataset_parameters['dataset_summary_file']
     event_stats_file = train_dataset_parameters['event_stats_file']
     storage_mode = dataset_parameters['storage_mode']
-    dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
 
-    if 'NodeEdgeGNN' in args.model and config['training_parameters'].get('autoregressive', False):
+    training_parameters = config['training_parameters']
+    if 'NodeEdgeGNN' in args.model and training_parameters.get('autoregressive', False):
         # Split dataset into training and validation sets for autoregressive training
         percent_validation = config['training_parameters'].get('percent_validation', 0.1)
         logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
@@ -64,10 +79,12 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
             'mode': 'train',
             'dataset_summary_file': train_summary_file,
             'event_stats_file': f'train_split_{event_stats_file}',
+            'num_label_timesteps': training_parameters['autoregressive_timesteps'],
             **base_datset_config,
         }
         logger.log(f'Using training dataset configuration: {train_dataset_config}')
-        train_dataset = dataset_class(**train_dataset_config)
+        train_dataset_class = get_dataset_class(storage_mode, autoregressive=True)
+        train_dataset = train_dataset_class(**train_dataset_config)
 
         val_dataset_config = {
             'mode': 'test',
@@ -76,7 +93,8 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
             **base_datset_config,
         }
         logger.log(f'Using validation dataset configuration: {val_dataset_config}')
-        val_dataset = dataset_class(**val_dataset_config)
+        test_dataset_class = get_dataset_class(storage_mode, autoregressive=False)
+        val_dataset = test_dataset_class(**val_dataset_config)
 
         logger.log(f'Split dataset into {len(train_dataset)} training samples and {len(val_dataset)} validation samples')
         return train_dataset, val_dataset
@@ -89,6 +107,7 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     }
     logger.log(f'Using dataset configuration: {dataset_config}')
 
+    dataset_class = get_dataset_class(storage_mode)
     dataset = dataset_class(**dataset_config)
     logger.log(f'Loaded dataset with {len(dataset)} samples')
     return dataset, None

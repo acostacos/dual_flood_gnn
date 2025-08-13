@@ -4,8 +4,8 @@ import numpy as np
 import torch
 
 from contextlib import redirect_stdout
-from torch_geometric.loader import DataLoader
-from data import AutoRegressiveDataLoader, FloodEventDataset
+from torch import Tensor
+from data import AutoregressiveFloodEventDataset, FloodEventDataset
 from testing import DualAutoregressiveTester
 from typing import Tuple
 from utils import EarlyStopping
@@ -14,15 +14,17 @@ from .dual_regression_trainer import DualRegressionTrainer
 
 class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def __init__(self,
-                 train_dataset: FloodEventDataset,
+                 train_dataset: AutoregressiveFloodEventDataset,
                  val_dataset: FloodEventDataset,
                  num_timesteps: int = 1,
                  curriculum_epochs: int = 10,
-                 early_stopping_patience: int = 10,
+                 early_stopping_patience: int = 15,
                  *args, **kwargs):
+        assert isinstance(train_dataset, AutoregressiveFloodEventDataset), 'train_dataset must be an instance of AutoregressiveFloodEventDataset.'
+        assert val_dataset is not None, 'val_dataset is required for autoregressive training.'
+
         super().__init__(dataset=train_dataset, *args, **kwargs)
-        self.dataloader = None # Will not be used as we use AutoRegressiveDataLoader
-        self.train_dataset = train_dataset
+
         self.val_dataset = val_dataset
         self.num_timesteps = num_timesteps
         self.curriculum_epochs = curriculum_epochs
@@ -42,26 +44,16 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         self.start_edge_target_idx = train_dataset.num_static_edge_features + (target_edges_idx * sliding_window_length)
         self.end_edge_target_idx = self.start_edge_target_idx + sliding_window_length
 
-        # To check if batch size is valid
-        event_end_idx = [*train_dataset.event_start_idx, train_dataset.total_rollout_timesteps]
-        self.min_event_size = np.diff(event_end_idx).min()
-        AutoRegressiveDataLoader(dataset=train_dataset,
-                                 batch_size=int(self.min_event_size // num_timesteps),
-                                 num_timesteps=num_timesteps)
-
     def train(self):
         '''Multi-step-ahead loss with curriculum learning.'''
         self.training_stats.start_train()
         current_num_timesteps = 1
-        dataloader = AutoRegressiveDataLoader(dataset=self.train_dataset,
-                                              batch_size=self.batch_size,
-                                              num_timesteps=current_num_timesteps)
 
         early_stopping = EarlyStopping(patience=self.patience)
         for epoch in range(self.total_num_epochs):
             train_start_time = time.time()
 
-            epoch_loss, pred_epoch_loss, edge_pred_epoch_loss = self._train_model(epoch, dataloader, current_num_timesteps)
+            epoch_loss, pred_epoch_loss, edge_pred_epoch_loss = self._train_model(epoch, current_num_timesteps)
 
             logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
@@ -99,89 +91,81 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
                 if current_num_timesteps < self.num_timesteps:
                     current_num_timesteps += 1
-                    batch_size = int(self.min_event_size // current_num_timesteps)
-                    dataloader = AutoRegressiveDataLoader(dataset=self.train_dataset,
-                                                          batch_size=batch_size,
-                                                          num_timesteps=current_num_timesteps)
                     early_stopping = EarlyStopping(patience=self.patience)
-                    self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps with batch size {batch_size}.')
+                    self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps.')
                     continue
 
-                self.training_stats.log('\tTraining completed due to early stopping.')
+                self.training_stats.log('Training completed due to early stopping.')
                 break
 
         self.training_stats.end_train()
         self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)
         self._add_scaled_physics_loss_history()
 
-    def _train_model(self, epoch: int, dataloader: DataLoader, current_num_timesteps: int) -> Tuple[float, float, float]:
+    def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float, float]:
         self.model.train()
         running_pred_loss = 0.0
         running_edge_pred_loss = 0.0
         if self.use_physics_loss:
             self._reset_epoch_physics_running_loss()
 
-        group_losses = None
-        sliding_window = None
-        edge_sliding_window = None
-        for i, batch in enumerate(dataloader):
+        for batch in self.dataloader:
+            self.optimizer.zero_grad()
+
             batch = batch.to(self.device)
 
-            reset_autoregressive = i % current_num_timesteps == 0
-            if reset_autoregressive:
-                self.optimizer.zero_grad()
-                group_losses = []
-                sliding_window = batch.x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
-                edge_sliding_window = batch.edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]
+            batch_losses = []
+            sliding_window = batch.x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
+            edge_sliding_window = batch.edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]
+            for i in range(current_num_timesteps):
+                # Override graph data with sliding window
+                # Only override non-boundary nodes to keep boundary conditions intact
+                batch_non_boundary_nodes_mask = np.tile(self.non_boundary_nodes_mask, batch.num_graphs)
+                batch.x[batch_non_boundary_nodes_mask, self.start_node_target_idx:self.end_node_target_idx] \
+                    = sliding_window[batch_non_boundary_nodes_mask]
 
-            # Override graph data with sliding window
-            # Only override non-boundary nodes to keep boundary conditions intact
-            batch_non_boundary_nodes_mask = np.tile(self.non_boundary_nodes_mask, batch.num_graphs)
-            batch.x[batch_non_boundary_nodes_mask, self.start_node_target_idx:self.end_node_target_idx] \
-                = sliding_window[batch_non_boundary_nodes_mask]
+                # Only override non-boundary edges to keep boundary conditions intact
+                batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
+                batch.edge_attr[batch_non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] \
+                    = edge_sliding_window[batch_non_boundary_edges_mask]
 
-            # Only override non-boundary edges to keep boundary conditions intact
-            batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
-            batch.edge_attr[batch_non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] \
-                = edge_sliding_window[batch_non_boundary_edges_mask]
+                pred, edge_pred = self.model(batch)
+                pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch, i)
 
-            pred, edge_pred = self.model(batch)
-            pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
+                sliding_window = torch.concat((sliding_window[:, 1:], pred.detach()), dim=1)
+                edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred.detach()), dim=1)
 
-            sliding_window = torch.concat((sliding_window[:, 1:], pred.detach()), dim=1)
-            edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred.detach()), dim=1)
+                label = batch.y[:, :, i]
+                pred_loss = self.loss_func(pred, label)
+                pred_loss =  pred_loss * self.pred_loss_percent
+                running_pred_loss += pred_loss.item()
 
-            label = batch.y
-            pred_loss = self.loss_func(pred, label)
-            pred_loss =  pred_loss * self.pred_loss_percent
-            running_pred_loss += pred_loss.item()
+                edge_label = batch.y_edge[:, :, i]
+                edge_pred_loss = self.loss_func(edge_pred, edge_label)
+                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
+                running_edge_pred_loss += edge_pred_loss.item()
 
-            edge_label = batch.y_edge
-            edge_pred_loss = self.loss_func(edge_pred, edge_label)
-            edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
-            running_edge_pred_loss += edge_pred_loss.item()
+                loss = pred_loss + edge_pred_loss
 
-            loss = pred_loss + edge_pred_loss
+                if self.use_physics_loss:
+                    prev_edge_pred = None if i == 0 else edge_sliding_window[:, [-2]]
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch, prev_edge_pred)
+                    loss += physics_loss
 
-            if self.use_physics_loss:
-                prev_edge_pred = None if reset_autoregressive else edge_sliding_window[:, [-2]]
-                physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch, prev_edge_pred)
-                loss += physics_loss
+                batch_losses.append(loss)
 
-            group_losses.append(loss)
+            avg_batch_loss = torch.stack(batch_losses).mean()
+            avg_batch_loss.backward()
 
-            if ((i + 1) % current_num_timesteps == 0) or (i + 1 == len(dataloader)):
-                torch.stack(group_losses).mean().backward()
+            if self.gradient_clip_value is not None:
+                torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=self.gradient_clip_value)
 
-                if self.gradient_clip_value is not None:
-                    torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=self.gradient_clip_value)
-
-                self.optimizer.step()
+            self.optimizer.step()
 
         running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))
-        epoch_loss = running_loss / len(dataloader)
-        pred_epoch_loss = running_pred_loss / len(dataloader)
-        edge_pred_epoch_loss = running_edge_pred_loss / len(dataloader)
+        epoch_loss = running_loss / len(self.dataloader)
+        pred_epoch_loss = running_pred_loss / len(self.dataloader)
+        edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
 
         return epoch_loss, pred_epoch_loss, edge_pred_epoch_loss
 
@@ -198,3 +182,12 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         node_rmse = val_tester.get_avg_node_rmse()
         edge_rmse = val_tester.get_avg_edge_rmse()
         return node_rmse, edge_rmse
+
+    def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch, timestep: int) -> Tensor:
+        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
+        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask, :, timestep]
+
+        # Only override inflow edges as outflow edges are predicted by the model
+        batch_inflow_edges_mask = np.tile(self.inflow_edges_mask, batch.num_graphs)
+        edge_pred[batch_inflow_edges_mask] = batch.y_edge[batch_inflow_edges_mask, :, timestep]
+        return pred, edge_pred

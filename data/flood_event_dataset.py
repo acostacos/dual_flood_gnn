@@ -313,6 +313,7 @@ class FloodEventDataset(Dataset):
             self._event_num_timesteps.append(num_timesteps)
 
             event_total_rollout_ts = num_timesteps - self.previous_timesteps - 1  # First timestep starts at self.previous_timesteps; Last timestep is used for labels
+            assert event_total_rollout_ts > 0, f'Event {event_idx} has too few timesteps.'
             self.event_start_idx.append(current_total_ts)
 
             current_total_ts += event_total_rollout_ts
@@ -418,7 +419,10 @@ class FloodEventDataset(Dataset):
             if isinstance(self.spin_up_timesteps, int):
                 start = self.spin_up_timesteps
             elif isinstance(self.spin_up_timesteps, dict):
-                start = self.spin_up_timesteps.get(self.hec_ras_run_ids[event_idx], 0)
+                run_id = self.hec_ras_run_ids[event_idx]
+                if run_id not in self.spin_up_timesteps:
+                    self.log_func(f'No spin-up timesteps defined for Run ID {run_id}. Using default value of 0.')
+                start = self.spin_up_timesteps.get(run_id, 0)
             else:
                 raise ValueError(f'Invalid type for spin_up_timesteps: {type(self.spin_up_timesteps)}')
 
@@ -552,7 +556,6 @@ class FloodEventDataset(Dataset):
         return self.normalizer.get_normalized_zero_tensor(features, other_dims, dtype)
 
     def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
-        # Target feature must be the last feature in the dynamic features
         label_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
         # (num_nodes, 1)
         label_nodes = node_dynamic_features[timestep_idx+1, :, label_nodes_idx][:, None]

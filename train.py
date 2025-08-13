@@ -12,8 +12,8 @@ from models import model_factory
 from test import get_test_dataset_config, run_test
 from torch.nn import MSELoss
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
-from typing import Dict, Optional
-from utils import Logger, file_utils
+from typing import Dict, Optional, Tuple
+from utils import Logger, file_utils, train_utils
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -25,11 +25,80 @@ def parse_args() -> Namespace:
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
 
+def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEventDataset, Optional[FloodEventDataset]]:
+    dataset_parameters = config['dataset_parameters']
+    root_dir = dataset_parameters['root_dir']
+    train_dataset_parameters = dataset_parameters['training']
+    loss_func_parameters = config['loss_func_parameters']
+    base_datset_config = {
+        'root_dir': root_dir,
+        'nodes_shp_file': dataset_parameters['nodes_shp_file'],
+        'edges_shp_file': dataset_parameters['edges_shp_file'],
+        'features_stats_file': dataset_parameters['features_stats_file'],
+        'previous_timesteps': dataset_parameters['previous_timesteps'],
+        'normalize': dataset_parameters['normalize'],
+        'timestep_interval': dataset_parameters['timestep_interval'],
+        'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
+        'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
+        'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
+        'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
+        'with_global_mass_loss': loss_func_parameters['use_global_mass_loss'],
+        'with_local_mass_loss': loss_func_parameters['use_local_mass_loss'],
+        'debug': args.debug,
+        'logger': logger,
+        'force_reload': True,
+    }
+
+    dataset_summary_file = train_dataset_parameters['dataset_summary_file']
+    event_stats_file = train_dataset_parameters['event_stats_file']
+    storage_mode = dataset_parameters['storage_mode']
+    dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
+
+    if 'NodeEdgeGNN' in args.model and config['training_parameters'].get('autoregressive', False):
+        # Split dataset into training and validation sets for autoregressive training
+        percent_validation = config['training_parameters'].get('percent_validation', 0.1)
+        logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
+        train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
+
+        train_dataset_config = {
+            'mode': 'train',
+            'dataset_summary_file': train_summary_file,
+            'event_stats_file': f'train_split_{event_stats_file}',
+            **base_datset_config,
+        }
+        logger.log(f'Using training dataset configuration: {train_dataset_config}')
+        train_dataset = dataset_class(**train_dataset_config)
+
+        val_dataset_config = {
+            'mode': 'test',
+            'dataset_summary_file': val_summary_file,
+            'event_stats_file': f'val_split_{event_stats_file}',
+            **base_datset_config,
+        }
+        logger.log(f'Using validation dataset configuration: {val_dataset_config}')
+        val_dataset = dataset_class(**val_dataset_config)
+
+        logger.log(f'Split dataset into {len(train_dataset)} training samples and {len(val_dataset)} validation samples')
+        return train_dataset, val_dataset
+
+    dataset_config = {
+        'mode': 'train',
+        'dataset_summary_file': dataset_summary_file,
+        'event_stats_file': event_stats_file,
+        **base_datset_config,
+    }
+    logger.log(f'Using dataset configuration: {dataset_config}')
+
+    dataset = dataset_class(**dataset_config)
+    logger.log(f'Loaded dataset with {len(dataset)} samples')
+    return dataset, None
+
 def run_train(model: torch.nn.Module,
               model_name: str,
-              dataset: FloodEventDataset,
+              train_dataset: FloodEventDataset,
               logger: Logger,
               config: Dict,
+              val_dataset: Optional[FloodEventDataset] = None,
               stats_dir: Optional[str] = None,
               model_dir: Optional[str] = None,
               device: str = 'cpu') -> str:
@@ -44,7 +113,7 @@ def run_train(model: torch.nn.Module,
         log_train_config = {'num_epochs': num_epochs, 'num_epochs_dyn_loss': num_epochs_dyn_loss, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'], 'gradient_clip_value': gradient_clip_value }
         logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-        delta_t = dataset.timestep_interval
+        delta_t = train_dataset.timestep_interval
 
         criterion = MSELoss()
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
@@ -54,7 +123,6 @@ def run_train(model: torch.nn.Module,
         use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
         trainer_params = {
             'model': model,
-            'dataset': dataset,
             'optimizer': optimizer,
             'loss_func': criterion,
             'use_global_loss': use_global_mass_loss,
@@ -94,18 +162,23 @@ def run_train(model: torch.nn.Module,
             })
 
             if train_config.get('autoregressive', False):
+                assert val_dataset is not None, "Validation dataset is required for autoregressive training"
                 num_timesteps = train_config['autoregressive_timesteps']
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
                 trainer_params.update({
                     'num_timesteps': num_timesteps,
                     'curriculum_epochs': curriculum_epochs,
+                    'train_dataset': train_dataset,
+                    'val_dataset': val_dataset,
                 })
 
                 trainer = DualAutoRegressiveTrainer(**trainer_params)
             else:
+                trainer_params.update({ 'dataset': train_dataset })
                 trainer = DualRegressionTrainer(**trainer_params)
         else:
+            trainer_params.update({ 'dataset': train_dataset })
             trainer = NodeRegressionTrainer(**trainer_params)
         trainer.train()
 
@@ -152,51 +225,16 @@ def main():
         logger.log(f'Using device: {current_device}')
 
         # Dataset
-        dataset_parameters = config['dataset_parameters']
-        train_dataset_parameters = dataset_parameters['training']
-        dataset_summary_file = train_dataset_parameters['dataset_summary_file']
-        event_stats_file = train_dataset_parameters['event_stats_file']
-        loss_func_parameters = config['loss_func_parameters']
-        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
-        use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
-        dataset_config = {
-            'mode': 'train',
-            'root_dir': dataset_parameters['root_dir'],
-            'dataset_summary_file': dataset_summary_file,
-            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-            'edges_shp_file': dataset_parameters['edges_shp_file'],
-            'event_stats_file': event_stats_file,
-            'features_stats_file': dataset_parameters['features_stats_file'],
-            'previous_timesteps': dataset_parameters['previous_timesteps'],
-            'normalize': dataset_parameters['normalize'],
-            'timestep_interval': dataset_parameters['timestep_interval'],
-            'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
-            'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
-            'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
-            'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
-            'with_global_mass_loss': use_global_mass_loss,
-            'with_local_mass_loss': use_local_mass_loss,
-        }
-        logger.log(f'Using dataset configuration: {dataset_config}')
-
-        storage_mode = dataset_parameters['storage_mode']
-        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
-        dataset = dataset_class(
-            **dataset_config,
-            debug=args.debug,
-            logger=logger,
-            force_reload=True,
-        )
-        logger.log(f'Loaded dataset with {len(dataset)} samples')
+        train_dataset, val_dataset = load_dataset(config, args, logger)
 
         # Model
         model_params = config['model_parameters'][args.model]
         base_model_params = {
-            'static_node_features': dataset.num_static_node_features,
-            'dynamic_node_features': dataset.num_dynamic_node_features,
-            'static_edge_features': dataset.num_static_edge_features,
-            'dynamic_edge_features': dataset.num_dynamic_edge_features,
-            'previous_timesteps': dataset.previous_timesteps,
+            'static_node_features': train_dataset.num_static_node_features,
+            'dynamic_node_features': train_dataset.num_dynamic_node_features,
+            'static_edge_features': train_dataset.num_static_edge_features,
+            'dynamic_edge_features': train_dataset.num_dynamic_edge_features,
+            'previous_timesteps': train_dataset.previous_timesteps,
             'device': args.device,
         }
         model_config = {**model_params, **base_model_params}
@@ -208,7 +246,8 @@ def main():
         model_dir = train_config['model_dir']
         model_path = run_train(model=model,
                                model_name=args.model,
-                               dataset=dataset,
+                               train_dataset=train_dataset,
+                               val_dataset=val_dataset,
                                logger=logger,
                                config=config,
                                stats_dir=stats_dir,
@@ -223,19 +262,33 @@ def main():
         # =================== Testing ===================
         logger.log(f'Starting testing for model: {model_path}')
 
-        test_dataset_config = get_test_dataset_config(dataset_config, config)
+        dataset_parameters = config['dataset_parameters']
+        base_datset_config = {
+            'root_dir': dataset_parameters['root_dir'],
+            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
+            'edges_shp_file': dataset_parameters['edges_shp_file'],
+            'features_stats_file': dataset_parameters['features_stats_file'],
+            'previous_timesteps': dataset_parameters['previous_timesteps'],
+            'normalize': dataset_parameters['normalize'],
+            'timestep_interval': dataset_parameters['timestep_interval'],
+            'spin_up_timesteps': dataset_parameters['spin_up_timesteps'],
+            'timesteps_from_peak': dataset_parameters['timesteps_from_peak'],
+            'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
+            'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
+            'debug': args.debug,
+            'logger': logger,
+            'force_reload': True,
+        }
+        test_dataset_config = get_test_dataset_config(base_datset_config, config)
         logger.log(f'Using test dataset configuration: {test_dataset_config}')
 
         # Clear memory before loading test dataset
         del dataset
         gc.collect()
 
-        dataset = dataset_class(
-            **test_dataset_config,
-            debug=args.debug,
-            logger=logger,
-            force_reload=True,
-        )
+        storage_mode = dataset_parameters['storage_mode']
+        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
+        dataset = dataset_class(**test_dataset_config)
         logger.log(f'Loaded test dataset with {len(dataset)} samples')
 
         logger.log(f'Using model checkpoint for {args.model}: {model_path}')

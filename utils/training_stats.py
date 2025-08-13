@@ -7,6 +7,7 @@ class TrainingStats:
     def __init__(self, logger: Logger = None):
         self.total_epoch_loss = []
         self.epoch_loss_components = {}
+        self.epoch_val_loss_components = {}
         self.additional_info = {}
 
         self.log = print
@@ -29,6 +30,11 @@ class TrainingStats:
         if key not in self.epoch_loss_components:
             self.epoch_loss_components[key] = []
         self.epoch_loss_components[key].append(loss)
+
+    def add_val_loss_component(self, key: str, loss):
+        if key not in self.epoch_val_loss_components:
+            self.epoch_val_loss_components[key] = []
+        self.epoch_val_loss_components[key].append(loss)
 
     def add_additional_info(self, key: str, info):
         self.additional_info[key] = info
@@ -55,6 +61,10 @@ class TrainingStats:
         }
         np_loss_components = {k: np.array(v) for k, v in self.epoch_loss_components.items()}
         stats.update(np_loss_components)
+
+        np_val_loss_components = {k: np.array(v) for k, v in self.epoch_val_loss_components.items()}
+        stats.update(np_val_loss_components)
+
         stats.update(self.additional_info)
         np.savez(filepath, **stats)
         self.log(f'Saved training stats to: {filepath}')

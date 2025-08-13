@@ -58,7 +58,7 @@ class BaseTester:
     def test(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
-    def get_avg_rmse(self) -> float:
+    def get_avg_node_rmse(self) -> float:
         rmses = [stat.get_avg_rmse() for stat in self.events_validation_stats]
         return np.mean(rmses) if rmses else 0.0
 

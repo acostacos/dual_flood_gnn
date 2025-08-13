@@ -23,7 +23,7 @@ class DualAutoregressiveTester(BaseTester):
             validation_stats.print_stats_summary()
             self.events_validation_stats.append(validation_stats)
 
-        self.log(f'Average Node RMSE across events: {self.get_avg_rmse():.4e}')
+        self.log(f'Average Node RMSE across events: {self.get_avg_node_rmse():.4e}')
         self.log(f'Average Edge RMSE across events: {self.get_avg_edge_rmse():.4e}')
         if self.include_physics_loss:
             self.log(f'Average Global Mass Conservation Loss across events: {self.get_avg_global_mass_loss():.4e}')
@@ -41,7 +41,7 @@ class DualAutoregressiveTester(BaseTester):
                 assert event_end_idx <= dataset_event_length, \
                     f'Rollout length {event_end_idx} exceeds event length {dataset_event_length} for event {self.dataset.hec_ras_run_ids[event_idx]}.'
             event_dataset = self.dataset[event_start_idx:event_end_idx]
-            dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
+            dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
             sliding_window = self.dataset[event_start_idx].x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
             edge_sliding_window = self.dataset[event_start_idx].edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]

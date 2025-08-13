@@ -13,7 +13,6 @@ from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegre
 from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Tuple, Optional, List
 from utils import Logger, file_utils
-from utils.validation_stats import ValidationStats
 from utils.hp_search_utils import HYPERPARAMETER_CHOICES, load_datasets, load_model,\
     create_cross_val_dataset_files, create_temp_dirs, delete_temp_dirs, get_static_config
 
@@ -166,7 +165,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
         with open(os.devnull, "w") as f, redirect_stdout(f):
             tester.test()
 
-        avg_rmse = tester.get_avg_rmse()
+        avg_rmse = tester.get_avg_node_rmse()
         val_rmses.append(avg_rmse)
         logger.log(f'Group {group_id} RMSE: {avg_rmse:.4e}')
 

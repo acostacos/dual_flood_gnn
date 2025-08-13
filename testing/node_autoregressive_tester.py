@@ -22,7 +22,7 @@ class NodeAutoregressiveTester(BaseTester):
             validation_stats.print_stats_summary()
             self.events_validation_stats.append(validation_stats)
 
-        self.log(f'Average Node RMSE across events: {self.get_avg_rmse():.4e}')
+        self.log(f'Average Node RMSE across events: {self.get_avg_node_rmse():.4e}')
         if self.include_physics_loss:
             self.log(f'Average Global Mass Conservation Loss across events: {self.get_avg_global_mass_loss():.4e}')
             self.log(f'Average Local Mass Conservation Loss across events: {self.get_avg_local_mass_loss():.4e}')
@@ -38,7 +38,7 @@ class NodeAutoregressiveTester(BaseTester):
                 assert event_end_idx <= (self.dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(self.dataset.event_start_idx) else self.dataset.total_rollout_timesteps), \
                     f'Event end index {event_end_idx} exceeds dataset length {self.dataset.total_rollout_timesteps} for event_idx {event_idx}.'
             event_dataset = self.dataset[event_start_idx:event_end_idx]
-            dataloader = DataLoader(event_dataset, batch_size=1) # Enforce batch size = 1 for autoregressive testing
+            dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
             sliding_window = self.dataset[event_start_idx].x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
             sliding_window = sliding_window.to(self.device)

@@ -85,7 +85,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             self.training_stats.add_val_loss_component('val_node_rmse', val_node_rmse)
             self.training_stats.add_val_loss_component('val_edge_rmse', val_edge_rmse)
 
-            # Previous critera to increase autoregression = non_dyn_epoch_num % self.curriculum_epochs == 0
+            # Previous critera to increase autoregression = non_dyn_epoch_num != 0 and non_dyn_epoch_num % self.curriculum_epochs == 0
             if early_stopping((val_node_rmse, val_edge_rmse), self.model):
                 self.training_stats.log(f'\tEarly stopping triggered after {non_dyn_epoch_num + 1} epochs.')
 
@@ -114,9 +114,9 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
 
             batch = batch.to(self.device)
 
-            batch_losses = []
-            sliding_window = batch.x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
-            edge_sliding_window = batch.edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]
+            total_batch_loss = 0.0
+            sliding_window = batch.x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
+            edge_sliding_window = batch.edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             for i in range(current_num_timesteps):
                 # Override graph data with sliding window
                 # Only override non-boundary nodes to keep boundary conditions intact
@@ -132,12 +132,9 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 pred, edge_pred = self.model(batch)
                 pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch, i)
 
-                sliding_window = torch.concat((sliding_window[:, 1:], pred.detach()), dim=1)
-                edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred.detach()), dim=1)
-
                 label = batch.y[:, :, i]
                 pred_loss = self.loss_func(pred, label)
-                pred_loss =  pred_loss * self.pred_loss_percent
+                pred_loss = pred_loss * self.pred_loss_percent
                 running_pred_loss += pred_loss.item()
 
                 edge_label = batch.y_edge[:, :, i]
@@ -145,17 +142,23 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
-                loss = pred_loss + edge_pred_loss
+                step_loss = pred_loss + edge_pred_loss
 
                 if self.use_physics_loss:
-                    prev_edge_pred = None if i == 0 else edge_sliding_window[:, [-2]]
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch, prev_edge_pred)
-                    loss += physics_loss
+                    prev_edge_pred = None if i == 0 else edge_sliding_window[:, [-1]]
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
+                    step_loss += physics_loss
 
-                batch_losses.append(loss)
+                total_batch_loss += step_loss
 
-            avg_batch_loss = torch.stack(batch_losses).mean()
-            avg_batch_loss.backward()
+                if i < current_num_timesteps - 1:  # Don't update on last iteration
+                    next_sliding_window = torch.cat((sliding_window[:, 1:], pred), dim=1)
+                    next_edge_sliding_window = torch.cat((edge_sliding_window[:, 1:], edge_pred), dim=1)
+
+                    sliding_window = next_sliding_window
+                    edge_sliding_window = next_edge_sliding_window
+
+            total_batch_loss.backward()
 
             if self.gradient_clip_value is not None:
                 torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=self.gradient_clip_value)

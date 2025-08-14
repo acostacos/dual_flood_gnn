@@ -51,7 +51,7 @@ class DualRegressionTrainer(BaseTrainer):
                 loss = pred_loss + edge_pred_loss
 
                 if self.use_physics_loss:
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch)
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch)
                     loss += physics_loss
 
                 loss.backward()

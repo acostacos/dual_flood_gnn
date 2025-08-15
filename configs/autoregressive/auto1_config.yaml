@@ -57,16 +57,16 @@ training_parameters:
     enabled            : True                                # Use autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 1                                   # Total number of timesteps for autoregressive training
-    early_stopping_patience: 10                              # Early stopping patience for autoregressive training
+    early_stopping_patience: 15                              # Early stopping patience for autoregressive training
     val_split_percent  : 0.2                                 # Percentage of validation split for autoregressive training
     # curriculum_epochs  : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 3.0e-2                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
-  edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
+  edge_pred_loss_scale: 1.0e-1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
-  global_mass_loss_percent: 0.001                            # Percentage of global mass conservation loss in total loss
+  global_mass_loss_percent: 0.001                            # Percenage of global mass conservation loss in total loss
   use_local_mass_loss: False                                 # Use local mass conservation in loss function
   local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
   local_mass_loss_percent: 0.001                             # Percentage of local mass conservation loss in total loss

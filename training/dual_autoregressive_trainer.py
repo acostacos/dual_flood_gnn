@@ -16,19 +16,25 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def __init__(self,
                  train_dataset: AutoregressiveFloodEventDataset,
                  val_dataset: FloodEventDataset,
-                 num_timesteps: int = 1,
-                 curriculum_epochs: int = 10,
+                 init_num_timesteps: int = 1,
+                 total_num_timesteps: int = 1,
                  early_stopping_patience: int = 15,
+                 curriculum_epochs: int = 10, # TODO: Remove this if not needed
                  *args, **kwargs):
         assert isinstance(train_dataset, AutoregressiveFloodEventDataset), 'train_dataset must be an instance of AutoregressiveFloodEventDataset.'
         assert val_dataset is not None, 'val_dataset is required for autoregressive training.'
+        assert init_num_timesteps <= total_num_timesteps, 'Initial number of timesteps must be less than or equal to total number of timesteps.'
 
         super().__init__(dataset=train_dataset, *args, **kwargs)
 
+        if init_num_timesteps > 1 and self.num_epochs_dyn_loss > 0:
+            self.training_stats.log('WARNING: not starting with a timestep of 1 for autoregressive training, while adjusting loss scaling rations dynamically is enabled. This may lead to unexpected behavior.')
+
         self.val_dataset = val_dataset
-        self.num_timesteps = num_timesteps
-        self.curriculum_epochs = curriculum_epochs
+        self.init_num_timesteps = init_num_timesteps
+        self.total_num_timesteps = total_num_timesteps
         self.patience = early_stopping_patience
+        self.curriculum_epochs = curriculum_epochs
 
         # Get non-boundary nodes/edges and threshold for metric computation
         self.non_boundary_nodes_mask = ~train_dataset.boundary_condition.boundary_nodes_mask
@@ -47,7 +53,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def train(self):
         '''Multi-step-ahead loss with curriculum learning.'''
         self.training_stats.start_train()
-        current_num_timesteps = 1
+        current_num_timesteps = self.init_num_timesteps
 
         early_stopping = EarlyStopping(patience=self.patience)
         for epoch in range(self.total_num_epochs):
@@ -89,7 +95,7 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
             if early_stopping((val_node_rmse, val_edge_rmse), self.model):
                 self.training_stats.log(f'\tEarly stopping triggered after {non_dyn_epoch_num + 1} epochs.')
 
-                if current_num_timesteps < self.num_timesteps:
+                if current_num_timesteps < self.total_num_timesteps:
                     current_num_timesteps += 1
                     early_stopping = EarlyStopping(patience=self.patience)
                     self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps.')

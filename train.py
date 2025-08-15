@@ -68,10 +68,10 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     event_stats_file = train_dataset_parameters['event_stats_file']
     storage_mode = dataset_parameters['storage_mode']
 
-    training_parameters = config['training_parameters']
-    if 'NodeEdgeGNN' in args.model and training_parameters.get('autoregressive', False):
+    autoregressive_train_params = config['training_parameters']['autoregressive']
+    if 'NodeEdgeGNN' in args.model and autoregressive_train_params.get('enabled', False):
         # Split dataset into training and validation sets for autoregressive training
-        percent_validation = config['training_parameters'].get('percent_validation', 0.1)
+        percent_validation = autoregressive_train_params['val_split_percent']
         logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
         train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
 
@@ -79,7 +79,7 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
             'mode': 'train',
             'dataset_summary_file': train_summary_file,
             'event_stats_file': f'train_split_{event_stats_file}',
-            'num_label_timesteps': training_parameters['autoregressive_timesteps'],
+            'num_label_timesteps': autoregressive_train_params['total_num_timesteps'],
             **base_datset_config,
         }
         logger.log(f'Using training dataset configuration: {train_dataset_config}')
@@ -180,14 +180,17 @@ def run_train(model: torch.nn.Module,
                 'edge_pred_loss_percent': edge_pred_loss_percent,
             })
 
-            if train_config.get('autoregressive', False):
+            autoregressive_train_config = train_config['autoregressive']
+            if autoregressive_train_config.get('enabled', False):
                 assert val_dataset is not None, "Validation dataset is required for autoregressive training"
-                num_timesteps = train_config['autoregressive_timesteps']
-                curriculum_epochs = train_config['curriculum_epochs']
-                logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
+                init_num_timesteps = autoregressive_train_config['init_num_timesteps']
+                total_num_timesteps = autoregressive_train_config['total_num_timesteps']
+                early_stopping_patience = autoregressive_train_config['early_stopping_patience']
+                logger.log(f'Using autoregressive training for {total_num_timesteps} timessteps and curriculum learning')
                 trainer_params.update({
-                    'num_timesteps': num_timesteps,
-                    'curriculum_epochs': curriculum_epochs,
+                    'init_num_timesteps': init_num_timesteps,
+                    'total_num_timesteps': total_num_timesteps,
+                    'early_stopping_patience': early_stopping_patience,
                     'train_dataset': train_dataset,
                     'val_dataset': val_dataset,
                 })
@@ -260,6 +263,11 @@ def main():
         model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')
         logger.log(f'Using model configuration: {model_config}')
+
+        checkpoint_path = train_config.get('checkpoint_path', None)
+        if checkpoint_path is not None:
+            logger.log(f'Loading model from checkpoint: {checkpoint_path}')
+            model.load_state_dict(torch.load(checkpoint_path, weights_only=True, map_location=args.device))
 
         stats_dir = train_config['stats_dir']
         model_dir = train_config['model_dir']

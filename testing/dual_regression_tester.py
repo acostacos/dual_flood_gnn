@@ -6,7 +6,7 @@ from utils.validation_stats import ValidationStats
 
 from .base_tester import BaseTester
 
-class DualAutoregressiveTester(BaseTester):
+class DualRegressionTester(BaseTester):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -43,19 +43,9 @@ class DualAutoregressiveTester(BaseTester):
             event_dataset = self.dataset[event_start_idx:event_end_idx]
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
-            sliding_window = self.dataset[event_start_idx].x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
-            edge_sliding_window = self.dataset[event_start_idx].edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]
-            sliding_window, edge_sliding_window = sliding_window.to(self.device), edge_sliding_window.to(self.device)
+            prev_edge_pred = None
             for i, graph in enumerate(dataloader):
                 graph = graph.to(self.device)
-
-                # Override graph data with sliding window
-                # Only override non-boundary nodes to keep boundary conditions intact
-                graph.x[self.non_boundary_nodes_mask, self.start_node_target_idx:self.end_node_target_idx] = \
-                    sliding_window[self.non_boundary_nodes_mask]
-                # Only override non-boundary edges to keep boundary conditions intact
-                graph.edge_attr[self.non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] = \
-                    edge_sliding_window[self.non_boundary_edges_mask]
 
                 pred, edge_pred = self.model(graph)
 
@@ -66,11 +56,9 @@ class DualAutoregressiveTester(BaseTester):
 
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
-                    prev_edge_pred = graph.global_mass_info['face_flow'] if i == 0 else edge_sliding_window[:, [-1]]
                     validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
 
-                sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
-                edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
+                prev_edge_pred = edge_pred
 
                 label = graph.y
                 if self.dataset.is_normalized:
@@ -93,6 +81,8 @@ class DualAutoregressiveTester(BaseTester):
                     label_edge = self.dataset.normalizer.denormalize(self.dataset.EDGE_TARGET_FEATURE, label_edge)
 
                 validation_stats.update_edge_stats_for_timestep(edge_pred.cpu(), label_edge.cpu())
+
+
         validation_stats.end_validate()
 
     def get_avg_edge_rmse(self) -> float:

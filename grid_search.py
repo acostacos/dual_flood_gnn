@@ -202,6 +202,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
     return avg_val_rmse, avg_val_edge_rmse
 
 def search(hyperparameters: Dict[str, List[float]]):
+    hp_stats = []
     best_rmses = np.full(args.top_k, np.inf)
     if use_edge_pred_loss:
         best_edge_rmses = np.full(args.top_k, np.inf)
@@ -219,6 +220,8 @@ def search(hyperparameters: Dict[str, List[float]]):
         global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent = search_hyperparams
 
         results = cross_validate(global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent)
+        hp_stats.append({ 'hyperparameters': comb, 'validation_loss': results })
+
         if use_edge_pred_loss:
             avg_val_rmse, avg_val_edge_rmse = results
             is_best = avg_val_rmse < best_rmses.max() and avg_val_edge_rmse < best_edge_rmses.max()
@@ -245,6 +248,15 @@ def search(hyperparameters: Dict[str, List[float]]):
             logger.log(f'New best RMSE for hyperparameter combination:')
             for key, value in zip(hyperparameter_list, comb):
                 logger.log(f'\t{key}: {value}')
+
+    output_dir = test_config['output_dir']
+    if output_dir is not None:
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        results_path = os.path.join(output_dir, f'hp_search_results_{curr_date_str}.npz')
+        np.savez(results_path, hp_stats=hp_stats)
 
     if use_edge_pred_loss:
         return (best_rmses, best_edge_rmses), best_hyperparameters

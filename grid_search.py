@@ -129,7 +129,9 @@ def cross_validate(global_mass_loss_percent: Optional[float],
                 'edge_pred_loss_percent': edge_pred_loss_percent,
             })
 
-            if train_config.get('autoregressive', False):
+            # TODO: Implement autoregressive training for hp search
+            autoregressive_train_params = train_config['autoregressive']
+            if autoregressive_train_params.get('enabled', False):
                 num_timesteps = train_config['autoregressive_timesteps']
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')

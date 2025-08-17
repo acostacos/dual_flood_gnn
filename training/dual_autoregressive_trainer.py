@@ -153,9 +153,9 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
                 if self.use_physics_loss:
                     prev_edge_pred = None if i == 0 else edge_sliding_window[:, [-1]]
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
-                    step_loss += physics_loss
+                    step_loss = step_loss + physics_loss
 
-                total_batch_loss += step_loss
+                total_batch_loss = total_batch_loss + step_loss
 
                 if i < current_num_timesteps - 1:  # Don't update on last iteration
                     next_sliding_window = torch.cat((sliding_window[:, 1:], pred), dim=1)

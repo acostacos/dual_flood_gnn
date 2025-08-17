@@ -85,7 +85,10 @@ class DualAutoregressiveTester(BaseTester):
                 pred = pred[self.non_boundary_nodes_mask]
                 label = label[self.non_boundary_nodes_mask]
 
-                validation_stats.update_stats_for_timestep(pred.cpu(), label.cpu(), water_threshold=self.threshold_per_cell)
+                validation_stats.update_stats_for_timestep(pred.cpu(),
+                                                           label.cpu(),
+                                                           water_threshold=self.threshold_per_cell,
+                                                           timestamp=graph.timestep)
 
                 label_edge = graph.y_edge
                 if self.dataset.is_normalized:

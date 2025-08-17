@@ -44,7 +44,7 @@ class DualRegressionTester(BaseTester):
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
             prev_edge_pred = None
-            for i, graph in enumerate(dataloader):
+            for graph in dataloader:
                 graph = graph.to(self.device)
 
                 pred, edge_pred = self.model(graph)
@@ -73,7 +73,10 @@ class DualRegressionTester(BaseTester):
                 pred = pred[self.non_boundary_nodes_mask]
                 label = label[self.non_boundary_nodes_mask]
 
-                validation_stats.update_stats_for_timestep(pred.cpu(), label.cpu(), water_threshold=self.threshold_per_cell)
+                validation_stats.update_stats_for_timestep(pred.cpu(),
+                                                           label.cpu(),
+                                                           water_threshold=self.threshold_per_cell,
+                                                           timestamp=graph.timestep)
 
                 label_edge = graph.y_edge
                 if self.dataset.is_normalized:

@@ -2,10 +2,10 @@ import numpy as np
 import os
 import time
 
+from datetime import datetime
 from numpy import ndarray
 from torch import Tensor
 from loss import GlobalMassConservationLoss, LocalMassConservationLoss
-from data.boundary_condition import BoundaryCondition
 from data.dataset_normalizer import DatasetNormalizer
 from typing import Optional
 
@@ -25,6 +25,7 @@ class ValidationStats:
         self.delta_t = delta_t
         self.val_start_time = None
         self.val_end_time = None
+        self.timestamps = []
 
         # ======== Water depth stats ========
         self.pred_list = []
@@ -84,7 +85,11 @@ class ValidationStats:
     def get_avg_local_mass_loss(self) -> float:
         return float(np.mean(self.local_mass_loss_list))
 
-    def update_stats_for_timestep(self, pred: Tensor, target: Tensor, water_threshold: ndarray):
+    def update_stats_for_timestep(self,
+                                  pred: Tensor,
+                                  target: Tensor,
+                                  water_threshold: ndarray,
+                                  timestamp: datetime = None):
         self.pred_list.append(pred)
         self.target_list.append(target)
 
@@ -104,6 +109,9 @@ class ValidationStats:
         self.rmse_flooded_list.append(RMSE(flooded_pred, flooded_target))
         self.mae_flooded_list.append(MAE(flooded_pred, flooded_target))
         self.nse_flooded_list.append(NSE(flooded_pred, flooded_target))
+
+        if timestamp is not None:
+            self.timestamps.append(timestamp)
 
     def convert_water_depth_to_binary(self, water_depth: Tensor, water_threshold: ndarray) -> Tensor:
         return (water_depth > water_threshold)
@@ -180,6 +188,7 @@ class ValidationStats:
             os.makedirs(dirname)
 
         stats = {
+            'timestamps': self.timestamps,
             'pred': np.array(self.pred_list),
             'target': np.array(self.target_list),
             'edge_pred': np.array(self.edge_pred_list),

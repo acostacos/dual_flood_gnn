@@ -46,10 +46,10 @@ training_parameters:
   model_dir            : 'autoregressive/model'                      # Directory to save trained models
   stats_dir            : 'autoregressive/train'                    # Directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If None, no pre-trained model is loaded
-  num_epochs           : 200                                 # Number of epochs
+  num_epochs           : 100                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 8                                  # Batch size
-  learning_rate        : 0.0001                              # Learning rate
+  learning_rate        : 0.00005                              # Learning rate
   weight_decay         : 0                                   # Weight decay
   gradient_clip_value : 1.0                                 # Gradient clipping value; If None, no gradient clipping is applied
 
@@ -62,8 +62,8 @@ training_parameters:
     # curriculum_epochs  : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
-  edge_pred_loss_scale: 1.0e-1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
-  edge_pred_loss_percent: 0.5                                # Percentage of edge prediction loss in total loss
+  edge_pred_loss_scale: 3.1e-2                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
   global_mass_loss_percent: 0.001                            # Percenage of global mass conservation loss in total loss
@@ -129,3 +129,18 @@ model_parameters:
     encoder_activation: 'prelu'
     decoder_layers: 2
     decoder_activation: 'prelu'
+
+  NodeGNNAttn:
+    hidden_features: 32
+    num_layers: 2
+    activation: 'prelu'
+    residual: True
+    dropout: 0.0
+    negative_slope: 0.2
+    attn_mlp_layers: 2
+    attn_bias: True
+    encoder_layers: 2
+    encoder_activation: 'prelu'
+    decoder_layers: 2
+    decoder_activation: 'prelu'
+

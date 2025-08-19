@@ -21,6 +21,7 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
     def _set_event_properties(self) -> ndarray:
         self._event_peak_idx = []
         self._event_num_timesteps = []
+        self._event_base_timestep_interval = []
         self.event_start_idx = []
 
         event_rollout_trim_start = self.previous_timesteps  # First timestep starts at self.previous_timesteps
@@ -34,6 +35,10 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
             self._event_peak_idx.append(peak_idx)
 
             timesteps = get_event_timesteps(hec_ras_path)
+            event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
+            assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
+            self._event_base_timestep_interval.append(event_ts_interval)
+
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
             all_event_timesteps.append(timesteps)
 

@@ -24,7 +24,6 @@ class FloodEventDataset(Dataset):
     DYNAMIC_EDGE_FEATURES = ['face_flow'] # Not included: 'velocity'
     NODE_TARGET_FEATURE = 'water_volume'
     EDGE_TARGET_FEATURE = 'face_flow'
-    BASE_TIMESTEP_INTERVAL = 30  # in seconds
     BOUNDARY_CONDITION_NPZ_FILE = 'boundary_condition_masks.npz'
     CONSTANT_VALUES_NPZ_FILE = 'constant_values.npz'
 
@@ -38,7 +37,7 @@ class FloodEventDataset(Dataset):
                  features_stats_file: str = 'features_stats.yaml',
                  previous_timesteps: int = 2,
                  normalize: bool = True,
-                 timestep_interval: int = BASE_TIMESTEP_INTERVAL,
+                 timestep_interval: int = 30, # in seconds
                  spin_up_timesteps: Union[int, Dict[str, int]] = None,
                  timesteps_from_peak: Optional[int] = None,
                  inflow_boundary_nodes: List[int] = [],
@@ -49,7 +48,6 @@ class FloodEventDataset(Dataset):
                  logger: Optional[Logger] = None,
                  force_reload: bool = False):
         assert mode in ['train', 'test'], f'Invalid mode: {mode}. Must be "train" or "test".'
-        assert timestep_interval % self.BASE_TIMESTEP_INTERVAL == 0, f'Timestep interval must be a multiple of {self.BASE_TIMESTEP_INTERVAL} seconds.'
 
         self.log_func = print
         if logger is not None and hasattr(logger, 'log'):
@@ -82,6 +80,7 @@ class FloodEventDataset(Dataset):
         self.event_start_idx, self.total_rollout_timesteps = self._load_event_stats(root_dir, event_stats_file)
         self._event_peak_idx = None
         self._event_num_timesteps = None
+        self._event_base_timestep_interval = None
 
         # Helper classes
         self.normalizer = DatasetNormalizer(mode, root_dir, features_stats_file)
@@ -295,6 +294,7 @@ class FloodEventDataset(Dataset):
     def _set_event_properties(self) -> ndarray:
         self._event_peak_idx = []
         self._event_num_timesteps = []
+        self._event_base_timestep_interval = []
         self.event_start_idx = []
 
         current_total_ts = 0
@@ -306,6 +306,10 @@ class FloodEventDataset(Dataset):
             self._event_peak_idx.append(peak_idx)
 
             timesteps = get_event_timesteps(hec_ras_path)
+            event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
+            assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
+            self._event_base_timestep_interval.append(event_ts_interval)
+
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
             all_event_timesteps.append(timesteps)
 
@@ -431,7 +435,7 @@ class FloodEventDataset(Dataset):
             event_peak = self._event_peak_idx[event_idx]
             end = event_peak + self.timesteps_from_peak
 
-        step = self.timestep_interval // self.BASE_TIMESTEP_INTERVAL
+        step = self.timestep_interval // self._event_base_timestep_interval[event_idx]
 
         return dynamic_data[start:end:step]
 

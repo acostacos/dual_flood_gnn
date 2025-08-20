@@ -38,8 +38,8 @@ class FloodEventDataset(Dataset):
                  previous_timesteps: int = 2,
                  normalize: bool = True,
                  timestep_interval: int = 30, # in seconds
-                 spin_up_timesteps: Union[int, Dict[str, int]] = None,
-                 timesteps_from_peak: Optional[int] = None,
+                 spin_up_time: Union[int, Dict[str, int]] = None,
+                 time_from_peak: Optional[int] = None,
                  inflow_boundary_nodes: List[int] = [],
                  outflow_boundary_nodes: List[int] = [],
                  with_global_mass_loss: bool = True,
@@ -65,8 +65,8 @@ class FloodEventDataset(Dataset):
         self.previous_timesteps = previous_timesteps
         self.is_normalized = normalize
         self.timestep_interval = timestep_interval
-        self.spin_up_timesteps = spin_up_timesteps
-        self.timesteps_from_peak = timesteps_from_peak
+        self.spin_up_time = spin_up_time
+        self.time_from_peak = time_from_peak
         self.inflow_boundary_nodes = inflow_boundary_nodes
         self.outflow_boundary_nodes = outflow_boundary_nodes
         self.with_global_mass_loss = with_global_mass_loss
@@ -300,15 +300,17 @@ class FloodEventDataset(Dataset):
         current_total_ts = 0
         all_event_timesteps = []
         for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
-            water_volume = get_water_volume(hec_ras_path)
-            total_water_volume = water_volume.sum(axis=1)
-            peak_idx = np.argmax(total_water_volume)
-            self._event_peak_idx.append(peak_idx)
-
             timesteps = get_event_timesteps(hec_ras_path)
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
             assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
             self._event_base_timestep_interval.append(event_ts_interval)
+
+            water_volume = get_water_volume(hec_ras_path)
+            total_water_volume = water_volume.sum(axis=1)
+            peak_idx = np.argmax(total_water_volume)
+            num_timesteps_after_peak = self.time_from_peak // event_ts_interval if self.time_from_peak is not None else 0
+            assert peak_idx + num_timesteps_after_peak < len(timesteps), "Timesteps after peak exceeds the available timesteps."
+            self._event_peak_idx.append(peak_idx)
 
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
             all_event_timesteps.append(timesteps)
@@ -327,8 +329,6 @@ class FloodEventDataset(Dataset):
         assert len(self._event_peak_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and peak indices.'
         assert len(self._event_num_timesteps) == len(self.hec_ras_run_ids), 'Mismatch in number of events and number of timesteps.'
         assert len(self.event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
-        assert np.all((np.array(self._event_peak_idx) - (self.timesteps_from_peak if self.timesteps_from_peak is not None else 0)) >= 0),\
-            'Timesteps from peak exceed available timesteps.'
 
         all_event_timesteps = np.concatenate(all_event_timesteps, axis=0)
         return all_event_timesteps
@@ -419,21 +419,25 @@ class FloodEventDataset(Dataset):
 
     def _get_trimmed_dynamic_data(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
         start = 0
-        if self.spin_up_timesteps is not None:
-            if isinstance(self.spin_up_timesteps, int):
-                start = self.spin_up_timesteps
-            elif isinstance(self.spin_up_timesteps, dict):
+        if self.spin_up_time is not None:
+            if isinstance(self.spin_up_time, int):
+                start = self.spin_up_time // self._event_base_timestep_interval[event_idx]
+            elif isinstance(self.spin_up_time, dict):
                 run_id = self.hec_ras_run_ids[event_idx]
-                if run_id not in self.spin_up_timesteps:
-                    self.log_func(f'No spin-up timesteps defined for Run ID {run_id}. Using default value of 0.')
-                start = self.spin_up_timesteps.get(run_id, 0)
+                if run_id not in self.spin_up_time:
+                    if 'default' in self.spin_up_time:
+                        run_id = 'default'
+                    else:
+                        self.log_func(f'WARNING: No spin-up timesteps defined for Run ID {run_id} and no default value in dict. Setting start to 0.')
+                start = self.spin_up_time.get(run_id, 0) // self._event_base_timestep_interval[event_idx]
             else:
-                raise ValueError(f'Invalid type for spin_up_timesteps: {type(self.spin_up_timesteps)}')
+                raise ValueError(f'Invalid type for spin_up_time: {type(self.spin_up_time)}')
 
         end = None
-        if self.timesteps_from_peak is not None:
+        if self.time_from_peak is not None:
             event_peak = self._event_peak_idx[event_idx]
-            end = event_peak + self.timesteps_from_peak
+            timesteps_from_peak = self.time_from_peak // self._event_base_timestep_interval[event_idx]
+            end = event_peak + timesteps_from_peak
 
         step = self.timestep_interval // self._event_base_timestep_interval[event_idx]
 

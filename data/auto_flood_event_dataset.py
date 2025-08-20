@@ -29,15 +29,17 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
         current_total_ts = 0
         all_event_timesteps = []
         for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
-            water_volume = get_water_volume(hec_ras_path)
-            total_water_volume = water_volume.sum(axis=1)
-            peak_idx = np.argmax(total_water_volume)
-            self._event_peak_idx.append(peak_idx)
-
             timesteps = get_event_timesteps(hec_ras_path)
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
             assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
             self._event_base_timestep_interval.append(event_ts_interval)
+
+            water_volume = get_water_volume(hec_ras_path)
+            total_water_volume = water_volume.sum(axis=1)
+            peak_idx = np.argmax(total_water_volume)
+            num_timesteps_after_peak = self.time_from_peak // event_ts_interval if self.time_from_peak is not None else 0
+            assert peak_idx + num_timesteps_after_peak < len(timesteps), "Timesteps after peak exceeds the available timesteps."
+            self._event_peak_idx.append(peak_idx)
 
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
             all_event_timesteps.append(timesteps)
@@ -45,9 +47,10 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
             num_timesteps = len(timesteps)
             self._event_num_timesteps.append(num_timesteps)
 
-            self.event_start_idx.append(current_total_ts)
             event_total_rollout_ts = num_timesteps - event_rollout_trim_start - event_rollout_trim__end
             assert event_total_rollout_ts > 0, f'Event {event_idx} has too few timesteps.'
+            self.event_start_idx.append(current_total_ts)
+
             current_total_ts += event_total_rollout_ts
 
         self.total_rollout_timesteps = current_total_ts
@@ -55,8 +58,6 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
         assert len(self._event_peak_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and peak indices.'
         assert len(self._event_num_timesteps) == len(self.hec_ras_run_ids), 'Mismatch in number of events and number of timesteps.'
         assert len(self.event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
-        assert np.all((np.array(self._event_peak_idx) - (self.timesteps_from_peak if self.timesteps_from_peak is not None else 0)) >= 0),\
-            'Timesteps from peak exceed available timesteps.'
 
         all_event_timesteps = np.concatenate(all_event_timesteps, axis=0)
         return all_event_timesteps

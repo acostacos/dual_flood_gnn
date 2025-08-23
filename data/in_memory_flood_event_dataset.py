@@ -10,6 +10,7 @@ from torch_geometric.data import Data
 from typing import List
 
 from .flood_event_dataset import FloodEventDataset
+from .line_graph_data import LineGraphData
 
 class InMemoryFloodEventDataset(FloodEventDataset):
     def __init__(self, *args, **kwargs):
@@ -20,10 +21,14 @@ class InMemoryFloodEventDataset(FloodEventDataset):
         # Load constant data
         constant_values = np.load(self.processed_paths[3])
         edge_index: ndarray = constant_values['edge_index']
+        line_edge_index: ndarray = constant_values['line_edge_index']
+        line_edge_attr: ndarray = constant_values['line_edge_attr']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
 
         t_edge_index = torch.from_numpy(edge_index.copy())
+        t_line_edge_index = torch.from_numpy(line_edge_index.copy())
+        t_line_edge_attr = torch.from_numpy(line_edge_attr.copy())
 
         curr_event_idx = -1
         data_list = []
@@ -77,9 +82,11 @@ class InMemoryFloodEventDataset(FloodEventDataset):
                                                                          edge_face_flow_per_ts,
                                                                          within_event_idx)
 
-            data = Data(x=node_features,
+            data = LineGraphData(x=node_features,
                     edge_index=t_edge_index,
                     edge_attr=edge_features,
+                    line_edge_index=t_line_edge_index,
+                    line_edge_attr=t_line_edge_attr,
                     y=label_nodes,
                     y_edge=label_edges,
                     timestep=timestep,

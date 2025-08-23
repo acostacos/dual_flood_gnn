@@ -2,10 +2,12 @@ import os
 import torch
 import numpy as np
 import pandas as pd
+import itertools
 
+from collections import defaultdict
 from numpy import ndarray
 from torch import Tensor
-from torch_geometric.data import Dataset, Data
+from torch_geometric.data import Dataset
 from typing import Callable, Tuple, List, Literal, Dict, Optional, Union
 from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
@@ -14,6 +16,7 @@ from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_rough
     get_cumulative_rainfall, get_water_level, get_water_volume, get_edge_direction_x,\
     get_edge_direction_y, get_face_length, get_velocity, get_face_flow
 from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length, get_edge_slope
+from .line_graph_data import LineGraphData
 from .boundary_condition import BoundaryCondition
 from .dataset_normalizer import DatasetNormalizer
 
@@ -132,6 +135,8 @@ class FloodEventDataset(Dataset):
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
 
+        line_edge_index, line_edge_attr = self._get_line_graph_edges(edge_index, num_nodes=static_nodes.shape[0])
+
         # Global Mass Loss Features
         global_mass_info = self._get_global_mass_info(dynamic_nodes, dynamic_edges)
         total_rainfall_per_ts, edge_face_flow_per_ts = global_mass_info
@@ -148,6 +153,8 @@ class FloodEventDataset(Dataset):
 
         np.savez(self.processed_paths[3],
                  edge_index=edge_index,
+                 line_edge_index=line_edge_index,
+                 line_edge_attr=line_edge_attr,
                  static_nodes=static_nodes,
                  static_edges=static_edges)
         self.log_func(f'Saved constant values to {self.processed_paths[3]}')
@@ -195,6 +202,8 @@ class FloodEventDataset(Dataset):
         # Load constant data
         constant_values = np.load(self.processed_paths[3])
         edge_index: ndarray = constant_values['edge_index']
+        line_edge_index: ndarray = constant_values['line_edge_index']
+        line_edge_attr: ndarray = constant_values['line_edge_attr']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
 
@@ -240,9 +249,13 @@ class FloodEventDataset(Dataset):
                                                                      within_event_idx)
 
         edge_index = torch.from_numpy(edge_index)
-        data = Data(x=node_features,
+        line_edge_index = torch.from_numpy(line_edge_index)
+        line_edge_attr = torch.from_numpy(line_edge_attr)
+        data = LineGraphData(x=node_features,
                     edge_index=edge_index,
                     edge_attr=edge_features,
+                    line_edge_index=line_edge_index,
+                    line_edge_attr=line_edge_attr,
                     y=label_nodes,
                     y_edge=label_edges,
                     timestep=timestep,
@@ -336,6 +349,32 @@ class FloodEventDataset(Dataset):
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])
         return edge_index
+
+    def _get_line_graph_edges(self, edge_index: ndarray, num_nodes: int = None) -> Tuple[ndarray, ndarray]:
+        '''edge_index is assumed be a directed graph. Must be called before _to_undirected() is called.'''
+        if num_nodes is None:
+            num_nodes = edge_index.max().item() + 1
+
+        adj_list = defaultdict(list)
+        for edge_idx in range(edge_index.shape[1]):
+            s, t = edge_index[:, edge_idx].tolist()
+            adj_list[s].append(edge_idx)
+            adj_list[t].append(edge_idx)
+
+        # Find all pairs of edges that share a vertex
+        line_edge_index = []
+        line_edge_attr = []
+
+        for node_idx in range(num_nodes):
+            incident_edges = adj_list[node_idx]
+            line_edges = list(itertools.permutations(incident_edges, r=2))
+            line_edge_index.extend(line_edges)
+            line_edge_attr.extend([node_idx] * len(line_edges))
+
+        line_edge_index = np.array(line_edge_index, dtype=np.int64).transpose()
+        line_edge_attr = np.array(line_edge_attr, dtype=np.int64)
+
+        return line_edge_index, line_edge_attr
 
     def _get_static_node_features(self) -> ndarray:
         STATIC_NODE_RETRIEVAL_MAP = {

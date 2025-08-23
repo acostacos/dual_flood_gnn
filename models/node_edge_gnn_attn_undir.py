@@ -137,17 +137,6 @@ class NodeEdgeGNNAttn(BaseModel):
 
         return x, edge_attr
 
-    def get_model_shared_params(self) -> List[Parameter]:
-        shared_params = []
-        if type(self.convs) is PygSequential:
-            for module in self.convs:
-                if hasattr(module, 'get_shared_params'):
-                    shared_params.extend(module.get_shared_params())
-        else:
-            if hasattr(self.convs, 'get_shared_params'):
-                shared_params.extend(self.convs.get_shared_params())
-        return shared_params
-
 class NodeEdgeAttnConv(MessagePassing):
     '''Based on https://github.com/pyg-team/pytorch_geometric/blob/master/torch_geometric/nn/conv/gat_conv.py'''
     def __init__(self,
@@ -172,9 +161,10 @@ class NodeEdgeAttnConv(MessagePassing):
         self.lin = Linear(in_features, out_features, bias=False) 
         self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
         self.node_attn = Linear((out_features * 2 + edge_out_features), 1, bias=False)
-        self.edge_attn = Linear((out_features * 2), 1, bias=False)
+
         self.out_lin = Linear(out_features, out_features, bias=False)
         self.edge_update_lin = Linear((edge_out_features * 2), edge_out_features, bias=False)
+        self.edge_attn = Linear((out_features * 2), 1, bias=False)
 
         msg_input_size = (out_features * 2 + edge_out_features)
         msg_hidden_size = msg_input_size * 2
@@ -186,12 +176,6 @@ class NodeEdgeAttnConv(MessagePassing):
         node_update_hidden_size = node_update_input_size * 2
         self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
                                  hidden_size=node_update_hidden_size, num_layers=mlp_layers,
-                                 activation=activation)
-
-        edge_update_input_size = (edge_out_features * 2)
-        edge_update_hidden_size = edge_update_input_size * 2
-        self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
-                                 hidden_size=edge_update_hidden_size, num_layers=mlp_layers,
                                  activation=activation)
 
         if self.has_bias:
@@ -206,6 +190,8 @@ class NodeEdgeAttnConv(MessagePassing):
         self.lin.reset_parameters()
         self.edge_lin.reset_parameters()
         self.node_attn.reset_parameters()
+        self.out_lin.reset_parameters()
+        self.edge_update_lin.reset_parameters()
         self.edge_attn.reset_parameters()
 
         for layer in self.msg_mlp.children():
@@ -213,10 +199,6 @@ class NodeEdgeAttnConv(MessagePassing):
                 layer.reset_parameters()
 
         for layer in self.node_update_mlp.children():
-            if hasattr(layer, 'reset_parameters'):
-                layer.reset_parameters()
-
-        for layer in self.edge_update_mlp.children():
             if hasattr(layer, 'reset_parameters'):
                 layer.reset_parameters()
 
@@ -300,10 +282,3 @@ class NodeEdgeAttnConv(MessagePassing):
         beta = softmax(beta, index, ptr, dim_size)
         beta = F.dropout(beta, p=self.dropout, training=self.training)
         return beta * self.edge_update_lin(torch.cat([msg_to, msg_from], dim=-1))
-
-    def get_shared_params(self) -> List[Parameter]:
-        shared_params = []
-        # shared_params.extend(self.node_attn.parameters())
-        # shared_params.extend(self.edge_attn.parameters())
-        shared_params.extend(self.msg_mlp.parameters())
-        return shared_params

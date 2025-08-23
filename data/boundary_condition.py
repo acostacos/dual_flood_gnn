@@ -2,8 +2,7 @@ import os
 import numpy as np
 
 from numpy import ndarray
-from torch import Tensor
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 from .hecras_data_retrieval import get_min_cell_elevation
 
@@ -21,6 +20,7 @@ class BoundaryCondition:
         self._init()
         self._init_masks()
 
+        self._is_called = {'create': False, 'remove': False, 'apply': False}
         self._boundary_edge_index = None
         self._boundary_dynamic_nodes = None
         self._boundary_dynamic_edges = None
@@ -105,12 +105,17 @@ class BoundaryCondition:
         self._boundary_dynamic_nodes = boundary_dynamic_nodes
         self._boundary_dynamic_edges = boundary_dynamic_edges
 
+        self._is_called['create'] = True
+
     def remove(self,
                static_nodes: ndarray,
                dynamic_nodes: ndarray,
                static_edges: ndarray,
                dynamic_edges: ndarray,
                edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
+        if not self._is_called['create']:
+            print('WARNING: Attempting to remove boundary condition before it has been created. Calling create() will not create boundary conditions.')
+
         static_nodes = np.delete(static_nodes, self.ghost_nodes, axis=0)
         dynamic_nodes = np.delete(dynamic_nodes, self.ghost_nodes, axis=1)
 
@@ -118,6 +123,9 @@ class BoundaryCondition:
         static_edges = np.delete(static_edges, ghost_edges_idx, axis=0)
         dynamic_edges = np.delete(dynamic_edges, ghost_edges_idx, axis=1)
         edge_index = np.delete(edge_index, ghost_edges_idx, axis=1)
+
+        self._is_called['remove'] = True
+
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 
     def apply(self,
@@ -126,6 +134,9 @@ class BoundaryCondition:
             static_edges: ndarray,
             dynamic_edges: ndarray,
             edge_index: ndarray) -> Tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
+        if not self._is_called['create'] or not self._is_called['remove']:
+            raise RuntimeError('Boundary condition must be created and removed before applying.')
+
         _, num_static_node_feat = static_nodes.shape
         num_boundary_nodes = len(self.new_inflow_boundary_nodes) + len(self.new_outflow_boundary_nodes)
         boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat),
@@ -150,10 +161,12 @@ class BoundaryCondition:
         self._boundary_dynamic_nodes = None
         self._boundary_edge_index = None
 
+        self._is_called['apply'] = True
+
         return static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index
 
     def _create_masks(self, new_num_nodes: int, edge_index: ndarray) -> None:
-        boundary_nodes = np.union1d(self.new_inflow_boundary_nodes, self.new_outflow_boundary_nodes)
+        boundary_nodes = self.get_new_boundary_nodes()
         self.boundary_nodes_mask = np.isin(np.arange(new_num_nodes), boundary_nodes)
 
         self.boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)

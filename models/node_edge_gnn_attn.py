@@ -101,18 +101,18 @@ class NodeEdgeGNNAttn(BaseModel):
 
         layers = []
         layers.append(
-            (NodeEdgeAttnConv(input_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
+            (NodeEdgeAttnConv(input_size, hidden_size, input_edge_size, hidden_size, **conv_kwargs),
              'x, edge_index, edge_attr -> x, edge_attr')
         ) # Input Layer
 
         for _ in range(gnn_layers-2):
             layers.append(
-                (NodeEdgeAttnConv(hidden_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
+                (NodeEdgeAttnConv(hidden_size, hidden_size, hidden_size, hidden_size, **conv_kwargs),
                  'x, edge_index, edge_attr -> x, edge_attr')
             ) # Hidden Layers
 
         layers.append(
-            (NodeEdgeAttnConv(hidden_size, hidden_size, input_edge_size, output_edge_size, **conv_kwargs),
+            (NodeEdgeAttnConv(hidden_size, output_size, hidden_size, output_edge_size, **conv_kwargs),
              'x, edge_index, edge_attr -> x, edge_attr')
         ) # Output Layer
         return PygSequential('x, edge_index, edge_attr', layers)

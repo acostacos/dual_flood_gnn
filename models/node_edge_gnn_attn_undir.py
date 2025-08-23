@@ -173,6 +173,8 @@ class NodeEdgeAttnConv(MessagePassing):
         self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
         self.node_attn = Linear((out_features * 2 + edge_out_features), 1, bias=False)
         self.edge_attn = Linear((out_features * 2), 1, bias=False)
+        self.out_lin = Linear(out_features, out_features, bias=False)
+        self.edge_update_lin = Linear((edge_out_features * 2), edge_out_features, bias=False)
 
         msg_input_size = (out_features * 2 + edge_out_features)
         msg_hidden_size = msg_input_size * 2
@@ -235,7 +237,8 @@ class NodeEdgeAttnConv(MessagePassing):
         msg_to = msg[:edge_attr.shape[0]]
         msg_from = msg[edge_attr.shape[0]:]
 
-        edge_out = self.edge_updater(edge_index, out=out, msg_to=msg_to, msg_from=msg_from)
+        out_for_edge = self.out_lin(out)
+        edge_out = self.edge_updater(edge_index, out=out_for_edge, msg_to=msg_to, msg_from=msg_from)
 
         if self.has_bias:
             out = out + self.bias
@@ -296,7 +299,7 @@ class NodeEdgeAttnConv(MessagePassing):
         beta = F.leaky_relu(beta, self.negative_slope)
         beta = softmax(beta, index, ptr, dim_size)
         beta = F.dropout(beta, p=self.dropout, training=self.training)
-        return self.edge_update_mlp(beta * torch.cat([msg_to, msg_from], dim=-1))
+        return beta * self.edge_update_lin(torch.cat([msg_to, msg_from], dim=-1))
 
     def get_shared_params(self) -> List[Parameter]:
         shared_params = []

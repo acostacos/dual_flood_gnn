@@ -8,7 +8,7 @@ import random
 from argparse import ArgumentParser, Namespace
 from contextlib import redirect_stdout
 from datetime import datetime
-from optuna.visualization import plot_optimization_history, plot_slice
+from optuna.visualization import plot_optimization_history, plot_slice, plot_pareto_front
 from torch.nn import MSELoss
 from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
 from testing import DualAutoregressiveTester, NodeAutoregressiveTester
@@ -24,6 +24,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--model", type=str, required=True, help='Model to use for training')
     parser.add_argument("--summary_file", type=str, required=True, help='Dataset summary file for hyperparameter search. Events in file will be used for cross-validation')
     parser.add_argument("--num_trials", type=int, default=20, help='Number of trials for hyperparameter search')
+    parser.add_argument("--num_folds", type=int, default=5, help='Number of folds for cross-validation')
     parser.add_argument("--seed", type=int, default=42, help='Seed for random number generators')
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     return parser.parse_args()
@@ -213,6 +214,9 @@ def plot_hyperparameter_search_results(study: optuna.Study):
 
         fig = plot_slice(study, target=lambda t: t.values[1], target_name='Edge RMSE')
         fig.write_html(os.path.join(stats_dir, f'{study.study_name}_edge_slice_plot.html'))
+
+        fig = plot_pareto_front(study=study, target_names=['Node RMSE', 'Edge RMSE'])
+        fig.write_html(os.path.join(stats_dir, f'{study.study_name}_pareto_front.html'))
     else:
         fig = plot_optimization_history(study, target_name='RMSE')
         fig.write_html(os.path.join(stats_dir, f'{study.study_name}_optimization_history.html'))
@@ -252,7 +256,8 @@ if __name__ == '__main__':
         # Begin hyperparameter search
         root_dir = base_dataset_config['root_dir']
         raw_temp_dir_path, processed_temp_dir_path = create_temp_dirs(root_dir)
-        cross_val_groups = create_cross_val_dataset_files(root_dir, args.summary_file)
+        logger.log(f'Creating {args.num_folds}-fold cross-validation dataset files from {args.summary_file}...')
+        cross_val_groups = create_cross_val_dataset_files(root_dir, args.summary_file, args.num_folds)
 
         study_name = f'{"_".join(args.hyperparameters)}'
         study_kwargs = {'study_name': study_name }

@@ -67,15 +67,24 @@ def create_temp_dirs(root_dir: str):
 
     return raw_temp_dir_path, processed_temp_dir_path
 
-def create_cross_val_dataset_files(root_dir: str, dataset_summary_file: str) -> List[str]:
+def create_cross_val_dataset_files(root_dir: str, dataset_summary_file: str, num_folds: int) -> List[str]:
     dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
 
     assert os.path.exists(dataset_summary_path), f'Dataset summary file does not exist: {dataset_summary_path}'
     summary_df = pd.read_csv(dataset_summary_path)
     assert len(summary_df) > 0, f'No data found in summary file: {dataset_summary_path}'
-    assert 'Group' in summary_df.columns, f'Missing Group column in summary file: {dataset_summary_path}'
 
-    groups = summary_df['Group'].unique()
+    num_events_per_fold = len(summary_df) // num_folds
+    groups = []
+    for fold in range(num_folds):
+        group_id = f'fold{fold+1}'
+        groups.append(group_id)
+        start_idx = fold * num_events_per_fold
+        if fold == num_folds - 1:
+            end_idx = len(summary_df)
+        else:
+            end_idx = (fold + 1) * num_events_per_fold
+        summary_df.loc[start_idx:end_idx, 'Group'] = group_id
 
     raw_temp_dir_path = os.path.join(root_dir, 'raw', TEMP_DIR_NAME)
     for group in groups:

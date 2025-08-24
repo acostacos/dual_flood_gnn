@@ -10,27 +10,27 @@
 
 # Grid Search
 # Base NodeEdge GNN hyperparameter search
-srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' --summary_file 'hp_search_events.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' --summary_file 'train.csv'
 
 # Global Mass Loss hyperparameter search
-srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' --summary_file 'hp_search_events.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' --summary_file 'train.csv'
 
 # Local Mass Loss hyperparameter search
-srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'local_mass_loss' --summary_file 'hp_search_events.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'local_mass_loss' --summary_file 'train.csv'
 
 # Global and Local Mass Loss hyperparameter search
-srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' 'local_mass_loss' --summary_file 'hp_search_events.csv'
+srun python grid_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' 'local_mass_loss' --summary_file 'train.csv'
 
 
 # Bayesian Search
 # Base NodeEdge GNN hyperparameter search
-srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' --summary_file 'hp_search_events.csv'
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' --summary_file 'train.csv'
 
 # Global Mass Loss hyperparameter search
-srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' --summary_file 'hp_search_events.csv'
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' --summary_file 'train.csv'
 
 # Local Mass Loss hyperparameter search
-srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'local_mass_loss' --summary_file 'hp_search_events.csv'
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'local_mass_loss' --summary_file 'train.csv'
 
 # Global and Local Mass Loss hyperparameter search
-srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' 'local_mass_loss' --summary_file 'hp_search_events.csv'
+srun python bayesian_search.py --config 'configs/hp_search_config.yaml' --model 'NodeEdgeGNNAttn' --hyperparameters 'edge_pred_loss' 'global_mass_loss' 'local_mass_loss' --summary_file 'train.csv'

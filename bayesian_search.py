@@ -188,7 +188,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
 def objective(trial: optuna.Trial) -> float:
     global_mass_loss_percent = trial.suggest_float('global_mass_loss_percent', 1.0e-6, 0.05, log=True) if use_global_mass_loss else None
     local_mass_loss_percent = trial.suggest_float('local_mass_loss_percent', 1.0e-6, 0.05, log=True) if use_local_mass_loss else None
-    edge_pred_loss_percent = trial.suggest_float('edge_pred_loss_percent', 0.5, 0.8, step=0.05) if use_edge_pred_loss else None
+    edge_pred_loss_percent = trial.suggest_float('edge_pred_loss_percent', 0, 1, step=0.01) if use_edge_pred_loss else None
 
     logger.log(f'Hyperparameters: global_mass_loss_percent={global_mass_loss_percent}, local_mass_loss_percent={local_mass_loss_percent}, edge_pred_loss_percent={edge_pred_loss_percent}')
 

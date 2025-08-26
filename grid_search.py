@@ -9,7 +9,7 @@ from contextlib import redirect_stdout
 from datetime import datetime
 from itertools import product
 from torch.nn import MSELoss
-from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
+from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoregressiveTrainer
 from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Tuple, Optional, List
 from utils import Logger, file_utils
@@ -54,7 +54,7 @@ def get_hyperparameters_for_search(hyperparam_comb: Tuple) -> Dict:
         index += 1
     return global_mass_loss_percent, local_mass_loss_percent, edge_pred_loss_percent
 
-def save_cross_val_results(trainer: DualAutoRegressiveTrainer,
+def save_cross_val_results(trainer: DualAutoregressiveTrainer,
                            tester: DualAutoregressiveTester,
                            model_postfix: str):
     curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -136,7 +136,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
 
-                trainer = DualAutoRegressiveTrainer(**trainer_params, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+                trainer = DualAutoregressiveTrainer(**trainer_params, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
             else:
                 trainer = DualRegressionTrainer(**trainer_params)
         else:

@@ -1,30 +1,31 @@
 from .base_trainer import BaseTrainer
-from .dual_autoregressive_trainer import DualAutoRegressiveTrainer
+from .dual_autoregressive_trainer import DualAutoregressiveTrainer
 from .dual_regression_trainer import DualRegressionTrainer
+from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
 from .edge_regression_trainer import EdgeRegressionTrainer
-from .node_autoregressive_trainer import NodeAutoRegressiveTrainer
+from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .node_regression_trainer import NodeRegressionTrainer
 
 def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> BaseTrainer:
     if 'NodeEdgeGNN' in model_name:
         if autoregressive:
-            return DualAutoRegressiveTrainer(*args, **kwargs)
+            return DualAutoregressiveTrainer(*args, **kwargs)
         return DualRegressionTrainer(*args, **kwargs)
 
     if model_name in ['EdgeGNNAttn']:
-        # if autoregressive:
-        #     return EdgeAutoRegressiveTrainer(*args, **kwargs)
+        if autoregressive:
+            return EdgeAutoregressiveTrainer(*args, **kwargs)
         return EdgeRegressionTrainer(*args, **kwargs)
 
     if autoregressive:
-        return NodeAutoRegressiveTrainer(*args, **kwargs)
+        return NodeAutoregressiveTrainer(*args, **kwargs)
     return NodeRegressionTrainer(*args, **kwargs)
 
 __all__ = [
-    'DualAutoRegressiveTrainer',
+    'DualAutoregressiveTrainer',
     'DualRegressionTrainer',
     'EdgeRegressionTrainer',
-    'NodeAutoRegressiveTrainer',
+    'NodeAutoregressiveTrainer',
     'NodeRegressionTrainer',
     'trainer_factory',
 ]

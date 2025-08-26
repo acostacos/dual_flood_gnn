@@ -8,7 +8,6 @@ from .base_trainer import BaseTrainer
 
 class PhysicsInformedTrainer(BaseTrainer):
     def __init__(self,
-                 dataset: FloodEventDataset,
                  use_global_loss: bool = False,
                  global_mass_loss_scale: float = 1.0,
                  global_mass_loss_percent: float = 0.1,
@@ -17,19 +16,20 @@ class PhysicsInformedTrainer(BaseTrainer):
                  local_mass_loss_percent: float = 0.1,
                  *args,
                  **kwargs):
-        super().__init__(dataset=dataset, *args, **kwargs)
+        super().__init__(*args, **kwargs)
+        ds: FloodEventDataset = self.dataloader.dataset
         self.use_physics_loss = use_global_loss or use_local_loss
         self.use_global_loss = use_global_loss
         self.global_mass_loss_percent = global_mass_loss_percent
         self.use_local_loss = use_local_loss
         self.local_mass_loss_percent = local_mass_loss_percent
-        self.delta_t = dataset.timestep_interval
+        self.delta_t = ds.timestep_interval
 
         if self.use_global_loss:
             self.global_loss_func = GlobalMassConservationLoss(
-                previous_timesteps=dataset.previous_timesteps,
-                normalizer=dataset.normalizer,
-                is_normalized=dataset.is_normalized,
+                previous_timesteps=ds.previous_timesteps,
+                normalizer=ds.normalizer,
+                is_normalized=ds.is_normalized,
                 delta_t=self.delta_t
             )
             self.global_loss_scaler = LossScaler(initial_scale=global_mass_loss_scale)
@@ -37,9 +37,9 @@ class PhysicsInformedTrainer(BaseTrainer):
 
         if self.use_local_loss:
             self.local_loss_func = LocalMassConservationLoss(
-                previous_timesteps=dataset.previous_timesteps,
-                normalizer=dataset.normalizer,
-                is_normalized=dataset.is_normalized,
+                previous_timesteps=ds.previous_timesteps,
+                normalizer=ds.normalizer,
+                is_normalized=ds.is_normalized,
                 delta_t=self.delta_t,
             )
             self.local_loss_scaler = LossScaler(initial_scale=local_mass_loss_scale)

@@ -10,7 +10,7 @@ from contextlib import redirect_stdout
 from datetime import datetime
 from optuna.visualization import plot_optimization_history, plot_slice, plot_pareto_front
 from torch.nn import MSELoss
-from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
+from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoregressiveTrainer
 from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import List, Optional, Tuple
 from utils import Logger, file_utils
@@ -37,7 +37,7 @@ def get_hyperparam_search_config() -> Tuple[bool, bool, bool]:
     use_edge_pred_loss = 'edge_pred_loss' in hyperparams_to_search
     return use_global_mass_loss, use_local_mass_loss, use_edge_pred_loss
 
-def save_cross_val_results(trainer: DualAutoRegressiveTrainer,
+def save_cross_val_results(trainer: DualAutoregressiveTrainer,
                            tester: DualAutoregressiveTester,
                            model_postfix: str):
     curr_date_str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -119,7 +119,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
                 curriculum_epochs = train_config['curriculum_epochs']
                 logger.log(f'Using autoregressive training with intervals of {num_timesteps} timessteps and curriculum learning for {curriculum_epochs} epochs')
 
-                trainer = DualAutoRegressiveTrainer(**trainer_params, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
+                trainer = DualAutoregressiveTrainer(**trainer_params, num_timesteps=num_timesteps, curriculum_epochs=curriculum_epochs)
             else:
                 trainer = DualRegressionTrainer(**trainer_params)
         else:

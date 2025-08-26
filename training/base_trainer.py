@@ -49,6 +49,10 @@ class BaseTrainer:
     def validate(self):
         raise NotImplementedError("Subclasses should implement this method if using early stopping.")
 
+    def _clip_gradients(self):
+        if self.gradient_clip_value is not None:
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=self.gradient_clip_value)
+
     def print_stats_summary(self):
         self.training_stats.print_stats_summary()
 

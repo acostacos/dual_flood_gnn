@@ -1,6 +1,9 @@
+import os
 import numpy as np
 
+from contextlib import redirect_stdout
 from data import FloodEventDataset
+from testing import EdgeAutoregressiveTester
 from torch import Tensor
 
 from .base_trainer import BaseTrainer
@@ -51,18 +54,18 @@ class EdgeRegressionTrainer(BaseTrainer):
 
         self.training_stats.end_train()
 
-    # def validate(self):
-    #     val_tester = EdgeAutoregressiveTester(
-    #         model=self.model,
-    #         dataset=self.val_dataset,
-    #         include_physics_loss=False,
-    #         device=self.device
-    #     )
-    #     with open(os.devnull, "w") as f, redirect_stdout(f):
-    #         val_tester.test()
+    def validate(self):
+        val_tester = EdgeAutoregressiveTester(
+            model=self.model,
+            dataset=self.val_dataset,
+            include_physics_loss=False,
+            device=self.device
+        )
+        with open(os.devnull, "w") as f, redirect_stdout(f):
+            val_tester.test()
 
-    #     edge_rmse = val_tester.get_avg_edge_rmse()
-    #     return edge_rmse
+        edge_rmse = val_tester.get_avg_edge_rmse()
+        return edge_rmse
 
     def _compute_edge_loss(self, edge_pred: Tensor, batch) -> Tensor:
         label = batch.y_edge

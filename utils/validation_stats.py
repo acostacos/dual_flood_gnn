@@ -71,7 +71,8 @@ class ValidationStats:
         self.val_end_time = time.time()
     
     def get_inference_time(self):
-        return (self.val_end_time - self.val_start_time) / len(self.pred_list)
+        num_timesteps = max(len(self.pred_list), len(self.edge_pred_list))
+        return (self.val_end_time - self.val_start_time) / num_timesteps
     
     def get_avg_rmse(self) -> float:
         return float(np.mean(self.rmse_list))

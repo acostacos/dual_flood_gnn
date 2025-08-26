@@ -7,13 +7,12 @@ import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import FloodEventDataset, InMemoryFloodEventDataset, \
-    AutoregressiveFloodEventDataset, InMemoryAutoregressiveFloodEventDataset
+from data import dataset_factory, FloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from torch.nn import MSELoss
-from training import NodeRegressionTrainer, DualRegressionTrainer, DualAutoRegressiveTrainer
-from typing import Dict, Literal, Optional, Tuple
+from training import trainer_factory
+from typing import Dict, Optional, Tuple
 from utils import Logger, file_utils, train_utils
 
 def parse_args() -> Namespace:
@@ -25,20 +24,6 @@ def parse_args() -> Namespace:
     parser.add_argument("--device", type=str, default=('cuda' if torch.cuda.is_available() else 'cpu'), help='Device to run on')
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
-
-def get_dataset_class(storage_mode: Literal['memory', 'disk'], autoregressive: bool = False) -> type:
-    if autoregressive:
-        if storage_mode == 'memory':
-            return InMemoryAutoregressiveFloodEventDataset
-        elif storage_mode == 'disk':
-            return AutoregressiveFloodEventDataset
-
-    if storage_mode == 'memory':
-        return InMemoryFloodEventDataset
-    elif storage_mode == 'disk':
-        return FloodEventDataset
-
-    raise ValueError(f'Dataset class is not defined.')
 
 def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEventDataset, Optional[FloodEventDataset]]:
     dataset_parameters = config['dataset_parameters']
@@ -68,49 +53,55 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     event_stats_file = train_dataset_parameters['event_stats_file']
     storage_mode = dataset_parameters['storage_mode']
 
-    autoregressive_train_params = config['training_parameters']['autoregressive']
-    if 'NodeEdgeGNN' in args.model and autoregressive_train_params.get('enabled', False):
-        # Split dataset into training and validation sets for autoregressive training
-        percent_validation = autoregressive_train_params['val_split_percent']
-        logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
-        train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
-
-        train_dataset_config = {
+    train_config = config['training_parameters']
+    early_stopping_patience = train_config['early_stopping_patience']
+    if early_stopping_patience is None:
+        # No validation dataset needed
+        dataset_config = {
             'mode': 'train',
-            'dataset_summary_file': train_summary_file,
-            'event_stats_file': f'train_split_{event_stats_file}',
-            'num_label_timesteps': autoregressive_train_params['total_num_timesteps'],
+            'dataset_summary_file': dataset_summary_file,
+            'event_stats_file': event_stats_file,
             **base_datset_config,
         }
-        logger.log(f'Using training dataset configuration: {train_dataset_config}')
-        train_dataset_class = get_dataset_class(storage_mode, autoregressive=True)
-        train_dataset = train_dataset_class(**train_dataset_config)
+        logger.log(f'Using dataset configuration: {dataset_config}')
 
-        val_dataset_config = {
-            'mode': 'test',
-            'dataset_summary_file': val_summary_file,
-            'event_stats_file': f'val_split_{event_stats_file}',
-            **base_datset_config,
-        }
-        logger.log(f'Using validation dataset configuration: {val_dataset_config}')
-        test_dataset_class = get_dataset_class(storage_mode, autoregressive=False)
-        val_dataset = test_dataset_class(**val_dataset_config)
+        dataset = dataset_factory(storage_mode, autoregressive=False, **dataset_config)
+        logger.log(f'Loaded train dataset with {len(dataset)} samples')
+        return dataset, None
 
-        logger.log(f'Split dataset into {len(train_dataset)} training samples and {len(val_dataset)} validation samples')
-        return train_dataset, val_dataset
+    percent_validation = train_config['val_split_percent']
+    assert percent_validation is not None, 'Validation split percentage must be specified if early stopping is used.'
 
-    dataset_config = {
+    # Split dataset into training and validation sets for autoregressive training
+    logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
+    train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
+
+    autoregressive_train_params = train_config['autoregressive']
+    autoregressive_enabled = autoregressive_train_params.get('enabled', False)
+    train_dataset_config = {
         'mode': 'train',
-        'dataset_summary_file': dataset_summary_file,
-        'event_stats_file': event_stats_file,
+        'dataset_summary_file': train_summary_file,
+        'event_stats_file': f'train_split_{event_stats_file}',
         **base_datset_config,
     }
-    logger.log(f'Using dataset configuration: {dataset_config}')
+    if autoregressive_enabled:
+        train_dataset_config.update({
+            'num_label_timesteps': autoregressive_train_params['total_num_timesteps'],
+        })
+    logger.log(f'Using training dataset configuration: {train_dataset_config}')
+    train_dataset = dataset_factory(storage_mode, autoregressive=autoregressive_enabled, **train_dataset_config)
 
-    dataset_class = get_dataset_class(storage_mode)
-    dataset = dataset_class(**dataset_config)
-    logger.log(f'Loaded dataset with {len(dataset)} samples')
-    return dataset, None
+    val_dataset_config = {
+        'mode': 'test',
+        'dataset_summary_file': val_summary_file,
+        'event_stats_file': f'val_split_{event_stats_file}',
+        **base_datset_config,
+    }
+    logger.log(f'Using validation dataset configuration: {val_dataset_config}')
+    val_dataset = dataset_factory(storage_mode, autoregressive=False, **val_dataset_config)
+
+    logger.log(f'Loaded train dataset with {len(train_dataset)} samples and validation dataset with {len(val_dataset)} samples')
+    return train_dataset, val_dataset
 
 def run_train(model: torch.nn.Module,
               model_name: str,
@@ -125,52 +116,71 @@ def run_train(model: torch.nn.Module,
         loss_func_parameters = config['loss_func_parameters']
 
         # Loss function and optimizer
-        num_epochs = train_config['num_epochs']
-        num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
-        batch_size = train_config['batch_size']
-        gradient_clip_value = train_config['gradient_clip_value']
-        log_train_config = {'num_epochs': num_epochs, 'num_epochs_dyn_loss': num_epochs_dyn_loss, 'batch_size': batch_size, 'learning_rate': train_config['learning_rate'], 'weight_decay': train_config['weight_decay'], 'gradient_clip_value': gradient_clip_value }
-        logger.log(f'Using training configuration: {log_train_config}')
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-        delta_t = train_dataset.timestep_interval
+        logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["weight_decay"]}')
 
         criterion = MSELoss()
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
-        logger.log(f"Using {loss_func_name} loss for nodes")
+        logger.log(f"Using {loss_func_name} loss")
 
-        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
-        use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
+        # Base Trainer parameters
+        early_stopping_patience = train_config['early_stopping_patience']
+        train_config_params = {
+            'num_epochs': train_config['num_epochs'],
+            'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
+            'batch_size': train_config['batch_size'],
+            'gradient_clip_value': train_config['gradient_clip_value'],
+            'early_stopping_patience': early_stopping_patience,
+        }
+        logger.log(f'Using training configuration: {train_config_params}')
         trainer_params = {
             'model': model,
+            'dataset': train_dataset,
+            'val_dataset': val_dataset,
             'optimizer': optimizer,
             'loss_func': criterion,
-            'use_global_loss': use_global_mass_loss,
-            'use_local_loss': use_local_mass_loss,
-            'delta_t': delta_t,
-            'batch_size': batch_size,
-            'num_epochs': num_epochs,
-            'num_epochs_dyn_loss': num_epochs_dyn_loss,
-            'gradient_clip_value': gradient_clip_value,
             'logger': logger,
             'device': device,
+            **train_config_params,
         }
-        if use_global_mass_loss:
+
+        # Physics-informed training parameters
+        if model_name not in ['EdgeGNNAttn']:
+            use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
             global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
             global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
-            logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
-            trainer_params.update({
-                'global_mass_loss_scale': global_mass_loss_scale,
-                'global_mass_loss_percent': global_mass_loss_percent,
-            })
-        if use_local_mass_loss:
+            if use_global_mass_loss:
+                logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
+
+            use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
             local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
             local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
-            logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
+            if use_local_mass_loss:
+                logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
+
             trainer_params.update({
+                'use_global_loss': use_global_mass_loss,
+                'global_mass_loss_scale': global_mass_loss_scale,
+                'global_mass_loss_percent': global_mass_loss_percent,
+                'use_local_loss': use_local_mass_loss,
                 'local_mass_loss_scale': local_mass_loss_scale,
                 'local_mass_loss_percent': local_mass_loss_percent,
             })
 
+        # Autoregressive training parameters
+        autoregressive_train_config = train_config['autoregressive']
+        autoregressive_enabled = autoregressive_train_config.get('enabled', False)
+        if autoregressive_enabled:
+            init_num_timesteps = autoregressive_train_config['init_num_timesteps']
+            total_num_timesteps = autoregressive_train_config['total_num_timesteps']
+            logger.log(f'Using autoregressive training for {init_num_timesteps}/{total_num_timesteps} timesteps and curriculum learning with patience {early_stopping_patience}')
+
+            trainer_params.update({
+                'init_num_timesteps': init_num_timesteps,
+                'total_num_timesteps': total_num_timesteps,
+            })
+
+        # Node/Edge prediction parameters
         if 'NodeEdgeGNN' in model_name:
             edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
             edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
@@ -180,28 +190,7 @@ def run_train(model: torch.nn.Module,
                 'edge_pred_loss_percent': edge_pred_loss_percent,
             })
 
-            autoregressive_train_config = train_config['autoregressive']
-            if autoregressive_train_config.get('enabled', False):
-                assert val_dataset is not None, "Validation dataset is required for autoregressive training"
-                init_num_timesteps = autoregressive_train_config['init_num_timesteps']
-                total_num_timesteps = autoregressive_train_config['total_num_timesteps']
-                early_stopping_patience = autoregressive_train_config['early_stopping_patience']
-                logger.log(f'Using autoregressive training for {total_num_timesteps} timessteps and curriculum learning')
-                trainer_params.update({
-                    'init_num_timesteps': init_num_timesteps,
-                    'total_num_timesteps': total_num_timesteps,
-                    'early_stopping_patience': early_stopping_patience,
-                    'train_dataset': train_dataset,
-                    'val_dataset': val_dataset,
-                })
-
-                trainer = DualAutoRegressiveTrainer(**trainer_params)
-            else:
-                trainer_params.update({ 'dataset': train_dataset })
-                trainer = DualRegressionTrainer(**trainer_params)
-        else:
-            trainer_params.update({ 'dataset': train_dataset })
-            trainer = NodeRegressionTrainer(**trainer_params)
+        trainer = trainer_factory(model_name, autoregressive_enabled, **trainer_params)
         trainer.train()
 
         trainer.print_stats_summary()
@@ -263,6 +252,8 @@ def main():
         model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')
         logger.log(f'Using model configuration: {model_config}')
+        num_train_params = model.get_model_size()
+        logger.log(f'Number of trainable model parameters: {num_train_params}')
 
         checkpoint_path = train_config.get('checkpoint_path', None)
         if checkpoint_path is not None:
@@ -314,8 +305,7 @@ def main():
         gc.collect()
 
         storage_mode = dataset_parameters['storage_mode']
-        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
-        dataset = dataset_class(**test_dataset_config)
+        dataset = dataset_factory(storage_mode, autoregressive=False, **test_dataset_config)
         logger.log(f'Loaded test dataset with {len(dataset)} samples')
 
         logger.log(f'Using model checkpoint for {args.model}: {model_path}')

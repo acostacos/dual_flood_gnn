@@ -40,15 +40,14 @@ training_parameters:
   batch_size           : 8                                  # Batch size
   learning_rate        : 0.00005                              # Learning rate
   weight_decay         : 0                                   # Weight decay
-  gradient_clip_value : 1.0                                 # Gradient clipping value; If None, no gradient clipping is applied
+  gradient_clip_value : 0.5                                  # Gradient clipping value; If None, no gradient clipping is applied
+  early_stopping_patience: 15                                # Early stopping patience for autoregressive training
+  val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
 
   autoregressive:
     enabled            : True                                # Use autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 1                                   # Total number of timesteps for autoregressive training
-    early_stopping_patience: 15                              # Early stopping patience for autoregressive training
-    val_split_percent  : 0.1                                 # Percentage of validation split for autoregressive training
-    # curriculum_epochs  : 10                                  # Number of epochs before increasing the autoregressive timesteps in curriculum learning
 
 loss_func_parameters:
   edge_pred_loss_scale: 2.5e-1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling

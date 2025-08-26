@@ -7,19 +7,27 @@ from .node_edge_gnn import NodeEdgeGNN
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
 from .node_gnn_attn import NodeGNNAttn
 
-def model_factory(model_name: str, **kwargs) -> Module:
+def model_factory(model_name: str, *args, **kwargs) -> Module:
     if model_name == 'EdgeGNNAttn':
-        return EdgeGNNAttn(**kwargs)
+        return EdgeGNNAttn(*args, **kwargs)
     if model_name == 'GCN':
-        return GCN(**kwargs)
+        return GCN(*args, **kwargs)
     if model_name == 'GAT':
-        return GAT(**kwargs)
+        return GAT(*args, **kwargs)
     if model_name == 'NodeEdgeGNN':
-        return NodeEdgeGNN(**kwargs)
+        return NodeEdgeGNN(*args, **kwargs)
     if model_name == 'NodeEdgeGNNAttn':
-        return NodeEdgeGNNAttn(**kwargs)
+        return NodeEdgeGNNAttn(*args, **kwargs)
     if model_name == 'NodeGNNAttn':
-        return NodeGNNAttn(**kwargs)
+        return NodeGNNAttn(*args, **kwargs)
     raise ValueError(f'Invalid model name: {model_name}')
 
-__all__ = ['GAT', 'GCN', 'model_factory']
+__all__ = [
+    'EdgeGNNAttn',
+    'GAT',
+    'GCN',
+    'NodeEdgeGNN',
+    'NodeEdgeGNNAttn',
+    'NodeGNNAttn',
+    'model_factory',
+]

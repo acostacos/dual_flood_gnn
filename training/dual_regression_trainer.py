@@ -1,21 +1,19 @@
-import numpy as np
+import os
 
-from data import FloodEventDataset
+from contextlib import redirect_stdout
 from torch import Tensor
+from testing import DualAutoregressiveTester
 from utils import LossScaler
 
-from .base_trainer import BaseTrainer
+from .node_regression_trainer import NodeRegressionTrainer
+from .edge_regression_trainer import EdgeRegressionTrainer
 
-class DualRegressionTrainer(BaseTrainer):
+class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
     def __init__(self,
                  edge_pred_loss_scale: float = 1.0,
                  edge_pred_loss_percent: float = 0.5,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        ds: FloodEventDataset = self.dataloader.dataset
-        self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
-        self.inflow_edges_mask = ds.boundary_condition.inflow_edges_mask
 
         self.edge_pred_loss_percent = edge_pred_loss_percent
 
@@ -38,13 +36,11 @@ class DualRegressionTrainer(BaseTrainer):
                 pred, edge_pred = self.model(batch)
                 pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
 
-                label = batch.y
-                pred_loss = self.loss_func(pred, label)
+                pred_loss = self._compute_node_loss(pred, batch)
                 pred_loss =  pred_loss * self.pred_loss_percent
                 running_pred_loss += pred_loss.item()
 
-                edge_label = batch.y_edge
-                edge_pred_loss = self.loss_func(edge_pred, edge_label)
+                edge_pred_loss = self._compute_edge_loss(edge_pred, batch)
                 edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
@@ -63,8 +59,8 @@ class DualRegressionTrainer(BaseTrainer):
             edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
 
             logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
-            logging_str += f'\tLoss: {epoch_loss:.4e}\n'
-            logging_str += f'\tPrediction Loss: {pred_epoch_loss:.4e}\n'
+            logging_str += f'\tTotal Loss: {epoch_loss:.4e}\n'
+            logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}\n'
             logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
             self.training_stats.log(logging_str)
 
@@ -79,17 +75,38 @@ class DualRegressionTrainer(BaseTrainer):
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)
 
+            if hasattr(self, 'early_stopping'):
+                val_node_rmse, val_edge_rmse = self.validate()
+                self.training_stats.log(f'\n\tValidation Node RMSE: {val_node_rmse:.4e}')
+                self.training_stats.log(f'\tValidation Edge RMSE: {val_edge_rmse:.4e}')
+                self.training_stats.add_val_loss_component('val_node_rmse', val_node_rmse)
+                self.training_stats.add_val_loss_component('val_edge_rmse', val_edge_rmse)
+
+                if self.early_stopping((val_node_rmse, val_edge_rmse), self.model):
+                    self.training_stats.log(f'Early stopping triggered at epoch {epoch + 1}.')
+                    break
+
         self.training_stats.end_train()
         self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)
         self._add_scaled_physics_loss_history()
 
-    def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch) -> Tensor:
-        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
-        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask]
+    def validate(self):
+        val_tester = DualAutoregressiveTester(
+            model=self.model,
+            dataset=self.val_dataset,
+            include_physics_loss=False,
+            device=self.device
+        )
+        with open(os.devnull, "w") as f, redirect_stdout(f):
+            val_tester.test()
 
-        # Only override inflow edges as outflow edges are predicted by the model
-        batch_inflow_edges_mask = np.tile(self.inflow_edges_mask, batch.num_graphs)
-        edge_pred[batch_inflow_edges_mask] = batch.y_edge[batch_inflow_edges_mask]
+        node_rmse = val_tester.get_avg_node_rmse()
+        edge_rmse = val_tester.get_avg_edge_rmse()
+        return node_rmse, edge_rmse
+
+    def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch) -> Tensor:
+        pred = NodeRegressionTrainer._override_pred_bc(self, pred, batch)
+        edge_pred = EdgeRegressionTrainer._override_pred_bc(self, edge_pred, batch)
         return pred, edge_pred
 
     def _scale_edge_pred_loss(self, epoch: int, pred_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:

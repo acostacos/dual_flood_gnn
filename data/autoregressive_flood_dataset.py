@@ -9,7 +9,7 @@ from .flood_event_dataset import FloodEventDataset
 
 from .hecras_data_retrieval import get_event_timesteps, get_water_volume
 
-class AutoregressiveFloodEventDataset(FloodEventDataset):
+class AutoregressiveFloodDataset(FloodEventDataset):
     def __init__(self,
                  num_label_timesteps: int = 1,
                  *args, **kwargs):
@@ -25,7 +25,7 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
         self.event_start_idx = []
 
         event_rollout_trim_start = self.previous_timesteps  # First timestep starts at self.previous_timesteps
-        event_rollout_trim__end = self.num_label_timesteps # Trim the last timesteps depending on the number of label timesteps
+        event_rollout_trim_end = self.num_label_timesteps # Trim the last timesteps depending on the number of label timesteps
         current_total_ts = 0
         all_event_timesteps = []
         for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
@@ -47,7 +47,7 @@ class AutoregressiveFloodEventDataset(FloodEventDataset):
             num_timesteps = len(timesteps)
             self._event_num_timesteps.append(num_timesteps)
 
-            event_total_rollout_ts = num_timesteps - event_rollout_trim_start - event_rollout_trim__end
+            event_total_rollout_ts = num_timesteps - event_rollout_trim_start - event_rollout_trim_end
             assert event_total_rollout_ts > 0, f'Event {event_idx} has too few timesteps.'
             self.event_start_idx.append(current_total_ts)
 

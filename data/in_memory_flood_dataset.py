@@ -9,9 +9,9 @@ from tqdm import tqdm
 from torch_geometric.data import Data
 from typing import List
 
-from .auto_flood_event_dataset import AutoregressiveFloodEventDataset
+from .flood_event_dataset import FloodEventDataset
 
-class InMemoryAutoregressiveFloodEventDataset(AutoregressiveFloodEventDataset):
+class InMemoryFloodDataset(FloodEventDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_list = self.load_to_memory()

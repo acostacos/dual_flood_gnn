@@ -1,28 +1,28 @@
 from typing import Literal
 
-from .auto_flood_event_dataset import AutoregressiveFloodEventDataset
+from .autoregressive_flood_dataset import AutoregressiveFloodDataset
 from .flood_event_dataset import FloodEventDataset
-from .in_mem_auto_flood_event_dataset import InMemoryAutoregressiveFloodEventDataset
-from .in_memory_flood_event_dataset import InMemoryFloodEventDataset
+from .in_memory_autoregressive_flood_dataset import InMemoryAutoregressiveFloodDataset
+from .in_memory_flood_dataset import InMemoryFloodDataset
 
 def dataset_factory(storage_mode: Literal['memory', 'disk'], autoregressive: bool, *args, **kwargs) -> FloodEventDataset:
     if autoregressive:
         if storage_mode == 'memory':
-            return InMemoryAutoregressiveFloodEventDataset(*args, **kwargs)
+            return InMemoryAutoregressiveFloodDataset(*args, **kwargs)
         elif storage_mode == 'disk':
-            return AutoregressiveFloodEventDataset(*args, **kwargs)
+            return AutoregressiveFloodDataset(*args, **kwargs)
 
     if storage_mode == 'memory':
-        return InMemoryFloodEventDataset(*args, **kwargs)
+        return InMemoryFloodDataset(*args, **kwargs)
     elif storage_mode == 'disk':
         return FloodEventDataset(*args, **kwargs)
 
     raise ValueError(f'Dataset class is not defined.')
 
 __all__ = [
-    'AutoregressiveFloodEventDataset',
+    'AutoregressiveFloodDataset',
     'FloodEventDataset',
-    'InMemoryAutoregressiveFloodEventDataset',
-    'InMemoryFloodEventDataset',
+    'InMemoryAutoregressiveFloodDataset',
+    'InMemoryFloodDataset',
     'dataset_factory',
 ]

@@ -5,7 +5,7 @@ import torch
 
 from contextlib import redirect_stdout
 from torch import Tensor
-from data import AutoregressiveFloodEventDataset, FloodEventDataset
+from data import AutoregressiveFloodDataset, FloodEventDataset
 from testing import DualAutoregressiveTester
 from typing import Tuple
 from utils import EarlyStopping
@@ -14,14 +14,14 @@ from .dual_regression_trainer import DualRegressionTrainer
 
 class DualAutoRegressiveTrainer(DualRegressionTrainer):
     def __init__(self,
-                 train_dataset: AutoregressiveFloodEventDataset,
+                 train_dataset: AutoregressiveFloodDataset,
                  val_dataset: FloodEventDataset,
                  init_num_timesteps: int = 1,
                  total_num_timesteps: int = 1,
                  early_stopping_patience: int = 15,
-                 curriculum_epochs: int = 10, # TODO: Remove this if not needed
+                #  curriculum_epochs: int = 10,
                  *args, **kwargs):
-        assert isinstance(train_dataset, AutoregressiveFloodEventDataset), 'train_dataset must be an instance of AutoregressiveFloodEventDataset.'
+        assert isinstance(train_dataset, AutoregressiveFloodDataset), 'train_dataset must be an instance of AutoregressiveFloodEventDataset.'
         assert val_dataset is not None, 'val_dataset is required for autoregressive training.'
         assert init_num_timesteps <= total_num_timesteps, 'Initial number of timesteps must be less than or equal to total number of timesteps.'
 
@@ -34,7 +34,6 @@ class DualAutoRegressiveTrainer(DualRegressionTrainer):
         self.init_num_timesteps = init_num_timesteps
         self.total_num_timesteps = total_num_timesteps
         self.patience = early_stopping_patience
-        self.curriculum_epochs = curriculum_epochs
 
         # Get non-boundary nodes/edges and threshold for metric computation
         self.non_boundary_nodes_mask = ~train_dataset.boundary_condition.boundary_nodes_mask

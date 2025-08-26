@@ -5,7 +5,7 @@ import torch
 
 from contextlib import redirect_stdout
 from torch import Tensor
-from data import AutoregressiveFloodEventDataset, FloodEventDataset
+from data import AutoregressiveFloodDataset, FloodEventDataset
 from testing import NodeAutoregressiveTester
 from typing import Tuple
 from utils import EarlyStopping
@@ -14,13 +14,13 @@ from .node_regression_trainer import NodeRegressionTrainer
 
 class NodeAutoRegressiveTrainer(NodeRegressionTrainer):
     def __init__(self,
-                 dataset: AutoregressiveFloodEventDataset,
+                 dataset: AutoregressiveFloodDataset,
                  init_num_timesteps: int = 1,
                  total_num_timesteps: int = 1,
                  early_stopping_patience: int = 15,
                 #  curriculum_epochs: int = 10,
                  *args, **kwargs):
-        assert isinstance(dataset, AutoregressiveFloodEventDataset), 'dataset (for training) must be an instance of AutoregressiveFloodEventDataset.'
+        assert isinstance(dataset, AutoregressiveFloodDataset), 'dataset (for training) must be an instance of AutoregressiveFloodEventDataset.'
         assert init_num_timesteps <= total_num_timesteps, 'Initial number of timesteps must be less than or equal to total number of timesteps.'
 
         super().__init__(dataset=dataset, *args, **kwargs)

@@ -5,7 +5,7 @@ import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from data import FloodEventDataset, InMemoryFloodEventDataset
+from data import FloodEventDataset, InMemoryFloodDataset
 from models import model_factory
 from testing import DualAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Optional
@@ -107,7 +107,7 @@ def main():
         logger.log(f'Using dataset configuration: {dataset_config}')
 
         storage_mode = dataset_parameters['storage_mode']
-        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
+        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodDataset
         dataset = dataset_class(
             **dataset_config,
             debug=args.debug,

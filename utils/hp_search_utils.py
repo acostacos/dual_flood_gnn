@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import shutil
 
-from data import FloodEventDataset, InMemoryFloodEventDataset
+from data import FloodEventDataset, InMemoryFloodDataset
 from models import model_factory
 from models.base_model import BaseModel
 from typing import Dict, List, Tuple
@@ -133,7 +133,7 @@ def load_datasets(
         'with_local_mass_loss': False,
     }
 
-    dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodEventDataset
+    dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodDataset
 
     train_dataset = dataset_class(**train_dataset_config)
     dataset_cache[f'train_{group_id}'] = train_dataset

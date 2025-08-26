@@ -5,9 +5,9 @@ import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from data import FloodEventDataset, InMemoryFloodDataset
+from data import dataset_factory, FloodEventDataset
 from models import model_factory
-from testing import DualAutoregressiveTester, NodeAutoregressiveTester
+from testing import DualAutoregressiveTester, EdgeAutoregressiveTester, NodeAutoregressiveTester
 from typing import Dict, Optional
 from utils import Logger, file_utils
 
@@ -58,6 +58,8 @@ def run_test(model: torch.nn.Module,
     is_dual_model = 'NodeEdgeGNN' in model.__class__.__name__
     if is_dual_model:
         tester = DualAutoregressiveTester(**tester_params)
+    elif model.__class__.__name__ in ['EdgeGNNAttn']:
+        tester = EdgeAutoregressiveTester(**tester_params)
     else:
         tester = NodeAutoregressiveTester(**tester_params)
     tester.test()
@@ -90,7 +92,7 @@ def main():
 
         # Dataset
         dataset_parameters = config['dataset_parameters']
-        dataset_config = {
+        base_datset_config = {
             'root_dir': dataset_parameters['root_dir'],
             'nodes_shp_file': dataset_parameters['nodes_shp_file'],
             'edges_shp_file': dataset_parameters['edges_shp_file'],
@@ -103,17 +105,17 @@ def main():
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
         }
-        dataset_config = get_test_dataset_config(dataset_config, config)
-        logger.log(f'Using dataset configuration: {dataset_config}')
+        base_datset_config = get_test_dataset_config(base_datset_config, config)
+        logger.log(f'Using dataset configuration: {base_datset_config}')
+        dataset_config = {
+            **base_datset_config,
+            'debug': args.debug,
+            'logger': logger,
+            'force_reload': True,
+        }
 
         storage_mode = dataset_parameters['storage_mode']
-        dataset_class = FloodEventDataset if storage_mode == 'disk' else InMemoryFloodDataset
-        dataset = dataset_class(
-            **dataset_config,
-            debug=args.debug,
-            logger=logger,
-            force_reload=True,
-        )
+        dataset = dataset_factory(storage_mode=storage_mode, autoregressive=False, **dataset_config)
         logger.log(f'Loaded dataset with {len(dataset)} samples')
 
         # Load model

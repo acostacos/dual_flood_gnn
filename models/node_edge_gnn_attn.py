@@ -2,9 +2,8 @@ import torch
 import torch.nn.functional as F
 
 from torch import Tensor
-from torch.nn import Identity, Linear, Parameter, Module
+from torch.nn import Identity, Linear, Module
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
-from torch_geometric.nn.inits import zeros
 from torch_geometric.utils import softmax
 from typing import List, Optional, Tuple
 from utils.model_utils import make_mlp
@@ -26,7 +25,6 @@ class NodeEdgeGNNAttn(BaseModel):
                  dropout: float = 0.0,
                  negative_slope: float = 0.2,
                  attn_mlp_layers: float = 2,
-                 attn_bias: bool = True,
 
                  # Encoder Decoder Parameters
                  encoder_layers: int = 0,
@@ -57,10 +55,10 @@ class NodeEdgeGNNAttn(BaseModel):
         if self.with_encoder:
             self.node_encoder = make_mlp(input_size=input_features, output_size=hidden_features,
                                                 hidden_size=hidden_features, num_layers=encoder_layers,
-                                            activation=encoder_activation, device=self.device)
+                                            activation=encoder_activation, device=self.device, bias=False)
             self.edge_encoder = make_mlp(input_size=input_edge_features, output_size=hidden_features,
                                             hidden_size=hidden_features, num_layers=encoder_layers,
-                                            activation=encoder_activation, device=self.device)
+                                            activation=encoder_activation, device=self.device, bias=False)
 
         # Processor
         conv_kwargs = {
@@ -72,7 +70,6 @@ class NodeEdgeGNNAttn(BaseModel):
             'dropout': dropout,
             'negative_slope': negative_slope,
             'mlp_layers': attn_mlp_layers,
-            'bias': attn_bias,
             'gnn_layers': num_layers,
             'activation': activation,
         }
@@ -83,10 +80,10 @@ class NodeEdgeGNNAttn(BaseModel):
         if self.with_decoder:
             self.node_decoder = make_mlp(input_size=hidden_features, output_size=output_features,
                                         hidden_size=hidden_features, num_layers=encoder_layers,
-                                        activation=decoder_activation, device=self.device)
+                                        activation=decoder_activation, device=self.device, bias=False)
             self.edge_decoder = make_mlp(input_size=hidden_features, output_size=output_edge_features,
                                         hidden_size=hidden_features, num_layers=encoder_layers,
-                                        activation=decoder_activation, device=self.device)
+                                        activation=decoder_activation, device=self.device, bias=False)
 
         if residual:
             self.residual = Identity()
@@ -145,7 +142,6 @@ class NodeEdgeAttnConv(MessagePassing):
                  dropout: float = 0.0,
                  negative_slope: float = 0.2,
                  mlp_layers: float = 2,
-                 bias: bool = True,
                  activation: str = None):
         super().__init__(aggr='sum', node_dim=0)
         self.inspector.inspect_signature(self.attention)
@@ -154,7 +150,6 @@ class NodeEdgeAttnConv(MessagePassing):
 
         self.dropout = dropout
         self.negative_slope = negative_slope
-        self.has_bias = bias
 
         self.lin = Linear(in_features, out_features, bias=False) 
         self.edge_lin = Linear(edge_in_features, edge_out_features, bias=False)
@@ -165,23 +160,19 @@ class NodeEdgeAttnConv(MessagePassing):
         msg_hidden_size = msg_input_size * 2
         self.msg_mlp = make_mlp(input_size=msg_input_size, output_size=edge_out_features,
                             hidden_size=msg_hidden_size, num_layers=mlp_layers,
-                            activation=activation)
+                            activation=activation, bias=False)
 
         node_update_input_size = (edge_out_features)
         node_update_hidden_size = node_update_input_size * 2
         self.node_update_mlp = make_mlp(input_size=node_update_input_size, output_size=out_features,
                                  hidden_size=node_update_hidden_size, num_layers=mlp_layers,
-                                 activation=activation)
+                                 activation=activation, bias=False)
 
         edge_update_input_size = (edge_out_features)
         edge_update_hidden_size = edge_update_input_size * 2
         self.edge_update_mlp = make_mlp(input_size=edge_update_input_size, output_size=edge_out_features,
                                  hidden_size=edge_update_hidden_size, num_layers=mlp_layers,
-                                 activation=activation)
-
-        if self.has_bias:
-            self.bias = Parameter(torch.empty(out_features))
-            self.bias_edge = Parameter(torch.empty(edge_out_features))
+                                 activation=activation, bias=False)
 
         self.reset_parameters()
 
@@ -205,10 +196,6 @@ class NodeEdgeAttnConv(MessagePassing):
             if hasattr(layer, 'reset_parameters'):
                 layer.reset_parameters()
 
-        if self.has_bias:
-            zeros(self.bias)
-            zeros(self.bias_edge)
-
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor):
         x = self.lin(x)
         edge_attr = self.edge_lin(edge_attr)
@@ -218,10 +205,6 @@ class NodeEdgeAttnConv(MessagePassing):
         out, msg = self.propagate(edge_index, x=x, alpha=alpha, edge_attr=edge_attr)
 
         edge_out = self.edge_updater(edge_index, out=out, msg=msg)
-
-        if self.has_bias:
-            out = out + self.bias
-            edge_out = edge_out + self.bias_edge
 
         return out, edge_out
 

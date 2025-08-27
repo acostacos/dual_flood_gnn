@@ -105,42 +105,39 @@ model_parameters:
     decoder_activation: 'prelu'
 
   NodeEdgeGNNAttn:
-    hidden_features: 32
+    hidden_features: 8
     num_layers: 2
     activation: 'prelu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
     attn_mlp_layers: 2
-    attn_bias: True
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2
     decoder_activation: 'prelu'
 
   NodeGNNAttn:
-    hidden_features: 32
+    hidden_features: 8
     num_layers: 2
     activation: 'prelu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
     attn_mlp_layers: 2
-    attn_bias: True
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2
     decoder_activation: 'prelu'
 
   EdgeGNNAttn:
-    hidden_features: 32
+    hidden_features: 8
     num_layers: 2
     activation: 'prelu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
     attn_mlp_layers: 2
-    attn_bias: True
     encoder_layers: 2
     encoder_activation: 'prelu'
     decoder_layers: 2

@@ -25,7 +25,8 @@ class EdgeRegressionTrainer(BaseTrainer):
                 self.optimizer.zero_grad()
 
                 batch = batch.to(self.device)
-                edge_pred = self.model(batch)
+                x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+                edge_pred = self.model(x, edge_index, edge_attr)
                 edge_pred = self._override_pred_bc(edge_pred, batch)
 
                 loss = self._compute_edge_loss(edge_pred, batch)

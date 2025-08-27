@@ -64,6 +64,74 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
     # =========== get() methods ===========
 
+    def _get_node_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+        '''For edge autoregressive training'''
+        ts_data = []
+        end_ts = timestep_idx + self.num_label_timesteps
+        # Get node features for each timestep in the label horizon
+        for ts_idx in range(timestep_idx, end_ts):
+            if ts_idx >= dynamic_features.shape[0]:
+                raise IndexError(f'Timestep index {ts_idx} out of range for dynamic features with shape {dynamic_features.shape}.')
+
+            ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_NODE_FEATURES, ts_idx)
+
+            # Mask node boundary conditions = only keep outflow water volume
+            num_ts, _, _ = ts_dynamic_features.shape
+            outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
+            boundary_nodes = self.boundary_condition.get_new_boundary_nodes()
+            target_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
+
+            masked_boundary_dynamic_nodes = self._get_empty_feature_tensor(features=self.DYNAMIC_NODE_FEATURES,
+                                                                        other_dims=(num_ts, len(boundary_nodes)),
+                                                                        dtype=ts_dynamic_features.dtype)
+
+            outflow_dynamic_nodes = ts_dynamic_features[:, outflow_boundary_nodes, :].copy()
+            nodes_overwrite_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
+            masked_boundary_dynamic_nodes[:, nodes_overwrite_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
+
+            boundary_nodes_mask = self.boundary_condition.boundary_nodes_mask
+            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_nodes_mask, :], masked_boundary_dynamic_nodes], axis=1)
+            ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
+            ts_data.append(ts_features)
+
+        ts_data = torch.stack(ts_data, dim=-1)  # (num_nodes, num_features, num_label_timesteps)
+        return ts_data
+
+    def _get_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, edge_index: ndarray, timestep_idx: int) -> Tensor:
+        '''For node autoregressive training'''
+        ts_data = []
+        end_ts = timestep_idx + self.num_label_timesteps
+        # Get edge features for each timestep in the label horizon
+        for ts_idx in range(timestep_idx, end_ts):
+            if ts_idx >= dynamic_features.shape[0]:
+                raise IndexError(f'Timestep index {ts_idx} out of range for dynamic features with shape {dynamic_features.shape}.')
+
+            ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_EDGE_FEATURES, ts_idx)
+
+            # Mask edge boundary conditions = only keep inflow water flow
+            num_ts, _, _ = ts_dynamic_features.shape
+            inflow_edges_mask = self.boundary_condition.inflow_edges_mask
+            inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
+            target_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
+
+            boundary_edges_mask = self.boundary_condition.boundary_edges_mask
+            num_boundary_edges = boundary_edges_mask.sum()
+            masked_boundary_dynamic_edges = self._get_empty_feature_tensor(features=self.DYNAMIC_EDGE_FEATURES,
+                                                                        other_dims=(num_ts, num_boundary_edges),
+                                                                        dtype=ts_dynamic_features.dtype)
+
+            inflow_dynamic_edges = ts_dynamic_features[:, inflow_edges_mask, :].copy()
+            edges_overwrite_mask = np.any(np.isin(edge_index[:, boundary_edges_mask], inflow_boundary_nodes), axis=0)
+            masked_boundary_dynamic_edges[:, edges_overwrite_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
+
+            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_edges_mask, :], masked_boundary_dynamic_edges], axis=1)
+
+            ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
+            ts_data.append(ts_features)
+
+        ts_data = torch.stack(ts_data, dim=-1)  # (num_edges, num_features, num_label_timesteps)
+        return ts_data
+
     def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
         start_label_idx = timestep_idx + 1  # Labels are at the next timestep
         end_label_idx = start_label_idx + self.num_label_timesteps

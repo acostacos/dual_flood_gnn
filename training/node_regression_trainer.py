@@ -27,7 +27,8 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                 self.optimizer.zero_grad()
 
                 batch = batch.to(self.device)
-                pred = self.model(batch)
+                x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+                pred = self.model(x, edge_index, edge_attr)
                 pred = self._override_pred_bc(pred, batch)
 
                 loss = self._compute_node_loss(pred, batch)

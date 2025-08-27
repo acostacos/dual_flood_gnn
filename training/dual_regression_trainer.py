@@ -33,7 +33,8 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                 self.optimizer.zero_grad()
 
                 batch = batch.to(self.device)
-                pred, edge_pred = self.model(batch)
+                x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+                pred, edge_pred = self.model(x, edge_index, edge_attr)
                 pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
 
                 pred_loss = self._compute_node_loss(pred, batch)

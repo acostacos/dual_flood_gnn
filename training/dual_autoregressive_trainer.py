@@ -92,23 +92,19 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             self.optimizer.zero_grad()
 
             batch = batch.to(self.device)
+            x, edge_attr, edge_index = batch.x[:, :, 0], batch.edge_attr[:, :, 0], batch.edge_index
 
             total_batch_loss = 0.0
-            sliding_window = batch.x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
-            edge_sliding_window = batch.edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
+            sliding_window = x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
+            edge_sliding_window = edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             for i in range(current_num_timesteps):
+                x, edge_attr = batch.x[:, :, i], batch.edge_attr[:, :, i]
+
                 # Override graph data with sliding window
-                # Only override non-boundary nodes to keep boundary conditions intact
-                batch_non_boundary_nodes_mask = np.tile(self.non_boundary_nodes_mask, batch.num_graphs)
-                batch.x[batch_non_boundary_nodes_mask, self.start_node_target_idx:self.end_node_target_idx] \
-                    = sliding_window[batch_non_boundary_nodes_mask]
+                x = torch.concat([x[:, :self.start_node_target_idx], sliding_window, x[:, self.end_node_target_idx:]], dim=1)
+                edge_attr = torch.concat([edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, edge_attr[:, self.end_edge_target_idx:]], dim=1)
 
-                # Only override non-boundary edges to keep boundary conditions intact
-                batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
-                batch.edge_attr[batch_non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] \
-                    = edge_sliding_window[batch_non_boundary_edges_mask]
-
-                pred, edge_pred = self.model(batch)
+                pred, edge_pred = self.model(x, edge_index, edge_attr)
                 pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch, i)
 
                 pred_loss = self._compute_node_loss(pred, batch, i)

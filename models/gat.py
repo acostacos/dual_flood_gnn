@@ -1,7 +1,7 @@
 from torch import Tensor
 from torch.nn import Identity, Module
 from torch_geometric.nn import GATConv, Sequential as PygSequential
-from torch_geometric.data import Data
+from typing import Optional
 from utils.model_utils import make_mlp, get_activation_func
 
 from .base_model import BaseModel
@@ -120,11 +120,8 @@ class GAT(BaseModel):
         ) # Output Layer
         return PygSequential(input_schema, layers)
 
-    def forward(self, graph: Data) -> Tensor:
-        x, edge_index = graph.x.clone(), graph.edge_index.clone()
-        if self.use_edge_features:
-            edge_attr = graph.edge_attr.clone()
-        x0 = x
+    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Optional[Tensor] = None) -> Tensor:
+        x0 = x.clone()
 
         if self.with_encoder:
             x = self.node_encoder(x)

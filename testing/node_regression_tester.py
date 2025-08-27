@@ -43,7 +43,8 @@ class NodeRegressionTester(BaseTester):
             for graph in dataloader:
                 graph = graph.to(self.device)
 
-                pred = self.model(graph)
+                x, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
+                pred = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
                 pred[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]

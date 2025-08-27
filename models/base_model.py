@@ -1,3 +1,4 @@
+from torch import Tensor
 from torch.nn import Module
 
 class BaseModel(Module):
@@ -21,6 +22,9 @@ class BaseModel(Module):
         self.dynamic_edge_features = dynamic_edge_features
         self.input_edge_features = self.static_edge_features + (self.dynamic_edge_features * (self.previous_timesteps+1))
         self.output_edge_features = 1 # Velocity
-    
+
+    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
+        raise NotImplementedError("Forward method not implemented!")
+
     def get_model_size(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

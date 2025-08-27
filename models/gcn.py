@@ -1,6 +1,6 @@
 from torch import Tensor
 from torch.nn import Identity
-from torch_geometric.data import Data
+from typing import Optional
 from utils.model_utils import make_mlp, make_gnn 
 
 from .base_model import BaseModel
@@ -56,9 +56,8 @@ class GCN(BaseModel):
         if residual:
             self.residual = Identity()
 
-    def forward(self, graph: Data) -> Tensor:
-        x, edge_index = graph.x.clone(), graph.edge_index.clone()
-        x0 = x
+    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Optional[Tensor] = None) -> Tensor:
+        x0 = x.clone()
 
         if self.with_encoder:
             x = self.node_encoder(x)

@@ -1,7 +1,6 @@
 import torch
 from torch import Tensor
 from torch.nn import Identity
-from torch_geometric.data import Data
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from utils.model_utils import make_mlp, get_activation_func
 
@@ -77,9 +76,8 @@ class NodeEdgeGNN(BaseModel):
             ))
         return PygSequential('x, edge_index, edge_attr', layers)
 
-    def forward(self, graph: Data) -> Tensor:
-        x, edge_index, edge_attr = graph.x.clone(), graph.edge_index.clone(), graph.edge_attr.clone()
-        x0, edge_attr0 = x, edge_attr
+    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
+        x0, edge_attr0 = x.clone(), edge_attr.clone()
 
         if self.with_encoder:
             x = self.node_encoder(x)

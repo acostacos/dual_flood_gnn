@@ -4,6 +4,7 @@ from .dual_regression_trainer import DualRegressionTrainer
 from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
 from .edge_regression_trainer import EdgeRegressionTrainer
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
+# from .node_autoregressive_trainer_pushforward import NodeAutoregressiveTrainer
 from .node_regression_trainer import NodeRegressionTrainer
 
 def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> BaseTrainer:

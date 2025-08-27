@@ -74,17 +74,17 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
             self.optimizer.zero_grad()
 
             batch = batch.to(self.device)
+            edge_attr, edge_index = batch.edge_attr[:, :, 0], batch.edge_index
 
             total_batch_loss = 0.0
-            edge_sliding_window = batch.edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
+            edge_sliding_window = edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             for i in range(current_num_timesteps):
-                # Override graph data with sliding window
-                # Only override non-boundary edges to keep boundary conditions intact
-                batch_non_boundary_edges_mask = np.tile(self.non_boundary_edges_mask, batch.num_graphs)
-                batch.edge_attr[batch_non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] \
-                    = edge_sliding_window[batch_non_boundary_edges_mask]
+                x, edge_attr = batch.x[:, :, i], batch.edge_attr[:, :, i]
 
-                edge_pred = self.model(batch)
+                # Override graph data with sliding window
+                edge_attr = torch.concat([edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, edge_attr[:, self.end_edge_target_idx:]], dim=1)
+
+                edge_pred = self.model(x, edge_index, edge_attr)
                 edge_pred = self._override_pred_bc(edge_pred, batch, i)
 
                 loss = self._compute_edge_loss(edge_pred, batch, i)

@@ -3,7 +3,6 @@ import torch.nn.functional as F
 
 from torch import Tensor
 from torch.nn import Identity, Linear, Parameter, Module
-from torch_geometric.data import Data
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from torch_geometric.nn.inits import zeros
 from torch_geometric.utils import softmax
@@ -110,8 +109,7 @@ class NodeGNNAttn(BaseModel):
         ) # Output Layer
         return PygSequential('x, edge_index, edge_attr', layers)
 
-    def forward(self, graph: Data) -> Tensor:
-        x, edge_index, edge_attr = graph.x.clone(), graph.edge_index.clone(), graph.edge_attr.clone()
+    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
         x0 = x.clone()
 
         if self.with_encoder:

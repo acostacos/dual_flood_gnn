@@ -43,21 +43,17 @@ class DualAutoregressiveTester(BaseTester):
             event_dataset = self.dataset[event_start_idx:event_end_idx]
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
-            sliding_window = self.dataset[event_start_idx].x.clone()[:, self.start_node_target_idx:self.end_node_target_idx]
-            edge_sliding_window = self.dataset[event_start_idx].edge_attr.clone()[:, self.start_edge_target_idx:self.end_edge_target_idx]
+            sliding_window = self.dataset[event_start_idx].x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
+            edge_sliding_window = self.dataset[event_start_idx].edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             sliding_window, edge_sliding_window = sliding_window.to(self.device), edge_sliding_window.to(self.device)
             for i, graph in enumerate(dataloader):
                 graph = graph.to(self.device)
 
-                # Override graph data with sliding window
-                # Only override non-boundary nodes to keep boundary conditions intact
-                graph.x[self.non_boundary_nodes_mask, self.start_node_target_idx:self.end_node_target_idx] = \
-                    sliding_window[self.non_boundary_nodes_mask]
-                # Only override non-boundary edges to keep boundary conditions intact
-                graph.edge_attr[self.non_boundary_edges_mask, self.start_edge_target_idx:self.end_edge_target_idx] = \
-                    edge_sliding_window[self.non_boundary_edges_mask]
+                x = torch.concat([graph.x[:, :self.start_node_target_idx], sliding_window, graph.x[:, self.end_node_target_idx:]], dim=1)
+                edge_attr = torch.concat([graph.edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, graph.edge_attr[:, self.end_edge_target_idx:]], dim=1)
+                edge_index = graph.edge_index
 
-                pred, edge_pred = self.model(graph)
+                pred, edge_pred = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
                 pred[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]

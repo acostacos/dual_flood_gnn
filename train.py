@@ -10,7 +10,7 @@ from datetime import datetime
 from data import dataset_factory, FloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
-from torch.nn import MSELoss
+from torch.nn import HuberLoss
 from training import trainer_factory
 from typing import Dict, Optional, Tuple
 from utils import Logger, file_utils, train_utils
@@ -119,7 +119,7 @@ def run_train(model: torch.nn.Module,
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
         logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["weight_decay"]}')
 
-        criterion = MSELoss()
+        criterion = HuberLoss(delta=0.1)
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
         logger.log(f"Using {loss_func_name} loss")
 

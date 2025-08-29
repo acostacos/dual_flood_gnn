@@ -450,10 +450,6 @@ class FloodEventDataset(Dataset):
                 continue
 
             feature_data: ndarray = feature_retrieval_map[feature]()
-
-            if self.mode == 'train' and self.is_normalized:
-                self.normalizer.update_stats(feature, feature_data)
-
             features.append(feature_data)
 
         return features
@@ -469,7 +465,9 @@ class FloodEventDataset(Dataset):
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
         edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
         if self.is_normalized:
-            mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            # Manually compute as mean and std has not yet been saved
+            mean = edge_face_flow_per_ts.mean().item()
+            std = edge_face_flow_per_ts.std().item()
             edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
 
         return total_rainfall_per_ts, edge_face_flow_per_ts
@@ -484,7 +482,9 @@ class FloodEventDataset(Dataset):
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
         edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
         if self.is_normalized:
-            mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            # Manually compute as mean and std has not yet been saved
+            mean = edge_face_flow_per_ts.mean().item()
+            std = edge_face_flow_per_ts.std().item()
             edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
 
         return node_rainfall_per_ts, edge_face_flow_per_ts

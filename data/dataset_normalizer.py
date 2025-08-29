@@ -37,13 +37,18 @@ class DatasetNormalizer:
 
         mean = feature_data.mean().item()
         std = feature_data.std().item()
-        self.feature_stats[feature] = {'mean': mean, 'std': std}
+        min = feature_data.min().item()
+        max = feature_data.max().item()
+        self.feature_stats[feature] = {'mean': mean, 'std': std, 'min': min, 'max': max}
 
     def normalize_feature_vector(self, feature_list: List[str], feature_vector: ndarray) -> ndarray:
         normalized_vector = []
         is_dynamic_feature = len(feature_vector.shape) == 3
         for i, feature in enumerate(feature_list):
             feature_data = feature_vector[:, :, i:i+1] if is_dynamic_feature else feature_vector[:, i:i+1]
+
+            if self.mode == 'train':
+                self.update_stats(feature, feature_data)
 
             mean, std = self.get_feature_mean_std(feature)
             feature_data = self.normalize(feature_data, mean, std)

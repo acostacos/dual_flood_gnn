@@ -116,8 +116,8 @@ def run_train(model: torch.nn.Module,
         loss_func_parameters = config['loss_func_parameters']
 
         # Loss function and optimizer
-        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
-        logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["weight_decay"]}')
+        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['adam_weight_decay'])
+        logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["adam_weight_decay"]}')
 
         criterion = HuberLoss(delta=0.1)
         loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
@@ -173,11 +173,13 @@ def run_train(model: torch.nn.Module,
         if autoregressive_enabled:
             init_num_timesteps = autoregressive_train_config['init_num_timesteps']
             total_num_timesteps = autoregressive_train_config['total_num_timesteps']
-            logger.log(f'Using autoregressive training for {init_num_timesteps}/{total_num_timesteps} timesteps and curriculum learning with patience {early_stopping_patience}')
+            learning_rate_decay = autoregressive_train_config['learning_rate_decay']
+            logger.log(f'Using autoregressive training for {init_num_timesteps}/{total_num_timesteps} timesteps and curriculum learning with patience {early_stopping_patience} and learning rate decay {learning_rate_decay}')
 
             trainer_params.update({
                 'init_num_timesteps': init_num_timesteps,
                 'total_num_timesteps': total_num_timesteps,
+                'learning_rate_decay': learning_rate_decay,
             })
 
         # Node/Edge prediction parameters

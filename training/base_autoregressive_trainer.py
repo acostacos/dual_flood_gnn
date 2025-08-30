@@ -1,5 +1,6 @@
 
 from data import AutoregressiveFloodDataset
+from torch.optim.lr_scheduler import StepLR
 
 from .base_trainer import BaseTrainer
 
@@ -7,12 +8,14 @@ class BaseAutoregressiveTrainer(BaseTrainer):
     def __init__(self,
                  init_num_timesteps: int = 1,
                  total_num_timesteps: int = 1,
+                 learning_rate_decay: float = 0.7,
                 #  curriculum_epochs: int = 10,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.init_num_timesteps = init_num_timesteps
         self.total_num_timesteps = total_num_timesteps
+        self.lr_scheduler = StepLR(self.optimizer, step_size=1, gamma=learning_rate_decay)
 
         assert isinstance(self.dataloader.dataset, AutoregressiveFloodDataset), 'dataset (for training) must be an instance of AutoregressiveFloodEventDataset.'
         assert hasattr(self, 'early_stopping'), 'Early stopping must be enabled for autoregressive training.'

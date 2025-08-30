@@ -39,7 +39,7 @@ training_parameters:
   num_epochs_dyn_loss  : 10                                   # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   batch_size           : 16                                  # Batch size
   learning_rate        : 0.00005                             # Learning rate
-  weight_decay         : 0                                   # Weight decay
+  adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value; If None, no gradient clipping is applied
   early_stopping_patience: 15                                # Early stopping patience for autoregressive training
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
@@ -48,6 +48,7 @@ training_parameters:
     enabled            : False                                # Use autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 4                                   # Total number of timesteps for autoregressive training
+    learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
   edge_pred_loss_scale: 2.5e-1                              # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling

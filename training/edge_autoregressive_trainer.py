@@ -59,6 +59,8 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
                     current_num_timesteps += 1
                     self.early_stopping = EarlyStopping(patience=self.early_stopping.patience)
                     self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps.')
+                    self.lr_scheduler.step()
+                    self.training_stats.log(f'\tDecayed learning rate to {self.lr_scheduler.get_last_lr()[0]:.4e}.')
                     continue
 
                 self.training_stats.log('Training completed due to early stopping.')

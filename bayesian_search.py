@@ -78,7 +78,7 @@ def cross_validate(global_mass_loss_percent: Optional[float],
 
         # ============ Training Phase ============
         criterion = MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['weight_decay'])
+        optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['adam_weight_decay'])
 
         loss_func_config = config['loss_func_parameters']
         if global_mass_loss_percent is None:

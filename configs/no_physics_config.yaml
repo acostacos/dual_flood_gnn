@@ -1,8 +1,8 @@
 dataset_parameters:
   storage_mode: 'memory'                                # 'memory' or 'disk'
   root_dir: 'data/datasets'
-  nodes_shp_file: 'Geometry/updated_cell_centers.shp'
-  edges_shp_file: 'Geometry/links.shp'
+  nodes_shp_file: 'New_Geometry/cell_centers_with_ele.shp'
+  edges_shp_file: 'New_Geometry/links_with_slope.shp'
   features_stats_file: 'features_stats.yaml'
 
   previous_timesteps: 2
@@ -10,10 +10,10 @@ dataset_parameters:
   timestep_interval: 1800                                 # Interval between timesteps in seconds
   # spin_up_time: 129600                                    # Spin up time in seconds; Can be defined per Run ID
   spin_up_time:
-    13: 302400
-    14: 302400
-    15: 302400
-    16: 302400
+    38: 259200
+    39: 259200
+    40: 259200
+    41: 259200
     default: 129600
   time_from_peak: 7200                                 # Time from peak in seconds; This is used to determine the number of timesteps to consider from the peak
   inflow_boundary_nodes:

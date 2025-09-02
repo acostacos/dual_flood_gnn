@@ -9,13 +9,13 @@ dataset_parameters:
   normalize: True
   timestep_interval: 30                                 # Interval between timesteps in seconds (must be a multiple of 30)
   timestep_interval: 1800                                 # Interval between timesteps in seconds
-  # spin_up_time: 129600                                    # Spin up time in seconds; Can be defined per Run ID
-  spin_up_time:
-    38: 259200
-    39: 259200
-    40: 259200
-    41: 259200
-    default: 129600
+  spin_up_time: 259200                                    # Spin up time in seconds; Can be defined per Run ID
+  # spin_up_time:
+  #   38: 259200
+  #   39: 259200
+  #   40: 259200
+  #   41: 259200
+  #   default: 129600
   time_from_peak: 7200                                 # Time from peak in seconds; This is used to determine the number of timesteps to consider from the peak
   inflow_boundary_nodes:
   - 1248

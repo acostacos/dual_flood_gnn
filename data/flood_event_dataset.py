@@ -364,9 +364,9 @@ class FloodEventDataset(Dataset):
         return static_features
 
     def _get_dynamic_node_features(self) -> ndarray:
-        def get_water_depth():
+        def get_water_depth(hec_ras_path: str):
             """Get water depth from water level and elevation"""
-            water_level = get_water_level(self.raw_paths[0])
+            water_level = get_water_level(hec_ras_path)
             elevation = get_cell_elevation(self.raw_paths[0])[None, :]
             water_depth = np.clip(water_level - elevation, a_min=0, a_max=None)
             return water_depth

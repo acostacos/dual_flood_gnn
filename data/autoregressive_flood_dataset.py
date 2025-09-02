@@ -36,7 +36,7 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
             water_volume = get_water_volume(hec_ras_path)
             total_water_volume = water_volume.sum(axis=1)
-            peak_idx = np.argmax(total_water_volume)
+            peak_idx = np.argmax(total_water_volume).item()
             num_timesteps_after_peak = self.time_from_peak // event_ts_interval if self.time_from_peak is not None else 0
             assert peak_idx + num_timesteps_after_peak < len(timesteps), "Timesteps after peak exceeds the available timesteps."
             self._event_peak_idx.append(peak_idx)

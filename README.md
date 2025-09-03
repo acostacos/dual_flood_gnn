@@ -65,10 +65,10 @@ The code is categorized in different folder based on their specific purpose. Bel
 
 | Folder | Description |
 |---|---|
-| configs | Contains all the config files used to specify training and testing parameters. |
-| data | Contains the raw data and dataset classes for accessing this data. |
-| loss | Contains custom loss functions used for training (ex. physics-informed loss). |
-| models | Contains different GNN model architectures. |
-| testing | Contains Tester classes used to test the model. |
-| training | Contains Trainer classes used to train the model. |
-| utils | Contains various utility classes and objects. |
+| [configs](https://github.com/acostacos/flood_pi_gnn/tree/master/configs) | Contains all the config files used to specify training and testing parameters. |
+| [data](https://github.com/acostacos/flood_pi_gnn/tree/master/data) | Contains the raw data and Dataset classes for accessing this data. |
+| [loss](https://github.com/acostacos/flood_pi_gnn/tree/master/loss) | Contains custom loss functions used for training (ex. physics-informed loss). |
+| [models](https://github.com/acostacos/flood_pi_gnn/tree/master/models) | Contains different GNN model architectures. |
+| [testing](https://github.com/acostacos/flood_pi_gnn/tree/master/testing) | Contains Tester classes used to test the model. |
+| [training](https://github.com/acostacos/flood_pi_gnn/tree/master/training) | Contains Trainer classes used to train the model. |
+| [utils](https://github.com/acostacos/flood_pi_gnn/tree/master/utils) | Contains various utility classes and objects. |

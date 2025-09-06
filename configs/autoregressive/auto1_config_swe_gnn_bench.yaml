@@ -7,7 +7,7 @@ dataset_parameters:
 
   previous_timesteps: 2
   normalize: True
-  timestep_interval: 1800                                 # Interval between timesteps in seconds
+  timestep_interval: 900                                 # Interval between timesteps in seconds
   spin_up_time: 259200                                    # Spin up time in seconds; Can be defined per Run ID
   # spin_up_time:
   #   38: 259200
@@ -31,28 +31,28 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'autoregressive/logs/auto1_train.log'                                # Path to save training logs
-  model_dir            : 'autoregressive/model'                      # Directory to save trained models
-  stats_dir            : 'autoregressive/train'                    # Directory to save training statistics
-  checkpoint_path      : null                                # Path to load a pre-trained model; If None, no pre-trained model is loaded
+  log_path             : 'autoregressive_water_depth_52events/logs/auto8_train.log'                                # Path to save training logs
+  model_dir            : 'autoregressive_water_depth_52events/model'                      # Directory to save trained models
+  stats_dir            : 'autoregressive_water_depth_52events/train'                    # Directory to save training statistics
+  checkpoint_path      : 'autoregressive_water_depth_52events\model\NodeGNNAttn_2025-09-04_23-14-49_auto6.pt'                                # Path to load a pre-trained model; If None, no pre-trained model is loaded
   num_epochs           : 100                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
-  batch_size           : 8                                  # Batch size
-  learning_rate        : 0.00005                              # Learning rate
+  # num_epochs           : 0                                 # Number of epochs
+  # num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
+  batch_size           : 64                                  # Batch size
+  learning_rate        : 1.18e-5                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value; If None, no gradient clipping is applied
   early_stopping_patience: 15                                # Early stopping patience for autoregressive training
-  val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
+  val_split_percent  : 0.05                                   # Percentage of validation split for autoregressive training
 
   autoregressive:
     enabled            : True                                # Use autoregressive training
-    init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
-    total_num_timesteps: 1                                   # Total number of timesteps for autoregressive training
+    init_num_timesteps : 7                                   # Initial number of timesteps for autoregressive training
+    total_num_timesteps: 8                                   # Total number of timesteps for autoregressive training
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
-  node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
-  edge_loss: 'huber'                                         # Loss function for edge features. Options: 'mse', 'mae', 'huber'
   edge_pred_loss_scale: 2.5e-1                                    # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: False                                # Use global mass conservation in loss function
@@ -62,12 +62,9 @@ loss_func_parameters:
   local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss; This is used as an initial value when using dynamic loss scaling
   local_mass_loss_percent: 0.001                             # Percentage of local mass conservation loss in total loss
 
-  huber:
-    delta: 0.5                                               # Delta parameter for Huber loss function.
-
 testing_parameters:
-  log_path: 'autoregressive/logs/auto1_test.log'                                        # Path to save testing logs
-  output_dir: 'autoregressive/test'                           # Directory to save testing results
+  log_path: 'autoregressive_water_depth_52events/logs/auto8_test.log'                                        # Path to save testing logs
+  output_dir: 'autoregressive_water_depth_52events/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 

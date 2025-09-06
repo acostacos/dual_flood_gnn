@@ -1,5 +1,6 @@
 from torch import Tensor
-from torch.nn import Module, Sequential, Linear, PReLU, ReLU
+from torch.nn import Module, Sequential, Linear, PReLU, ReLU, \
+    MSELoss, L1Loss, HuberLoss
 from torch_geometric.nn import GCNConv, Sequential as PygSequential
 
 def make_mlp(input_size: int, output_size: int, hidden_size: int = None,
@@ -43,6 +44,15 @@ def get_activation_func(name: str, device: str = 'cpu') -> Module:
     if name == 'prelu':
         return PReLU(device=device)
     raise Exception(f'Activation function {name} is not implemented.')
+
+def get_loss_func(name: str, **loss_func_params) -> Module:
+    if name == 'mse':
+        return MSELoss(**loss_func_params)
+    if name == 'mae':
+        return L1Loss(**loss_func_params)
+    if name == 'huber':
+        return HuberLoss(**loss_func_params)
+    raise Exception(f'Loss function {name} is not implemented.')
 
 class LinearLayer(Module):
     def __init__(self,

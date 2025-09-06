@@ -3,6 +3,9 @@ import pandas as pd
 
 from typing import Tuple
 
+from .logger import Logger
+from .model_utils import get_loss_func
+
 def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_validation: float) -> Tuple[str, str]:
     if not (0 < percent_validation < 1):
         raise ValueError(f'Invalid percent_split: {percent_validation}. Must be between 0 and 1.')
@@ -25,3 +28,81 @@ def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_valid
     val_rows.to_csv(os.path.join(raw_dir_path, val_df_file), index=False)
 
     return train_df_file, val_df_file
+
+def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
+    EDGE_MODELS = ['EdgeGNNAttn']
+    trainer_params = {}
+
+    train_config = config['training_parameters']
+    loss_func_parameters = config['loss_func_parameters']
+
+    # Base Trainer parameters
+    node_loss_func = loss_func_parameters['node_loss']
+    edge_loss_func = loss_func_parameters['edge_loss']
+    node_criterion = get_loss_func(node_loss_func, **loss_func_parameters.get(node_loss_func, {}))
+    edge_criterion = get_loss_func(edge_loss_func, **loss_func_parameters.get(edge_loss_func, {}))
+    loss_func = edge_criterion if model_name in EDGE_MODELS else node_criterion
+
+    early_stopping_patience = train_config['early_stopping_patience']
+    base_config = {
+        'num_epochs': train_config['num_epochs'],
+        'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
+        'batch_size': train_config['batch_size'],
+        'gradient_clip_value': train_config['gradient_clip_value'],
+        'loss_func': loss_func,
+        'early_stopping_patience': early_stopping_patience,
+    }
+    logger.log(f'Using training configuration: {base_config}')
+    trainer_params.update(base_config)
+
+    # Physics-informed training parameters
+    if model_name not in EDGE_MODELS:
+        use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
+        global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
+        global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
+        if use_global_mass_loss:
+            logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
+
+        use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
+        local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
+        local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
+        if use_local_mass_loss:
+            logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
+
+        trainer_params.update({
+            'use_global_loss': use_global_mass_loss,
+            'global_mass_loss_scale': global_mass_loss_scale,
+            'global_mass_loss_percent': global_mass_loss_percent,
+            'use_local_loss': use_local_mass_loss,
+            'local_mass_loss_scale': local_mass_loss_scale,
+            'local_mass_loss_percent': local_mass_loss_percent,
+        })
+
+    # Autoregressive training parameters
+    autoregressive_train_config = train_config['autoregressive']
+    autoregressive_enabled = autoregressive_train_config.get('enabled', False)
+    if autoregressive_enabled:
+        init_num_timesteps = autoregressive_train_config['init_num_timesteps']
+        total_num_timesteps = autoregressive_train_config['total_num_timesteps']
+        learning_rate_decay = autoregressive_train_config['learning_rate_decay']
+        logger.log(f'Using autoregressive training for {init_num_timesteps}/{total_num_timesteps} timesteps and curriculum learning with patience {early_stopping_patience} and learning rate decay {learning_rate_decay}')
+
+        trainer_params.update({
+            'init_num_timesteps': init_num_timesteps,
+            'total_num_timesteps': total_num_timesteps,
+            'learning_rate_decay': learning_rate_decay,
+        })
+
+    # Node/Edge prediction parameters
+    if 'NodeEdgeGNN' in model_name:
+        edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
+        edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
+        logger.log(f'Using edge prediction loss with initial scale {edge_pred_loss_scale} and loss percentage {edge_pred_loss_percent}')
+        logger.log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
+        trainer_params.update({
+            'edge_loss_func': edge_criterion,
+            'edge_pred_loss_scale': edge_pred_loss_scale,
+            'edge_pred_loss_percent': edge_pred_loss_percent,
+        })
+
+    return trainer_params

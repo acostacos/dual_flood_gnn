@@ -10,7 +10,6 @@ from datetime import datetime
 from data import dataset_factory, FloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
-from torch.nn import MSELoss, HuberLoss
 from training import trainer_factory
 from typing import Dict, Optional, Tuple
 from utils import Logger, file_utils, train_utils
@@ -113,89 +112,24 @@ def run_train(model: torch.nn.Module,
               model_dir: Optional[str] = None,
               device: str = 'cpu') -> str:
         train_config = config['training_parameters']
-        loss_func_parameters = config['loss_func_parameters']
 
         # Loss function and optimizer
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['adam_weight_decay'])
         logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["adam_weight_decay"]}')
 
-        EDGE_MODELS = ['EdgeGNNAttn']
-        node_criterion = MSELoss()
-        edge_criterion = HuberLoss(delta=0.5)
-        loss_func = edge_criterion if model_name in EDGE_MODELS else node_criterion
-        logger.log(f'Using {loss_func.__class__.__name__} loss for prediction')
-
-        # Base Trainer parameters
-        early_stopping_patience = train_config['early_stopping_patience']
-        train_config_params = {
-            'num_epochs': train_config['num_epochs'],
-            'num_epochs_dyn_loss': train_config['num_epochs_dyn_loss'],
-            'batch_size': train_config['batch_size'],
-            'gradient_clip_value': train_config['gradient_clip_value'],
-            'early_stopping_patience': early_stopping_patience,
-        }
-        logger.log(f'Using training configuration: {train_config_params}')
+        base_trainer_params = train_utils.get_trainer_config(model_name, config, logger)
         trainer_params = {
             'model': model,
             'dataset': train_dataset,
             'val_dataset': val_dataset,
             'optimizer': optimizer,
-            'loss_func': loss_func,
             'logger': logger,
             'device': device,
-            **train_config_params,
+            **base_trainer_params,
         }
 
-        # Physics-informed training parameters
-        if model_name not in EDGE_MODELS:
-            use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
-            global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
-            global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
-            if use_global_mass_loss:
-                logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
-
-            use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
-            local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
-            local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
-            if use_local_mass_loss:
-                logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
-
-            trainer_params.update({
-                'use_global_loss': use_global_mass_loss,
-                'global_mass_loss_scale': global_mass_loss_scale,
-                'global_mass_loss_percent': global_mass_loss_percent,
-                'use_local_loss': use_local_mass_loss,
-                'local_mass_loss_scale': local_mass_loss_scale,
-                'local_mass_loss_percent': local_mass_loss_percent,
-            })
-
-        # Autoregressive training parameters
         autoregressive_train_config = train_config['autoregressive']
         autoregressive_enabled = autoregressive_train_config.get('enabled', False)
-        if autoregressive_enabled:
-            init_num_timesteps = autoregressive_train_config['init_num_timesteps']
-            total_num_timesteps = autoregressive_train_config['total_num_timesteps']
-            learning_rate_decay = autoregressive_train_config['learning_rate_decay']
-            logger.log(f'Using autoregressive training for {init_num_timesteps}/{total_num_timesteps} timesteps and curriculum learning with patience {early_stopping_patience} and learning rate decay {learning_rate_decay}')
-
-            trainer_params.update({
-                'init_num_timesteps': init_num_timesteps,
-                'total_num_timesteps': total_num_timesteps,
-                'learning_rate_decay': learning_rate_decay,
-            })
-
-        # Node/Edge prediction parameters
-        if 'NodeEdgeGNN' in model_name:
-            edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
-            edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
-            logger.log(f'Using edge prediction loss with initial scale {edge_pred_loss_scale} and loss percentage {edge_pred_loss_percent}')
-            logger.log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
-            trainer_params.update({
-                'edge_loss_func': edge_criterion,
-                'edge_pred_loss_scale': edge_pred_loss_scale,
-                'edge_pred_loss_percent': edge_pred_loss_percent,
-            })
-
         trainer = trainer_factory(model_name, autoregressive_enabled, **trainer_params)
         trainer.train()
 

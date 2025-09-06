@@ -51,6 +51,8 @@ training_parameters:
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
+  node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
+  edge_loss: 'huber'                                         # Loss function for edge features. Options: 'mse', 'mae', 'huber'
   edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss. This is used as an initial value when using dynamic loss scaling
   edge_pred_loss_percent: 0.7                                # Percentage of edge prediction loss in total loss
   use_global_mass_loss: True                                 # Enable global mass conservation in loss function
@@ -59,6 +61,9 @@ loss_func_parameters:
   use_local_mass_loss: True                                  # Enable local mass conservation in loss function
   local_mass_loss_scale: 1.0e-5                              # Value used to scale local mass conservation loss. This is used as an initial value when using dynamic loss scaling
   local_mass_loss_percent: 0.0001                            # Percentage of local mass conservation loss in total loss
+
+  huber:
+    delta: 0.5                                               # Delta parameter for Huber loss function.
 
 testing_parameters:
   log_path: null                                             # Path to save testing logs

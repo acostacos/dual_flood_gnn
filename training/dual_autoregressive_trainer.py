@@ -6,7 +6,7 @@ import torch
 from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
-from typing import Tuple
+from typing import Tuple, Callable
 from utils import EarlyStopping, LossScaler
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
@@ -14,11 +14,13 @@ from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
 
 class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTrainer):
     def __init__(self,
+                 edge_loss_func: Callable,
                  edge_pred_loss_scale: float = 1.0,
                  edge_pred_loss_percent: float = 0.5,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.edge_loss_func = edge_loss_func
         self.edge_pred_loss_percent = edge_pred_loss_percent
 
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
@@ -158,6 +160,10 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         node_rmse = val_tester.get_avg_node_rmse()
         edge_rmse = val_tester.get_avg_edge_rmse()
         return node_rmse, edge_rmse
+
+    def _compute_edge_loss(self, edge_pred: Tensor, batch, timestep: int) -> Tensor:
+        label = batch.y_edge[:, :, timestep]
+        return self.edge_loss_func(edge_pred, label)
 
     def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch, timestep: int) -> Tensor:
         pred = NodeAutoregressiveTrainer._override_pred_bc(self, pred, batch, timestep)

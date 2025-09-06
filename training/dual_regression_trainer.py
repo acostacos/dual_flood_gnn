@@ -3,6 +3,7 @@ import os
 from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
+from typing import Callable
 from utils import LossScaler
 
 from .node_regression_trainer import NodeRegressionTrainer
@@ -10,11 +11,13 @@ from .edge_regression_trainer import EdgeRegressionTrainer
 
 class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
     def __init__(self,
+                 edge_loss_func: Callable,
                  edge_pred_loss_scale: float = 1.0,
                  edge_pred_loss_percent: float = 0.5,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.edge_loss_func = edge_loss_func
         self.edge_pred_loss_percent = edge_pred_loss_percent
 
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
@@ -104,6 +107,10 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
         node_rmse = val_tester.get_avg_node_rmse()
         edge_rmse = val_tester.get_avg_edge_rmse()
         return node_rmse, edge_rmse
+
+    def _compute_edge_loss(self, edge_pred: Tensor, batch, timestep: int) -> Tensor:
+        label = batch.y_edge[:, :, timestep]
+        return self.edge_loss_func(edge_pred, label)
 
     def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch) -> Tensor:
         pred = NodeRegressionTrainer._override_pred_bc(self, pred, batch)

@@ -10,7 +10,7 @@ from datetime import datetime
 from data import dataset_factory, FloodEventDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
-from torch.nn import MSELoss
+from torch.nn import MSELoss, HuberLoss
 from training import trainer_factory
 from typing import Dict, Optional, Tuple
 from utils import Logger, file_utils, train_utils
@@ -119,9 +119,11 @@ def run_train(model: torch.nn.Module,
         optimizer = torch.optim.Adam(model.parameters(), lr=train_config['learning_rate'], weight_decay=train_config['adam_weight_decay'])
         logger.log(f'Using Adam optimizer with learning rate {train_config["learning_rate"]} and weight decay {train_config["adam_weight_decay"]}')
 
-        criterion = MSELoss()
-        loss_func_name = criterion.__name__ if hasattr(criterion, '__name__') else criterion.__class__.__name__
-        logger.log(f"Using {loss_func_name} loss")
+        EDGE_MODELS = ['EdgeGNNAttn']
+        node_criterion = MSELoss()
+        edge_criterion = HuberLoss(delta=0.5)
+        loss_func = edge_criterion if model_name in EDGE_MODELS else node_criterion
+        logger.log(f'Using {loss_func.__class__.__name__} loss for prediction')
 
         # Base Trainer parameters
         early_stopping_patience = train_config['early_stopping_patience']
@@ -138,14 +140,14 @@ def run_train(model: torch.nn.Module,
             'dataset': train_dataset,
             'val_dataset': val_dataset,
             'optimizer': optimizer,
-            'loss_func': criterion,
+            'loss_func': loss_func,
             'logger': logger,
             'device': device,
             **train_config_params,
         }
 
         # Physics-informed training parameters
-        if model_name not in ['EdgeGNNAttn']:
+        if model_name not in EDGE_MODELS:
             use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
             global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
             global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
@@ -187,7 +189,9 @@ def run_train(model: torch.nn.Module,
             edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
             edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
             logger.log(f'Using edge prediction loss with initial scale {edge_pred_loss_scale} and loss percentage {edge_pred_loss_percent}')
+            logger.log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
             trainer_params.update({
+                'edge_loss_func': edge_criterion,
                 'edge_pred_loss_scale': edge_pred_loss_scale,
                 'edge_pred_loss_percent': edge_pred_loss_percent,
             })

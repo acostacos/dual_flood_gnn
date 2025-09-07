@@ -7,7 +7,7 @@ dataset_parameters:
 
   previous_timesteps: 2                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
-  timestep_interval: 1800                                    # Interval between timesteps in seconds
+  timestep_interval: 900                                     # Interval between timesteps in seconds
   spin_up_time: 259200                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
   # spin_up_time:
   #   38: 259200

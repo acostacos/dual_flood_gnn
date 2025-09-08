@@ -77,7 +77,7 @@ class DualRegressionTester(BaseTester):
                 validation_stats.update_stats_for_timestep(pred.cpu(),
                                                            label.cpu(),
                                                            water_threshold=self.threshold_per_cell,
-                                                           timestamp=graph.timestep)
+                                                           timestamp=graph.timestep if hasattr(graph, 'timestep') else None)
 
                 label_edge = graph.y_edge
                 if self.dataset.is_normalized:

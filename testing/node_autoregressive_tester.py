@@ -77,5 +77,5 @@ class NodeAutoregressiveTester(BaseTester):
                 validation_stats.update_stats_for_timestep(pred.cpu(),
                                                            label.cpu(),
                                                            water_threshold=self.threshold_per_cell,
-                                                           timestamp=graph.timestep)
+                                                           timestamp=graph.timestep if hasattr(graph, 'timestep') else None)
         validation_stats.end_validate()

@@ -5,7 +5,7 @@ import os
 import pickle
 import yaml
 
-from typing import Any
+from typing import Any, List, Union
 
 def read_yaml_file(filepath: str) -> dict:
     with open(filepath, 'r') as file:
@@ -51,3 +51,15 @@ def save_to_pickle_file(filepath: str, data: Any):
 
     with open(filepath, 'wb') as file:
         pickle.dump(data, file)
+
+def create_temp_dirs(paths: Union[List[str], str], folder_name: str = '_temp_dir') -> List[str]:
+    if isinstance(paths, str):
+        paths = [paths]
+
+    temp_dir_paths = []
+    for path in paths:
+        temp_dir_path = os.path.join(path, folder_name)
+        if not os.path.exists(temp_dir_path):
+            os.makedirs(temp_dir_path)
+        temp_dir_paths.append(temp_dir_path)
+    return temp_dir_paths

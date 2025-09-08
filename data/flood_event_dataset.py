@@ -77,7 +77,8 @@ class FloodEventDataset(Dataset):
         self.num_dynamic_node_features = len(self.DYNAMIC_NODE_FEATURES)
         self.num_static_edge_features = len(self.STATIC_EDGE_FEATURES)
         self.num_dynamic_edge_features = len(self.DYNAMIC_EDGE_FEATURES)
-        self.event_start_idx, self.total_rollout_timesteps = self._load_event_stats(root_dir, event_stats_file)
+        event_stats = self._load_event_stats(root_dir, event_stats_file)
+        self.event_start_idx, self.total_rollout_timesteps, processed_event_info = event_stats
         self._event_peak_idx = None
         self._event_num_timesteps = None
         self._event_base_timestep_interval = None
@@ -90,6 +91,7 @@ class FloodEventDataset(Dataset):
                                                     outflow_boundary_nodes=self.outflow_boundary_nodes,
                                                     saved_npz_file=self.BOUNDARY_CONDITION_NPZ_FILE)
 
+        force_reload = self._is_previous_config_different(processed_event_info) or force_reload
         super().__init__(root_dir, transform=None, pre_transform=None, pre_filter=None, log=debug, force_reload=force_reload)
 
 
@@ -251,20 +253,36 @@ class FloodEventDataset(Dataset):
 
         return data
 
-    def _load_event_stats(self, root_dir: str, event_stats_file: str) -> Tuple[List[int], int]:
+    def _load_event_stats(self, root_dir: str, event_stats_file: str) -> Tuple[List[int], int, Dict]:
         event_stats_path = os.path.join(root_dir, 'processed', event_stats_file)
         if not os.path.exists(event_stats_path):
-            return [], 0
+            return [], 0, {}
 
         event_stats = read_yaml_file(event_stats_path)
         event_start_idx = event_stats['event_start_idx']
         total_rollout_timesteps = event_stats['total_rollout_timesteps']
-        return event_start_idx, total_rollout_timesteps
+        processed_event_info = {
+            'timestep_interval': event_stats['timestep_interval'],
+            'previous_timesteps': event_stats['previous_timesteps'],
+            'normalize': event_stats['normalize'],
+            'spin_up_time': event_stats['spin_up_time'],
+            'time_from_peak': event_stats['time_from_peak'],
+            'inflow_boundary_nodes': event_stats['inflow_boundary_nodes'],
+            'outflow_boundary_nodes': event_stats['outflow_boundary_nodes'],
+        }
+        return event_start_idx, total_rollout_timesteps, processed_event_info
 
     def _save_event_stats(self):
         event_stats = {
             'event_start_idx': self.event_start_idx,
             'total_rollout_timesteps': self.total_rollout_timesteps,
+            'timestep_interval': self.timestep_interval,
+            'previous_timesteps': self.previous_timesteps,
+            'normalize': self.is_normalized,
+            'spin_up_time': self.spin_up_time,
+            'time_from_peak': self.time_from_peak,
+            'inflow_boundary_nodes': self.inflow_boundary_nodes,
+            'outflow_boundary_nodes': self.outflow_boundary_nodes,
         }
         save_to_yaml_file(self.processed_paths[0], event_stats)
 
@@ -288,6 +306,33 @@ class FloodEventDataset(Dataset):
             hec_ras_files.append(hec_ras_path)
 
         return hec_ras_files, hec_ras_run_ids
+
+    def _is_previous_config_different(self, processed_event_info: Dict) -> bool:
+        if processed_event_info is None or len(processed_event_info) == 0:
+            self.log_func('No previous event stats found. Processing dataset.')
+            return True
+        if processed_event_info['timestep_interval'] != self.timestep_interval:
+            self.log_func(f'Previous timestep interval {processed_event_info["timestep_interval"]} differs from current {self.timestep_interval}. Reprocessing dataset.')
+            return True
+        if processed_event_info['previous_timesteps'] != self.previous_timesteps:
+            self.log_func(f'Previous previous_timesteps {processed_event_info["previous_timesteps"]} differs from current {self.previous_timesteps}. Reprocessing dataset.')
+            return True
+        if processed_event_info['normalize'] != self.is_normalized:
+            self.log_func(f'Previous normalize {processed_event_info["normalize"]} differs from current {self.is_normalized}. Reprocessing dataset.')
+            return True
+        if processed_event_info['spin_up_time'] != self.spin_up_time:
+            self.log_func(f'Previous spin_up_time {processed_event_info["spin_up_time"]} differs from current {self.spin_up_time}. Reprocessing dataset.')
+            return True
+        if processed_event_info['time_from_peak'] != self.time_from_peak:
+            self.log_func(f'Previous time_from_peak {processed_event_info["time_from_peak"]} differs from current {self.time_from_peak}. Reprocessing dataset.')
+            return True
+        if set(processed_event_info['inflow_boundary_nodes']) != set(self.inflow_boundary_nodes):
+            self.log_func(f'Previous inflow_boundary_nodes {processed_event_info["inflow_boundary_nodes"]} differs from current {self.inflow_boundary_nodes}. Reprocessing dataset.')
+            return True
+        if set(processed_event_info['outflow_boundary_nodes']) != set(self.outflow_boundary_nodes):
+            self.log_func(f'Previous outflow_boundary_nodes {processed_event_info["outflow_boundary_nodes"]} differs from current {self.outflow_boundary_nodes}. Reprocessing dataset.')
+            return True
+        return False
 
     # =========== process() methods ===========
 

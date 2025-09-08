@@ -77,10 +77,11 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
 
     autoregressive_train_params = train_config['autoregressive']
     autoregressive_enabled = autoregressive_train_params.get('enabled', False)
+    train_event_stats_file = train_summary_file.replace(dataset_summary_file, event_stats_file)
     train_dataset_config = {
         'mode': 'train',
         'dataset_summary_file': train_summary_file,
-        'event_stats_file': f'train_split_{event_stats_file}',
+        'event_stats_file': train_event_stats_file,
         **base_datset_config,
     }
     if autoregressive_enabled:
@@ -90,10 +91,11 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     logger.log(f'Using training dataset configuration: {train_dataset_config}')
     train_dataset = dataset_factory(storage_mode, autoregressive=autoregressive_enabled, **train_dataset_config)
 
+    val_event_stats_file = val_summary_file.replace(dataset_summary_file, event_stats_file)
     val_dataset_config = {
         'mode': 'test',
         'dataset_summary_file': val_summary_file,
-        'event_stats_file': f'val_split_{event_stats_file}',
+        'event_stats_file': val_event_stats_file,
         **base_datset_config,
     }
     logger.log(f'Using validation dataset configuration: {val_dataset_config}')

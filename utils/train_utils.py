@@ -4,6 +4,7 @@ import pandas as pd
 from typing import Tuple
 
 from .logger import Logger
+from .file_utils import create_temp_dirs
 from .model_utils import get_loss_func
 
 def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_validation: float) -> Tuple[str, str]:
@@ -19,12 +20,15 @@ def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_valid
 
     split_idx = len(summary_df) - int(len(summary_df) * percent_validation)
 
+    TEMP_DIR_NAME = 'train_val_split'
+    create_temp_dirs(raw_dir_path, folder_name=TEMP_DIR_NAME)
+
     train_rows = summary_df[:split_idx]
-    train_df_file = f'train_split_{dataset_summary_file}'
+    train_df_file = os.path.join(TEMP_DIR_NAME, f'train_split_{dataset_summary_file}')
     train_rows.to_csv(os.path.join(raw_dir_path, train_df_file), index=False)
 
     val_rows = summary_df[split_idx:]
-    val_df_file = f'val_split_{dataset_summary_file}'
+    val_df_file = os.path.join(TEMP_DIR_NAME, f'val_split_{dataset_summary_file}')
     val_rows.to_csv(os.path.join(raw_dir_path, val_df_file), index=False)
 
     return train_df_file, val_df_file

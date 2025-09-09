@@ -21,7 +21,7 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
 
     def train(self):
         self.training_stats.start_train()
-        for epoch in range(self.total_num_epochs):
+        for epoch in range(self.num_epochs):
             self.model.train()
             running_pred_loss = 0.0
             running_edge_pred_loss = 0.0
@@ -57,7 +57,7 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
             pred_epoch_loss = running_pred_loss / len(self.dataloader)
             edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
 
-            logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
+            logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tTotal Loss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}\n'
             logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'

@@ -33,12 +33,12 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         self.training_stats.start_train()
         current_num_timesteps = self.init_num_timesteps
 
-        for epoch in range(self.total_num_epochs):
+        for epoch in range(self.num_epochs):
             train_start_time = time.time()
 
             epoch_loss, pred_epoch_loss = self._train_model(epoch, current_num_timesteps)
 
-            logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
+            logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}'
             self.training_stats.log(logging_str)
@@ -53,17 +53,12 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             train_duration = train_end_time - train_start_time
             self.training_stats.log(f'\tEpoch Train Duration: {train_duration:.2f} seconds')
 
-            non_dyn_epoch_num = epoch - self.num_epochs_dyn_loss
-            if self.use_physics_loss and non_dyn_epoch_num < 0:
-                continue
-
             val_node_rmse = self.validate()
             self.training_stats.log(f'\n\tValidation Node RMSE: {val_node_rmse:.4e}')
             self.training_stats.add_val_loss_component('val_node_rmse', val_node_rmse)
 
-            # Previous critera to increase autoregression = non_dyn_epoch_num != 0 and non_dyn_epoch_num % self.curriculum_epochs == 0
             if self.early_stopping(val_node_rmse, self.model):
-                self.training_stats.log(f'\tEarly stopping triggered after {non_dyn_epoch_num + 1} epochs.')
+                self.training_stats.log(f'\tEarly stopping triggered after {epoch + 1} epochs.')
 
                 if current_num_timesteps < self.total_num_timesteps:
                     current_num_timesteps += 1

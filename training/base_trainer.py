@@ -28,6 +28,7 @@ class BaseTrainer:
         self.optimizer = optimizer
         self.loss_func = loss_func
         self.batch_size = batch_size
+        self.num_epochs = num_epochs
         self.num_epochs_dyn_loss = num_epochs_dyn_loss
         self.gradient_clip_value = gradient_clip_value
         self.val_dataset = val_dataset
@@ -39,8 +40,8 @@ class BaseTrainer:
 
         self.training_stats = TrainingStats(logger=logger)
 
-        self.total_num_epochs = self.num_epochs_dyn_loss + num_epochs
-        self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_loss}/{self.total_num_epochs} epochs')
+        assert self.num_epochs_dyn_loss <= self.num_epochs, "Number of epochs for dynamic loss scaling must not exceed total number of epochs."
+        self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_loss}/{self.num_epochs} epochs')
 
     def train(self):
         raise NotImplementedError("Subclasses should implement this method.")

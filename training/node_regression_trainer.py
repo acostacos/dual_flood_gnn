@@ -17,7 +17,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
 
     def train(self):
         self.training_stats.start_train()
-        for epoch in range(self.total_num_epochs):
+        for epoch in range(self.num_epochs):
             self.model.train()
             running_pred_loss = 0.0
             if self.use_physics_loss:
@@ -44,7 +44,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
             pred_epoch_loss = running_pred_loss / len(self.dataloader)
 
             epoch_loss = self._get_epoch_total_running_loss(running_pred_loss) / len(self.dataloader)
-            logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
+            logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tTotal Loss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}'
             self.training_stats.log(logging_str)

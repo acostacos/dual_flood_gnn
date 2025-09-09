@@ -17,7 +17,7 @@ class EdgeRegressionTrainer(BaseTrainer):
 
     def train(self):
         self.training_stats.start_train()
-        for epoch in range(self.total_num_epochs):
+        for epoch in range(self.num_epochs):
             self.model.train()
             running_edge_pred_loss = 0.0
 
@@ -37,7 +37,7 @@ class EdgeRegressionTrainer(BaseTrainer):
 
             edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
 
-            logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
+            logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
             self.training_stats.log(logging_str)
 

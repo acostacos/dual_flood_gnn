@@ -5,16 +5,19 @@ import torch
 
 from contextlib import redirect_stdout
 from torch import Tensor
+from torch.optim.lr_scheduler import StepLR
 from data import AutoregressiveFloodDataset
 from testing import NodeAutoregressiveTester
 from typing import Tuple
-from utils import EarlyStopping
 
 from .base_autoregressive_trainer import BaseAutoregressiveTrainer
 from .physics_informed_trainer import PhysicsInformedTrainer
 
 class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTrainer):
-    def __init__(self, *args, **kwargs):
+    def __init__(self,
+                 teacher_forcing_ratio: float = 0.95,
+                 use_scheduled_sampling: bool = True,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         ds: AutoregressiveFloodDataset = self.dataloader.dataset
@@ -28,24 +31,32 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         self.start_node_target_idx = ds.num_static_node_features + (target_nodes_idx * sliding_window_length)
         self.end_node_target_idx = self.start_node_target_idx + sliding_window_length
 
+        self.teacher_forcing_ratio = teacher_forcing_ratio
+        self.use_scheduled_sampling = use_scheduled_sampling
+
+        self.lr_scheduler = StepLR(self.optimizer, step_size=10, gamma=0.9)
+
     def train(self):
+        '''Multi-step-ahead loss with curriculum learning.'''
         self.training_stats.start_train()
+        current_num_timesteps = self.init_num_timesteps
 
         for epoch in range(self.total_num_epochs):
             train_start_time = time.time()
 
-            epoch_loss, pred_epoch_loss, stab_epoch_loss, epoch_grad_norm = self._train_model(epoch)
+            epoch_loss, pred_epoch_loss = self._train_model(epoch, current_num_timesteps)
+
 
             logging_str = f'Epoch [{epoch + 1}/{self.total_num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}\n'
-            logging_str += f'\tStability Loss: {stab_epoch_loss:.4e}'
-            logging_str += f'\n\tGrad Norm: {epoch_grad_norm:.4e}'
+            if self.use_scheduled_sampling:
+                current_tf_ratio = self._scheduled_teacher_forcing_ratio(epoch, self.total_num_epochs)
+                logging_str += f'\tTeacher Forcing Ratio: {current_tf_ratio:.3f}'
             self.training_stats.log(logging_str)
 
             self.training_stats.add_loss(epoch_loss)
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
-            self.training_stats.add_loss_component('stability_loss', stab_epoch_loss)
 
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)
@@ -62,22 +73,24 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             self.training_stats.log(f'\n\tValidation Node RMSE: {val_node_rmse:.4e}')
             self.training_stats.add_val_loss_component('val_node_rmse', val_node_rmse)
 
+            self.lr_scheduler.step()
+
             # Previous critera to increase autoregression = non_dyn_epoch_num != 0 and non_dyn_epoch_num % self.curriculum_epochs == 0
             if self.early_stopping(val_node_rmse, self.model):
                 self.training_stats.log(f'\tEarly stopping triggered after {non_dyn_epoch_num + 1} epochs.')
-                self.training_stats.log('Training completed due to early stopping.')
                 break
 
         self.training_stats.end_train()
         self._add_scaled_physics_loss_history()
 
-    def _train_model(self, epoch: int) -> Tuple[float, float]:
+    def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float]:
         self.model.train()
         running_pred_loss = 0.0
-        running_stab_loss = 0.0
-        running_grad_norm = 0.0
         if self.use_physics_loss:
             self._reset_epoch_physics_running_loss()
+
+        # Get current teacher forcing ratio (optionally decay over epochs)
+        current_teacher_forcing_ratio = self._scheduled_teacher_forcing_ratio(epoch, self.total_num_epochs)
 
         for batch in self.dataloader:
             self.optimizer.zero_grad()
@@ -85,47 +98,67 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             batch = batch.to(self.device)
             x, edge_index = batch.x[:, :, 0], batch.edge_index
 
-            # Prediction for timestep t
-            edge_attr = batch.edge_attr[:, :, 0]
-            pred = self.model(x, edge_index, edge_attr)
-            pred = self._override_pred_bc(pred, batch, 0)
-
-            pred_loss = self._compute_node_loss(pred, batch, 0)
-            running_pred_loss += pred_loss.item()
-
-            one_step_loss = pred_loss
-
-            # Prediction for timestep t+1
+            total_batch_loss = 0.0
             sliding_window = x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
-            next_sliding_window = torch.cat((sliding_window[:, 1:], pred), dim=1)
-            next_x = torch.concat([x[:, :self.start_node_target_idx], next_sliding_window, x[:, self.end_node_target_idx:]], dim=1)
+            for i in range(current_num_timesteps):
+                x, edge_attr = batch.x[:, :, i], batch.edge_attr[:, :, i]
 
-            next_edge_attr = batch.edge_attr[:, :, 1]
-            next_pred = self.model(next_x, edge_index, next_edge_attr)
-            next_pred = self._override_pred_bc(next_pred, batch, 1)
+                # Override graph data with sliding window
+                x = torch.concat([x[:, :self.start_node_target_idx], sliding_window, x[:, self.end_node_target_idx:]], dim=1)
 
-            next_pred_loss = self._compute_node_loss(next_pred, batch, 1)
-            running_stab_loss += next_pred_loss.item()
+                pred = self.model(x, edge_index, edge_attr)
+                pred = self._override_pred_bc(pred, batch, i)
 
-            stability_loss = next_pred_loss
+                pred_loss = self._compute_node_loss(pred, batch, i)
+                running_pred_loss += pred_loss.item()
 
-            if self.use_physics_loss:
-                physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch, None)
-                step_loss = step_loss + physics_loss
+                step_loss = pred_loss
 
-            total_batch_loss = one_step_loss + stability_loss
-            total_batch_loss.backward()
-            running_grad_norm += torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=torch.inf)
+                if self.use_physics_loss:
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch, None)
+                    step_loss = step_loss + physics_loss
+
+                total_batch_loss = total_batch_loss + step_loss
+
+                if i < current_num_timesteps - 1:  # Don't update on last iteration
+                    use_teacher_forcing = torch.rand(1).item() < current_teacher_forcing_ratio
+                    if use_teacher_forcing:
+                        # Use ground truth for next timestep (teacher forcing)
+                        ground_truth = batch.y[:, :, i]
+                        next_sliding_window = torch.cat((sliding_window[:, 1:], ground_truth.detach()), dim=1)
+                    else:
+                        # Use model prediction for next timestep (scheduled sampling)
+                        next_sliding_window = torch.cat((sliding_window[:, 1:], pred.detach()), dim=1)
+
+                    sliding_window = next_sliding_window
+
+            avg_batch_loss = total_batch_loss / current_num_timesteps
+            avg_batch_loss.backward()
             self._clip_gradients()
             self.optimizer.step()
 
         running_loss = self._get_epoch_total_running_loss(running_pred_loss)
         epoch_loss = running_loss / len(self.dataloader)
         pred_epoch_loss = running_pred_loss / len(self.dataloader)
-        stab_epoch_loss = running_stab_loss / len(self.dataloader)
-        epoch_grad_norm = running_grad_norm / len(self.dataloader)
 
-        return epoch_loss, pred_epoch_loss, stab_epoch_loss, epoch_grad_norm
+        return epoch_loss, pred_epoch_loss
+
+    def _scheduled_teacher_forcing_ratio(self, epoch, total_epochs):
+        if hasattr(self, 'use_scheduled_sampling') and not self.use_scheduled_sampling:
+            return self.teacher_forcing_ratio
+
+        min_ratio = 0.1  # Minimum teacher forcing ratio
+        decay_rate = 0.95 # Decay rate per epoch after warm-up
+        
+        progress = epoch / max(1, total_epochs - 1)  # Avoid division by zero
+        # Exponential decay
+        # current_ratio = self.teacher_forcing_ratio * (decay_rate ** (progress * total_epochs))
+        # Linear decay from teacher_forcing_ratio to min_ratio
+        # current_ratio = self.teacher_forcing_ratio - (self.teacher_forcing_ratio - min_ratio) * progress
+        current_ratio = self.teacher_forcing_ratio - (0.02 * epoch)
+
+        # Ensure we don't go below minimum ratio
+        return max(min_ratio, current_ratio)
 
     def validate(self):
         val_tester = NodeAutoregressiveTester(

@@ -38,7 +38,6 @@ class BaseTrainer:
             self.early_stopping = EarlyStopping(patience=early_stopping_patience)
 
         self.training_stats = TrainingStats(logger=logger)
-        self.pred_loss_percent = 1.0
 
         self.total_num_epochs = self.num_epochs_dyn_loss + num_epochs
         self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_loss}/{self.total_num_epochs} epochs')

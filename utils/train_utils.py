@@ -63,23 +63,19 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
     if model_name not in EDGE_MODELS:
         use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
         global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
-        global_mass_loss_percent = loss_func_parameters['global_mass_loss_percent']
         if use_global_mass_loss:
-            logger.log(f'Using global mass conservation loss with initial scale {global_mass_loss_scale} and loss percentage {global_mass_loss_percent}')
+            logger.log(f'Using global mass conservation loss with scale {global_mass_loss_scale}')
 
         use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
         local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
-        local_mass_loss_percent = loss_func_parameters['local_mass_loss_percent']
         if use_local_mass_loss:
-            logger.log(f'Using local mass conservation loss with inital scale {local_mass_loss_scale} and loss percentage {local_mass_loss_percent}')
+            logger.log(f'Using local mass conservation loss with scale {local_mass_loss_scale}')
 
         trainer_params.update({
             'use_global_loss': use_global_mass_loss,
             'global_mass_loss_scale': global_mass_loss_scale,
-            'global_mass_loss_percent': global_mass_loss_percent,
             'use_local_loss': use_local_mass_loss,
             'local_mass_loss_scale': local_mass_loss_scale,
-            'local_mass_loss_percent': local_mass_loss_percent,
         })
 
     # Autoregressive training parameters
@@ -100,13 +96,11 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
     # Node/Edge prediction parameters
     if 'NodeEdgeGNN' in model_name:
         edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
-        edge_pred_loss_percent = loss_func_parameters['edge_pred_loss_percent']
-        logger.log(f'Using edge prediction loss with initial scale {edge_pred_loss_scale} and loss percentage {edge_pred_loss_percent}')
+        logger.log(f'Using edge prediction loss with scale {edge_pred_loss_scale}')
         logger.log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
         trainer_params.update({
             'edge_loss_func': edge_criterion,
             'edge_pred_loss_scale': edge_pred_loss_scale,
-            'edge_pred_loss_percent': edge_pred_loss_percent,
         })
 
     return trainer_params

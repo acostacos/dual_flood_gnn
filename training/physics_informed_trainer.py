@@ -10,19 +10,15 @@ class PhysicsInformedTrainer(BaseTrainer):
     def __init__(self,
                  use_global_loss: bool = False,
                  global_mass_loss_scale: float = 1.0,
-                 global_mass_loss_percent: float = 0.1,
                  use_local_loss: bool = False,
                  local_mass_loss_scale: float = 1.0,
-                 local_mass_loss_percent: float = 0.1,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         ds: FloodEventDataset = self.dataloader.dataset
         self.use_physics_loss = use_global_loss or use_local_loss
         self.use_global_loss = use_global_loss
-        self.global_mass_loss_percent = global_mass_loss_percent
         self.use_local_loss = use_local_loss
-        self.local_mass_loss_percent = local_mass_loss_percent
         self.delta_t = ds.timestep_interval
 
         if self.use_global_loss:
@@ -33,7 +29,6 @@ class PhysicsInformedTrainer(BaseTrainer):
                 delta_t=self.delta_t
             )
             self.global_loss_scaler = LossScaler(initial_scale=global_mass_loss_scale)
-            self.pred_loss_percent -= global_mass_loss_percent
 
         if self.use_local_loss:
             self.local_loss_func = LocalMassConservationLoss(
@@ -43,7 +38,6 @@ class PhysicsInformedTrainer(BaseTrainer):
                 delta_t=self.delta_t,
             )
             self.local_loss_scaler = LossScaler(initial_scale=local_mass_loss_scale)
-            self.pred_loss_percent -= local_mass_loss_percent
 
     def _reset_epoch_physics_running_loss(self):
         if self.use_global_loss:
@@ -86,9 +80,7 @@ class PhysicsInformedTrainer(BaseTrainer):
     def _scale_global_mass_loss(self, epoch: int, pred_loss: Tensor, global_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
             self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_mass_loss)
-            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
-        else:
-            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss) * self.global_mass_loss_percent
+        scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
         return scaled_global_physics_loss
 
     def _get_epoch_local_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
@@ -106,9 +98,7 @@ class PhysicsInformedTrainer(BaseTrainer):
     def _scale_local_mass_loss(self, epoch: int, pred_loss: Tensor, local_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
             self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_mass_loss)
-            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
-        else:
-            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss) * self.local_mass_loss_percent
+        scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
         return scaled_local_physics_loss
 
     def _get_epoch_total_running_loss(self, current_running_loss: float) -> float:

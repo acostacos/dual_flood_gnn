@@ -36,7 +36,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
 
                 if self.use_physics_loss:
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch)
-                    loss = loss * self.pred_loss_percent + physics_loss
+                    loss = loss + physics_loss
 
                 loss.backward()
                 self.optimizer.step()

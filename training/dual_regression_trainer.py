@@ -13,15 +13,11 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
     def __init__(self,
                  edge_loss_func: Callable,
                  edge_pred_loss_scale: float = 1.0,
-                 edge_pred_loss_percent: float = 0.5,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.edge_loss_func = edge_loss_func
-        self.edge_pred_loss_percent = edge_pred_loss_percent
-
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
-        self.pred_loss_percent -= self.edge_pred_loss_percent
 
     def train(self):
         self.training_stats.start_train()
@@ -41,7 +37,6 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                 pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
 
                 pred_loss = self._compute_node_loss(pred, batch)
-                pred_loss =  pred_loss * self.pred_loss_percent
                 running_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred, batch)
@@ -108,10 +103,6 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
         edge_rmse = val_tester.get_avg_edge_rmse()
         return node_rmse, edge_rmse
 
-    def _compute_edge_loss(self, edge_pred: Tensor, batch, timestep: int) -> Tensor:
-        label = batch.y_edge[:, :, timestep]
-        return self.edge_loss_func(edge_pred, label)
-
     def _override_pred_bc(self, pred: Tensor, edge_pred: Tensor, batch) -> Tensor:
         pred = NodeRegressionTrainer._override_pred_bc(self, pred, batch)
         edge_pred = EdgeRegressionTrainer._override_pred_bc(self, edge_pred, batch)
@@ -120,7 +111,5 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
     def _scale_edge_pred_loss(self, epoch: int, pred_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
             self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
-        else:
-            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_pred_loss_percent
+        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
         return scaled_edge_pred_loss

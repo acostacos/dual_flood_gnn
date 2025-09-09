@@ -103,7 +103,6 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 pred = self._override_pred_bc(pred, batch, i)
 
                 pred_loss = self._compute_node_loss(pred, batch, i)
-                pred_loss = pred_loss * self.pred_loss_percent
                 running_pred_loss += pred_loss.item()
 
                 step_loss = pred_loss

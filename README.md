@@ -52,7 +52,7 @@ Below are the list of entry points for the application that you may run.
 |---|---|---|
 | `train.py` | Train the model with the parameters specified in the config file. | `--config`, `--model`, `--with_test` `--seed` `--device` `--debug` |
 | `test.py` | Perform inference using the specified model checkpoint with test data. | `--config`, `--model`, `--model_path`, `--seed`, `--device`, `--debug` |
-| `bayesian_search.py` | Perform a Bayesian hyperparameter search with the specified hyperparameters and events. | `--hyperparameters`, `--config`, `--model`, `--summary_file`, `--num_trials`, `--num_folds`, `--seed`, `--device` |
+| `hp_search.py` | Perform a Bayesian hyperparameter search with the specified hyperparameters and events. | `--config`, `--hparam_config`, `--model`, `--seed`, `--device` |
 | `eda.ipynb` | Jupyter notebook that gives an overview and analysis of the data. | N/A |
 | `view_results.ipynb` | Jupyter notebook where you may view the results of model training and testing. | N/A |
 

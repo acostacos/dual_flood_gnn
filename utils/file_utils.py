@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pickle
 import yaml
+import shutil
 
 from typing import Any, List, Union
 
@@ -63,3 +64,10 @@ def create_temp_dirs(paths: Union[List[str], str], folder_name: str = '_temp_dir
             os.makedirs(temp_dir_path)
         temp_dir_paths.append(temp_dir_path)
     return temp_dir_paths
+
+def delete_temp_dirs(paths: Union[List[str], str]):
+    if isinstance(paths, str):
+        paths = [paths]
+    for path in paths:
+        if os.path.exists(path):
+            shutil.rmtree(path)

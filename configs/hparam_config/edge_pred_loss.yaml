@@ -1,10 +1,10 @@
 output_dir: 'hp_stats'
-num_trials: 20
+num_trials: 15
 num_folds: 5
 hyperparameters:
   edge_pred_loss_scale:
     path: 'loss_func_parameters.edge_pred_loss_scale'
     type: 'float'
-    min: 1.0e-6
-    max: 1.0e-3
+    min: 1.0e-4
+    max: 1.0e2
     log: True

@@ -4,7 +4,7 @@
 #SBATCH --partition=gpu-long
 #SBATCH --gpus=a100-40:1
 #SBATCH --mem-per-cpu=128000
-#SBATCH --time=5760
+#SBATCH --time=2880
 
 . venv/bin/activate
 

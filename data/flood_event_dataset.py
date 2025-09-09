@@ -431,10 +431,17 @@ class FloodEventDataset(Dataset):
             all_event_data = np.concatenate(all_event_data, axis=0)
             return all_event_data
 
+        def get_clipped_water_volume(hec_ras_path: str):
+            """Remove exterme values in water volume"""
+            CLIP_VOLUME = 100000  # in cubic meters
+            water_volume = get_water_volume(hec_ras_path)
+            water_volume = np.clip(water_volume, a_min=0, a_max=CLIP_VOLUME)
+            return water_volume
+
         DYNAMIC_NODE_RETRIEVAL_MAP = {
             "rainfall": lambda: get_interval_rainfall(self.raw_paths[2:]),
             "water_depth": lambda: self._get_dynamic_from_all_events(get_water_depth),
-            "water_volume": lambda: self._get_dynamic_from_all_events(get_water_volume),
+            "water_volume": lambda: self._get_dynamic_from_all_events(get_clipped_water_volume),
         }
 
         dynamic_features = self._get_features(feature_list=self.DYNAMIC_NODE_FEATURES,

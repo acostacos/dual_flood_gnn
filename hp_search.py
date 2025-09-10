@@ -90,18 +90,18 @@ def cross_validate(_config: Dict, cross_val_groups: List[str]) -> float | Tuple[
             val_edge_rmses.append(avg_edge_rmse)
             logger.log(f'Group {group_id} Edge RMSE: {avg_edge_rmse:.4e}')
 
-    def get_avg_rmse(rmses: List[float]) -> float:
-        np_rmses = np.array(rmses)
-        is_not_finite = ~np.isfinite(np_rmses)
-        np_rmses[is_not_finite] = 1e10  # Replace non-finite values with a large number
-        return np_rmses.mean()
-
-    avg_val_rmse = get_avg_rmse(val_rmses)
+    val_rmses = np.array(val_rmses)
+    if ~np.isfinite(val_rmses).any():
+        raise optuna.TrialPruned("NAN or Inf RMSE encountered during cross-validation.")
+    avg_val_rmse = val_rmses.mean()
     logger.log(f'\nAverage RMSE across all events: {avg_val_rmse:.4e}')
     if not is_dual_model:
         return avg_val_rmse
 
-    avg_val_edge_rmse = get_avg_rmse(val_edge_rmses)
+    val_edge_rmses = np.array(val_edge_rmses)
+    if ~np.isfinite(val_edge_rmses).any():
+        raise optuna.TrialPruned("NAN or Inf Edge RMSE encountered during cross-validation.")
+    avg_val_edge_rmse = val_edge_rmses.mean()
     logger.log(f'Average Edge RMSE across all events: {avg_val_edge_rmse:.4e}')
     return avg_val_rmse, avg_val_edge_rmse
 

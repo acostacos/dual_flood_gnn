@@ -38,7 +38,7 @@ def cross_validate(_config: Dict, cross_val_groups: List[str]) -> float | Tuple[
         _train_config = _config['training_parameters']
         optimizer = torch.optim.Adam(model.parameters(), lr=_train_config['learning_rate'], weight_decay=_train_config['adam_weight_decay'])
 
-        base_trainer_params = train_utils.get_trainer_config(args.model, _config, logger)
+        base_trainer_params = train_utils.get_trainer_config(args.model, _config)
         trainer_params = {
             'model': model,
             'dataset': train_dataset,
@@ -144,7 +144,6 @@ def plot_hyperparameter_search_results(study: optuna.Study):
 
 def main():
     try:
-
         if args.seed is not None:
             random.seed(args.seed)
             np.random.seed(args.seed)

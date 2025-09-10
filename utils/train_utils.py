@@ -33,7 +33,11 @@ def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_valid
 
     return train_df_file, val_df_file
 
-def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
+def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> dict:
+    def log(msg):
+        if logger:
+            logger.log(msg)
+
     EDGE_MODELS = ['EdgeGNNAttn']
     trainer_params = {}
 
@@ -56,7 +60,7 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
         'loss_func': loss_func,
         'early_stopping_patience': early_stopping_patience,
     }
-    logger.log(f'Using training configuration: {base_config}')
+    log(f'Using training configuration: {base_config}')
     trainer_params.update(base_config)
 
     # Physics-informed training parameters
@@ -64,12 +68,12 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
         use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
         global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
         if use_global_mass_loss:
-            logger.log(f'Using global mass conservation loss with scale {global_mass_loss_scale}')
+            log(f'Using global mass conservation loss with scale {global_mass_loss_scale}')
 
         use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
         local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
         if use_local_mass_loss:
-            logger.log(f'Using local mass conservation loss with scale {local_mass_loss_scale}')
+            log(f'Using local mass conservation loss with scale {local_mass_loss_scale}')
 
         trainer_params.update({
             'use_global_loss': use_global_mass_loss,
@@ -96,8 +100,8 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger) -> dict:
     # Node/Edge prediction parameters
     if 'NodeEdgeGNN' in model_name:
         edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
-        logger.log(f'Using edge prediction loss with scale {edge_pred_loss_scale}')
-        logger.log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
+        log(f'Using edge prediction loss with scale {edge_pred_loss_scale}')
+        log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
         trainer_params.update({
             'edge_loss_func': edge_criterion,
             'edge_pred_loss_scale': edge_pred_loss_scale,

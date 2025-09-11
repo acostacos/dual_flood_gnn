@@ -8,7 +8,6 @@ from typing import Callable, Optional
 from utils import Logger, EarlyStopping
 from utils.training_stats import TrainingStats
 
-
 class BaseTrainer:
     def __init__(self,
                  model: Module,
@@ -41,7 +40,6 @@ class BaseTrainer:
         self.training_stats = TrainingStats(logger=logger)
 
         assert self.num_epochs_dyn_loss <= self.num_epochs, "Number of epochs for dynamic loss scaling must not exceed total number of epochs."
-        self.training_stats.log(f'Using dynamic loss weight adjustment for the first {self.num_epochs_dyn_loss}/{self.num_epochs} epochs')
 
     def train(self):
         raise NotImplementedError("Subclasses should implement this method.")

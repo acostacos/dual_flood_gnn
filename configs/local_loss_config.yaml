@@ -36,7 +36,7 @@ training_parameters:
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
   num_epochs           : 120                                 # Number of epochs
-  num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
+  num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 64                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
@@ -48,7 +48,7 @@ training_parameters:
     enabled            : True                                # Enable autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 8                                   # Total number of timesteps for autoregressive training
-    max_curriculum_epochs: 20                                # Maximum number of curriculum steps
+    max_curriculum_epochs: 15                                # Maximum number of curriculum steps
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:

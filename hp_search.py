@@ -108,7 +108,7 @@ def cross_validate(_config: Dict, cross_val_groups: List[str]) -> float | Tuple[
 def create_objective(cross_val_groups: List[str]):
     def objective(trial: optuna.Trial) -> float:
         hyperparamters = hparam_config['hyperparameters']
-        updated_config = hp_search_utils.suggest_hyperparamters(trial, hyperparamters, config)
+        updated_config = hp_search_utils.suggest_hyperparamters(trial, hyperparamters, config, logger)
         return cross_validate(updated_config, cross_val_groups)
     return objective
 
@@ -211,6 +211,7 @@ if __name__ == '__main__':
     args = parse_args()
     config = file_utils.read_yaml_file(args.config)
     hparam_config = file_utils.read_yaml_file(args.hparam_config)
+    config['model_parameters'] = {args.model: config['model_parameters'][args.model]}
 
     # Initialize logger
     train_config = config['training_parameters']

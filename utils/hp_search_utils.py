@@ -59,7 +59,7 @@ def create_cross_val_dataset_files(root_dir: str,
 
     return groups, temp_dir_paths
 
-def suggest_hyperparamters(trial: optuna.Trial, hyperparameters: Dict, config: Dict) -> Dict:
+def suggest_hyperparamters(trial: optuna.Trial, hyperparameters: Dict, config: Dict, logger: Logger = None) -> Dict:
     updated_config = config.copy()
     for param_name, param_info in hyperparameters.items():
         param_type = param_info['type']
@@ -71,6 +71,9 @@ def suggest_hyperparamters(trial: optuna.Trial, hyperparameters: Dict, config: D
             suggested_value = trial.suggest_categorical(param_name, param_info['choices'])
         else:
             raise ValueError(f'Unsupported hyperparameter type: {param_type} for parameter: {param_name}')
+
+        if logger is not None:
+            logger.log(f'Testing value {suggested_value} for parameter {param_name}')
 
         # Traverse the config dictionary to set the suggested value
         path = param_info['path']

@@ -1,4 +1,3 @@
-
 from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data import FloodEventDataset
 from torch import Tensor
@@ -47,57 +46,72 @@ class PhysicsInformedTrainer(BaseTrainer):
             self.running_orig_local_physics_loss = 0.0
             self.running_local_physics_loss = 0.0
 
-    def _get_epoch_physics_loss(self, epoch, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
+    def _get_epoch_physics_loss(self, *args, **kwargs) -> Tensor:
+        '''
+        Compute and return the physics loss for the current epoch.
+
+        Parameters:
+            epoch (int): Current epoch number.
+            pred (Tensor): Predicted node values at current timestep.
+            prev_node_pred (Tensor): Predicted node values at previous timestep.
+            prev_edge_pred (Tensor): Predicted edge values at previous timestep.
+            basis_loss (Tensor): The basis loss (e.g., prediction loss) to scale against.
+            batch: The current data batch.
+        '''
         if not self.use_global_loss and not self.use_local_loss:
             raise ValueError("At least one of global or local physics loss must be enabled.")
 
         if self.use_global_loss:
-            global_physics_loss = self._get_epoch_global_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
+            global_physics_loss = self._get_epoch_global_mass_loss(*args, **kwargs)
 
         if not self.use_local_loss:
             return global_physics_loss
 
         if self.use_local_loss:
-            local_physics_loss = self._get_epoch_local_mass_loss(epoch, pred, pred_loss, batch, prev_edge_pred)
+            local_physics_loss = self._get_epoch_local_mass_loss(*args, **kwargs)
 
         if not self.use_global_loss:
             return local_physics_loss
 
         return local_physics_loss + global_physics_loss
 
-    def _get_epoch_global_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
-        if prev_edge_pred is None:
-            # If previous edge prediction is not provided, use the face flow from batch
-            prev_edge_pred = batch.global_mass_info['face_flow']
-
-        global_physics_loss = self.global_loss_func(pred, prev_edge_pred, batch)
+    def _get_epoch_global_mass_loss(self,
+                                    epoch: int,
+                                    pred: Tensor,
+                                    prev_node_pred: Tensor,
+                                    prev_edge_pred: Tensor,
+                                    basis_loss: Tensor,
+                                    batch) -> Tensor:
+        global_physics_loss = self.global_loss_func(pred, prev_node_pred, prev_edge_pred, batch)
         self.running_orig_global_physics_loss += global_physics_loss.item()
 
-        scaled_global_physics_loss = self._scale_global_mass_loss(epoch, pred_loss, global_physics_loss)
+        scaled_global_physics_loss = self._scale_global_mass_loss(epoch, basis_loss, global_physics_loss)
         self.running_global_physics_loss += scaled_global_physics_loss.item()
         return scaled_global_physics_loss
 
-    def _scale_global_mass_loss(self, epoch: int, pred_loss: Tensor, global_mass_loss: Tensor) -> Tensor:
+    def _scale_global_mass_loss(self, epoch: int, basis_loss: Tensor, global_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_mass_loss)
+            self.global_loss_scaler.add_epoch_loss_ratio(basis_loss, global_mass_loss)
         scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
         return scaled_global_physics_loss
 
-    def _get_epoch_local_mass_loss(self, epoch: int, pred: Tensor, pred_loss: Tensor, batch, prev_edge_pred: Tensor = None) -> Tensor:
-        if prev_edge_pred is None:
-            # If previous edge prediction is not provided, use the face flow from batch
-            prev_edge_pred = batch.local_mass_info['face_flow']
-
-        local_physics_loss = self.local_loss_func(pred, prev_edge_pred, batch)
+    def _get_epoch_local_mass_loss(self,
+                                   epoch: int,
+                                   pred: Tensor,
+                                   prev_node_pred: Tensor,
+                                   prev_edge_pred: Tensor,
+                                   basis_loss: Tensor,
+                                   batch) -> Tensor:
+        local_physics_loss = self.local_loss_func(pred, prev_node_pred, prev_edge_pred, batch)
         self.running_orig_local_physics_loss += local_physics_loss.item()
 
-        scaled_local_physics_loss = self._scale_local_mass_loss(epoch, pred_loss, local_physics_loss)
+        scaled_local_physics_loss = self._scale_local_mass_loss(epoch, basis_loss, local_physics_loss)
         self.running_local_physics_loss += scaled_local_physics_loss.item()
         return scaled_local_physics_loss
 
-    def _scale_local_mass_loss(self, epoch: int, pred_loss: Tensor, local_mass_loss: Tensor) -> Tensor:
+    def _scale_local_mass_loss(self, epoch: int, basis_loss: Tensor, local_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_mass_loss)
+            self.local_loss_scaler.add_epoch_loss_ratio(basis_loss, local_mass_loss)
         scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
         return scaled_local_physics_loss
 

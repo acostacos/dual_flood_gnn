@@ -132,17 +132,18 @@ class ValidationStats:
 
     def update_physics_informed_stats_for_timestep(self,
                                                    pred: Tensor,
-                                                   databatch,
-                                                   prev_edge_pred: Tensor):
+                                                   prev_node_pred: Tensor,
+                                                   prev_edge_pred: Tensor,
+                                                   databatch):
         assert self.previous_timesteps is not None and self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
             "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
 
         global_mass_loss_func = GlobalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
-        global_mass_loss = global_mass_loss_func(pred, prev_edge_pred, databatch)
+        global_mass_loss = global_mass_loss_func(pred, prev_node_pred, prev_edge_pred, databatch)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
         local_mass_loss_func = LocalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
-        local_mass_loss = local_mass_loss_func(pred, prev_edge_pred, databatch)
+        local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, databatch)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())
 
     def print_stats_summary(self):

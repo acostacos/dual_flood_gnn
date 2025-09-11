@@ -5,6 +5,7 @@ from contextlib import redirect_stdout
 from data import FloodEventDataset
 from torch import Tensor
 from testing import NodeAutoregressiveTester
+from utils import train_utils
 
 from .physics_informed_trainer import PhysicsInformedTrainer
 
@@ -35,7 +36,13 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                 running_pred_loss += loss.item()
 
                 if self.use_physics_loss:
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, loss, batch)
+                    previous_timesteps = self.dataloader.dataset.previous_timesteps
+                    curr_water_volume = train_utils.get_curr_volume_from_node_features(x, previous_timesteps)
+                    curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
+                    # Need to overwrite boundary conditions as these are masked
+                    curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, curr_water_volume,
+                                                                curr_face_flow, loss, batch)
                     loss = loss + physics_loss
 
                 loss.backward()

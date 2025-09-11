@@ -2,6 +2,7 @@ import torch
 
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
+from utils import train_utils
 
 from .base_tester import BaseTester
 
@@ -58,8 +59,11 @@ class NodeAutoregressiveTester(BaseTester):
                 # Requires normalized physics-informed loss
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
-                    prev_edge_pred = graph.global_mass_info['face_flow']
-                    validation_stats.update_physics_informed_stats_for_timestep(pred, graph, prev_edge_pred)
+                    prev_node_pred = sliding_window[:, [-1]]
+                    prev_edge_pred = train_utils.get_curr_flow_from_edge_features(edge_attr, self.dataset.previous_timesteps)
+                    # Need to overwrite boundary conditions as these are masked
+                    prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
+                    validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
                 label = graph.y
                 if self.dataset.is_normalized:

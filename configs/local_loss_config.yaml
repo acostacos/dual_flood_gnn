@@ -45,7 +45,7 @@ training_parameters:
   val_split_percent  : 0.05                                  # Percentage of validation split for autoregressive training
 
   autoregressive:
-    enabled            : False                               # Enable autoregressive training
+    enabled            : True                                # Enable autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 8                                   # Total number of timesteps for autoregressive training
     max_curriculum_epochs: 20                                # Maximum number of curriculum steps

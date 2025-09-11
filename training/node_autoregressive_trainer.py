@@ -8,7 +8,7 @@ from torch import Tensor
 from data import AutoregressiveFloodDataset
 from testing import NodeAutoregressiveTester
 from typing import Tuple
-from utils import EarlyStopping
+from utils import EarlyStopping, train_utils
 
 from .base_autoregressive_trainer import BaseAutoregressiveTrainer
 from .physics_informed_trainer import PhysicsInformedTrainer
@@ -108,7 +108,13 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 step_loss = pred_loss
 
                 if self.use_physics_loss:
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch, None)
+                    previous_timesteps = self.dataloader.dataset.previous_timesteps
+                    prev_node_pred = sliding_window[:, [-1]]
+                    curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
+                    # Need to overwrite boundary conditions for first timestep as these are masked
+                    curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)
+                    physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
+                                                                curr_face_flow, pred_loss, batch)
                     step_loss = step_loss + physics_loss
 
                 total_batch_loss = total_batch_loss + step_loss

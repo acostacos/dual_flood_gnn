@@ -1,6 +1,5 @@
 import torch
 
-from data import FloodEventDataset
 from data.dataset_normalizer import DatasetNormalizer
 from torch import Tensor
 from torch.nn import Module
@@ -23,6 +22,7 @@ class GlobalMassConservationLoss(Module):
 
     def forward(self,
                 batch_node_pred: Tensor, # Normalized predicted water volume (t+1)
+                batch_node_input: Tensor, # Normalized given water volume (t)
                 batch_edge_input: Tensor, # Normalized given water flow w/ unmasked outflow (t)
                 databatch) -> Tensor:
         batch = databatch.batch
@@ -36,7 +36,7 @@ class GlobalMassConservationLoss(Module):
         non_boundary_nodes_mask = global_mass_info['non_boundary_nodes_mask']
 
         # Get current total water volume (t)
-        curr_water_volume = self.get_curr_volume_from_batch(databatch, non_boundary_nodes_mask) # Normalized given water volume (t)
+        curr_water_volume = get_orig_water_volume(batch_node_input, self.normalizer, self.is_normalized, non_boundary_nodes_mask)
         non_boundary_batch = batch[non_boundary_nodes_mask]
         total_water_volume = scatter(curr_water_volume, non_boundary_batch, reduce='sum')
 
@@ -68,12 +68,3 @@ class GlobalMassConservationLoss(Module):
 
         global_loss = global_volume_error.mean()
         return global_loss
-
-    def get_curr_volume_from_batch(self, databatch, non_boundary_nodes_mask: Tensor) -> Tensor:
-        water_volume_dyn_num = FloodEventDataset.DYNAMIC_NODE_FEATURES.index('water_volume') + 1
-        num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
-        curr_water_volume_idx = num_static_node_features + ((self.previous_timesteps + 1) * water_volume_dyn_num) - 1
-        curr_water_volume = databatch.x[:, [curr_water_volume_idx]]
-
-        curr_water_volume = get_orig_water_volume(curr_water_volume, self.normalizer, self.is_normalized, non_boundary_nodes_mask)
-        return curr_water_volume

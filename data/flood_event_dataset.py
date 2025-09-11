@@ -632,15 +632,17 @@ class FloodEventDataset(Dataset):
                                            total_rainfall_per_ts: ndarray,
                                            edge_face_flow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
+        boundary_outflow = edge_face_flow_per_ts[timestep_idx][self.boundary_condition.outflow_edges_mask][:, None]
+
         total_rainfall = torch.from_numpy(total_rainfall_per_ts[[timestep_idx]])
-        face_flow = torch.from_numpy(edge_face_flow_per_ts[timestep_idx][:, None])
+        boundary_outflow = torch.from_numpy(boundary_outflow)
         inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
         non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
 
         return {
             'total_rainfall': total_rainfall,
-            'face_flow': face_flow,
+            'boundary_outflow': boundary_outflow,
             'inflow_edges_mask': inflow_edges_mask,
             'outflow_edges_mask': outflow_edges_mask,
             'non_boundary_nodes_mask': non_boundary_nodes_mask,
@@ -650,12 +652,16 @@ class FloodEventDataset(Dataset):
                                           node_rainfall_per_ts: ndarray,
                                           edge_face_flow_per_ts: ndarray,
                                           timestep_idx: int) -> Dict[str, Tensor]:
+        boundary_outflow = edge_face_flow_per_ts[timestep_idx][self.boundary_condition.outflow_edges_mask][:, None]
+
         rainfall = torch.from_numpy(node_rainfall_per_ts[timestep_idx])
-        face_flow = torch.from_numpy(edge_face_flow_per_ts[timestep_idx][:, None])
+        boundary_outflow = torch.from_numpy(boundary_outflow)
+        outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
         non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
 
         return {
             'rainfall': rainfall,
-            'face_flow': face_flow,
+            'boundary_outflow': boundary_outflow,
+            'outflow_edges_mask': outflow_edges_mask,
             'non_boundary_nodes_mask': non_boundary_nodes_mask,
         }

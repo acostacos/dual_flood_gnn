@@ -25,6 +25,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         '''Multi-step-ahead loss with curriculum learning.'''
         self.training_stats.start_train()
         current_num_timesteps = self.init_num_timesteps
+        current_timestep_epochs = 0
 
         for epoch in range(self.num_epochs):
             train_start_time = time.time()
@@ -57,17 +58,21 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             self.training_stats.add_val_loss_component('val_node_rmse', val_node_rmse)
             self.training_stats.add_val_loss_component('val_edge_rmse', val_edge_rmse)
 
-            if self.early_stopping((val_node_rmse, val_edge_rmse), self.model):
-                self.training_stats.log(f'\tEarly stopping triggered after {epoch + 1} epochs.')
+            current_timestep_epochs += 1
 
-                if current_num_timesteps < self.total_num_timesteps:
-                    current_num_timesteps += 1
-                    self.early_stopping = EarlyStopping(patience=self.early_stopping.patience)
-                    self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps.')
-                    self.lr_scheduler.step()
-                    self.training_stats.log(f'\tDecayed learning rate to {self.lr_scheduler.get_last_lr()[0]:.4e}.')
-                    continue
+            is_early_stopped = self.early_stopping((val_node_rmse, val_edge_rmse), self.model)
+            is_max_exceeded = self.max_curriculum_epochs is not None and current_timestep_epochs >= self.max_curriculum_epochs
+            if (is_early_stopped or is_max_exceeded) and current_num_timesteps < self.total_num_timesteps:
+                self.training_stats.log(f'\tCurriculum learning for {current_num_timesteps} ended after {current_timestep_epochs} epochs.')
+                current_num_timesteps += 1
+                current_timestep_epochs = 0
+                self.early_stopping = EarlyStopping(patience=self.early_stopping.patience)
+                self.training_stats.log(f'\tIncreased current_num_timesteps to {current_num_timesteps} timesteps.')
+                self.lr_scheduler.step()
+                self.training_stats.log(f'\tDecayed learning rate to {self.lr_scheduler.get_last_lr()[0]:.4e}.')
+                continue
 
+            if is_early_stopped:
                 self.training_stats.log('Training completed due to early stopping.')
                 break
 

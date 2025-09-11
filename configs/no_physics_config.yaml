@@ -35,25 +35,26 @@ training_parameters:
   model_dir            : 'saved_models'                      # Path to directory to save trained models
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 100                                 # Number of epochs
+  num_epochs           : 120                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 64                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
-  early_stopping_patience: 15                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
+  early_stopping_patience: 10                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.05                                  # Percentage of validation split for autoregressive training
 
   autoregressive:
     enabled            : False                               # Enable autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
-    total_num_timesteps: 4                                   # Total number of timesteps for autoregressive training
+    total_num_timesteps: 8                                   # Total number of timesteps for autoregressive training
+    max_curriculum_epochs: 20                                # Maximum number of curriculum steps
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
   node_loss: 'huber'                                         # Loss function for node features. Options: 'mse', 'mae', 'huber'
   edge_loss: 'huber'                                         # Loss function for edge features. Options: 'mse', 'mae', 'huber'
-  edge_pred_loss_scale: 1                                    # Value used to scale edge prediction loss. This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_scale: 1.48e-1                              # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   use_global_mass_loss: False                                # Enable global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss. This is used as an initial value when using dynamic loss scaling
   use_local_mass_loss: False                                 # Enable local mass conservation in loss function

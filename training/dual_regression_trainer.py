@@ -4,6 +4,8 @@ from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
 from typing import Callable
+from loss.multi_task_loss_balancer import MultiTaskLossBalancer
+from models.multi_task_model import MultiTaskModel
 from utils import LossScaler
 
 from .node_regression_trainer import NodeRegressionTrainer
@@ -18,6 +20,11 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
 
         self.edge_loss_func = edge_loss_func
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
+
+        assert isinstance(self.model, MultiTaskModel), "Model must be an instance of MultiTaskModel for multi-task learning."
+        loss_uncertainties = self.model.get_multi_task_loss_params()
+        self.loss_balancer = MultiTaskLossBalancer(num_tasks=self.model.num_tasks,
+                                                   loss_uncertainties=loss_uncertainties)
 
     def train(self):
         self.training_stats.start_train()
@@ -40,10 +47,9 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                 running_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred, batch)
-                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
-                loss = pred_loss + edge_pred_loss
+                loss = self.loss_balancer(pred_loss, edge_pred_loss)
 
                 if self.use_physics_loss:
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, pred_loss, batch)
@@ -60,7 +66,9 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tTotal Loss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}\n'
-            logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
+            logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}\n'
+            logging_str += f'\tNode Prediction Loss Weight: {self.loss_balancer.get_task_weight(0):.4e}\n'
+            logging_str += f'\tEdge Prediction Loss Weight: {self.loss_balancer.get_task_weight(1):.4e}'
             self.training_stats.log(logging_str)
 
             self.training_stats.add_loss(epoch_loss)

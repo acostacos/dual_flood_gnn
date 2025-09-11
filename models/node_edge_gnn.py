@@ -4,9 +4,9 @@ from torch.nn import Identity
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from utils.model_utils import make_mlp, get_activation_func
 
-from .base_model import BaseModel
+from .multi_task_model import MultiTaskModel
 
-class NodeEdgeGNN(BaseModel):
+class NodeEdgeGNN(MultiTaskModel):
     '''
     Model that uses message passing to update both node and edge features. Can predict for both simultaneously.
     '''
@@ -24,7 +24,7 @@ class NodeEdgeGNN(BaseModel):
                  decoder_activation: str = None,
 
                  **base_model_kwargs):
-        super().__init__(**base_model_kwargs)
+        super().__init__(num_tasks=2, **base_model_kwargs)
         self.with_encoder = encoder_layers > 0
         self.with_decoder = decoder_layers > 0
         self.with_residual = residual

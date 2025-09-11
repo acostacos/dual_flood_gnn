@@ -6,6 +6,8 @@ from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
 from typing import Tuple, Callable
+from loss.multi_task_loss_balancer import MultiTaskLossBalancer
+from models.multi_task_model import MultiTaskModel
 from utils import EarlyStopping, LossScaler
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
@@ -19,7 +21,11 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         super().__init__(*args, **kwargs)
 
         self.edge_loss_func = edge_loss_func
-        self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
+
+        assert isinstance(self.model, MultiTaskModel), "Model must be an instance of MultiTaskModel for multi-task learning."
+        loss_uncertainties = self.model.get_multi_task_loss_params()
+        self.loss_balancer = MultiTaskLossBalancer(num_tasks=self.model.num_tasks,
+                                                   loss_uncertainties=loss_uncertainties)
 
     def train(self):
         '''Multi-step-ahead loss with curriculum learning.'''
@@ -34,16 +40,15 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}\n'
-            logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}'
+            logging_str += f'\tEdge Prediction Loss: {edge_pred_epoch_loss:.4e}\n'
+            logging_str += f'\tNode Prediction Loss Weight: {self.loss_balancer.get_task_weight(0):.4e}\n'
+            logging_str += f'\tEdge Prediction Loss Weight: {self.loss_balancer.get_task_weight(1):.4e}'
             self.training_stats.log(logging_str)
 
             self.training_stats.add_loss(epoch_loss)
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
             self.training_stats.add_loss_component('edge_prediction_loss', edge_pred_epoch_loss)
 
-            if epoch < self.num_epochs_dyn_loss:
-                self.edge_loss_scaler.update_scale_from_epoch()
-                self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
             if self.use_physics_loss:
                 self._process_epoch_physics_loss(epoch)
 
@@ -72,7 +77,6 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 break
 
         self.training_stats.end_train()
-        self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)
         self._add_scaled_physics_loss_history()
 
     def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float, float]:
@@ -105,10 +109,9 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 running_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred, batch, i)
-                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
-                step_loss = pred_loss + edge_pred_loss
+                step_loss = self.loss_balancer(pred_loss, edge_pred_loss)
 
                 if self.use_physics_loss:
                     prev_edge_pred = None if i == 0 else edge_sliding_window[:, [-1]]
@@ -158,9 +161,3 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         pred = NodeAutoregressiveTrainer._override_pred_bc(self, pred, batch, timestep)
         edge_pred = EdgeAutoregressiveTrainer._override_pred_bc(self, edge_pred, batch, timestep)
         return pred, edge_pred
-
-    def _scale_edge_pred_loss(self, epoch: int, pred_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
-        if epoch < self.num_epochs_dyn_loss:
-            self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
-        return scaled_edge_pred_loss

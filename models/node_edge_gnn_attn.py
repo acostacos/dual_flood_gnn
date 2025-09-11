@@ -8,9 +8,9 @@ from torch_geometric.utils import softmax
 from typing import List, Optional, Tuple
 from utils.model_utils import make_mlp
 
-from .base_model import BaseModel
+from .multi_task_model import MultiTaskModel
 
-class NodeEdgeGNNAttn(BaseModel):
+class NodeEdgeGNNAttn(MultiTaskModel):
     def __init__(self,
                  input_features: int = None,
                  input_edge_features: int = None,
@@ -33,7 +33,7 @@ class NodeEdgeGNNAttn(BaseModel):
                  decoder_activation: str = None,
 
                  **base_model_kwargs):
-        super().__init__(**base_model_kwargs)
+        super().__init__(num_tasks=2, **base_model_kwargs)
         self.with_encoder = encoder_layers > 0
         self.with_decoder = decoder_layers > 0
 

@@ -13,7 +13,8 @@ from utils.file_utils import read_yaml_file, save_to_yaml_file
 from .hecras_data_retrieval import get_event_timesteps, get_cell_area, get_roughness,\
     get_cumulative_rainfall, get_water_level, get_water_volume, get_edge_direction_x,\
     get_edge_direction_y, get_face_length, get_velocity, get_face_flow
-from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length, get_edge_slope
+from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length,\
+    get_edge_slope, get_cell_position_x, get_cell_position_y
 from .boundary_condition import BoundaryCondition
 from .dataset_normalizer import DatasetNormalizer
 
@@ -387,6 +388,8 @@ class FloodEventDataset(Dataset):
             "area": lambda: get_cell_area(self.raw_paths[2]),
             "roughness": lambda: get_roughness(self.raw_paths[2]),
             "elevation": lambda: get_cell_elevation(self.raw_paths[0]),
+            "position_x": lambda: get_cell_position_x(self.raw_paths[0]),
+            "position_y": lambda: get_cell_position_y(self.raw_paths[0]),
         }
 
         static_features = self._get_features(feature_list=self.STATIC_NODE_FEATURES,
@@ -395,12 +398,28 @@ class FloodEventDataset(Dataset):
         return static_features
 
     def _get_static_edge_features(self) -> ndarray:
+        def get_relative_position_x(nodes_shp_path, edges_shp_path: str, coord: Literal['x', 'y']) -> ndarray:
+            position_x = get_cell_position_x(nodes_shp_path)
+            edge_index = get_edge_index(edges_shp_path)
+            row, col = edge_index
+            relative_pos_x = position_x[row] - position_x[col]
+            return relative_pos_x
+
+        def get_relative_position_y(nodes_shp_path, edges_shp_path: str) -> ndarray:
+            position_y = get_cell_position_y(nodes_shp_path)
+            edge_index = get_edge_index(edges_shp_path)
+            row, col = edge_index
+            relative_pos_y = position_y[row] - position_y[col]
+            return relative_pos_y
+
         STATIC_EDGE_RETRIEVAL_MAP = {
             "direction_x": lambda: get_edge_direction_x(self.raw_paths[2]),
             "direction_y": lambda: get_edge_direction_y(self.raw_paths[2]),
             "face_length": lambda: get_face_length(self.raw_paths[2]),
             "length": lambda: get_edge_length(self.raw_paths[1]),
             "slope": lambda: get_edge_slope(self.raw_paths[1]),
+            "relative_position_x": lambda: get_relative_position_x(self.raw_paths[0], self.raw_paths[1]),
+            "relative_position_y": lambda: get_relative_position_y(self.raw_paths[0], self.raw_paths[1]),
         }
 
         static_features = self._get_features(feature_list=self.STATIC_EDGE_FEATURES,

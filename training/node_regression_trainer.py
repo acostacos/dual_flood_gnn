@@ -4,6 +4,7 @@ import numpy as np
 from contextlib import redirect_stdout
 from data import FloodEventDataset
 from torch import Tensor
+from torch.optim.lr_scheduler import StepLR
 from testing import NodeAutoregressiveTester
 from utils import train_utils
 
@@ -15,6 +16,8 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
 
         ds: FloodEventDataset = self.dataloader.dataset
         self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
+
+        self.lr_scheduler = StepLR(self.optimizer, step_size=1, gamma=0.9999979)
 
     def train(self):
         self.training_stats.start_train()
@@ -70,6 +73,9 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                 if self.early_stopping(val_node_rmse, self.model):
                     self.training_stats.log(f'Early stopping triggered at epoch {epoch + 1}.')
                     break
+
+            # TODO: Remove me
+            self.lr_scheduler.step()
 
         self.training_stats.end_train()
         self._add_scaled_physics_loss_history()

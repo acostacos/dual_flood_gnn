@@ -22,7 +22,7 @@ class BaseTrainer:
                  val_dataset: Optional[FloodEventDataset] = None,
                  logger: Logger = None,
                  device: str = 'cpu'):
-        self.dataloader = DataLoader(dataset, batch_size=batch_size)
+        self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         self.model = model
         self.optimizer = optimizer
         self.loss_func = loss_func

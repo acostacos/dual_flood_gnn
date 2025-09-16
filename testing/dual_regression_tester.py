@@ -44,17 +44,18 @@ class DualRegressionTester(BaseTester):
             event_dataset = self.dataset[event_start_idx:event_end_idx]
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
-            prev_edge_pred = None
             for graph in dataloader:
                 graph = graph.to(self.device)
 
                 x, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
-                pred, edge_pred = self.model(x, edge_index, edge_attr)
+                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                pred[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+                pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
                 # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+
+                pred = x[:, [self.end_node_target_idx-1]] + pred_diff
 
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
@@ -64,9 +65,7 @@ class DualRegressionTester(BaseTester):
                     prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
-                prev_edge_pred = edge_pred
-
-                label = graph.y
+                label = x[:, [self.end_node_target_idx-1]] + graph.y
                 if self.dataset.is_normalized:
                     pred = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, pred)
                     label = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, label)

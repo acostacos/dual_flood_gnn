@@ -49,12 +49,12 @@ class NodeAutoregressiveTester(BaseTester):
                 x = torch.concat([graph.x[:, :self.start_node_target_idx], sliding_window, graph.x[:, self.end_node_target_idx:]], dim=1)
                 edge_index, edge_attr = graph.edge_index, graph.edge_attr
 
-                pred = self.model(x, edge_index, edge_attr)
+                pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                pred[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+                pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
 
-                sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
+                pred = sliding_window[:, [-1]] + pred_diff
 
                 # Requires normalized physics-informed loss
                 if self.include_physics_loss:
@@ -65,7 +65,9 @@ class NodeAutoregressiveTester(BaseTester):
                     prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
-                label = graph.y
+                sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
+
+                label = graph.x[:, [self.end_node_target_idx-1]] + graph.y
                 if self.dataset.is_normalized:
                     pred = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, pred)
                     label = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, label)

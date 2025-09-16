@@ -75,22 +75,22 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
             ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_NODE_FEATURES, ts_idx)
 
-            # Mask node boundary conditions = only keep outflow water volume
-            num_ts, _, _ = ts_dynamic_features.shape
-            outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
-            boundary_nodes = self.boundary_condition.get_new_boundary_nodes()
-            target_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
+            # # Mask node boundary conditions = only keep outflow water volume
+            # num_ts, _, _ = ts_dynamic_features.shape
+            # outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
+            # boundary_nodes = self.boundary_condition.get_new_boundary_nodes()
+            # target_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
 
-            masked_boundary_dynamic_nodes = self._get_empty_feature_tensor(features=self.DYNAMIC_NODE_FEATURES,
-                                                                        other_dims=(num_ts, len(boundary_nodes)),
-                                                                        dtype=ts_dynamic_features.dtype)
+            # masked_boundary_dynamic_nodes = self._get_empty_feature_tensor(features=self.DYNAMIC_NODE_FEATURES,
+            #                                                             other_dims=(num_ts, len(boundary_nodes)),
+            #                                                             dtype=ts_dynamic_features.dtype)
 
-            outflow_dynamic_nodes = ts_dynamic_features[:, outflow_boundary_nodes, :].copy()
-            nodes_overwrite_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
-            masked_boundary_dynamic_nodes[:, nodes_overwrite_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
+            # outflow_dynamic_nodes = ts_dynamic_features[:, outflow_boundary_nodes, :].copy()
+            # nodes_overwrite_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
+            # masked_boundary_dynamic_nodes[:, nodes_overwrite_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
 
-            boundary_nodes_mask = self.boundary_condition.boundary_nodes_mask
-            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_nodes_mask, :], masked_boundary_dynamic_nodes], axis=1)
+            # boundary_nodes_mask = self.boundary_condition.boundary_nodes_mask
+            # ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_nodes_mask, :], masked_boundary_dynamic_nodes], axis=1)
             ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
             ts_data.append(ts_features)
 
@@ -108,23 +108,23 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
             ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_EDGE_FEATURES, ts_idx)
 
-            # Mask edge boundary conditions = only keep inflow water flow
-            num_ts, _, _ = ts_dynamic_features.shape
-            inflow_edges_mask = self.boundary_condition.inflow_edges_mask
-            inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
-            target_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
+            # # Mask edge boundary conditions = only keep inflow water flow
+            # num_ts, _, _ = ts_dynamic_features.shape
+            # inflow_edges_mask = self.boundary_condition.inflow_edges_mask
+            # inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
+            # target_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
 
-            boundary_edges_mask = self.boundary_condition.boundary_edges_mask
-            num_boundary_edges = boundary_edges_mask.sum()
-            masked_boundary_dynamic_edges = self._get_empty_feature_tensor(features=self.DYNAMIC_EDGE_FEATURES,
-                                                                        other_dims=(num_ts, num_boundary_edges),
-                                                                        dtype=ts_dynamic_features.dtype)
+            # boundary_edges_mask = self.boundary_condition.boundary_edges_mask
+            # num_boundary_edges = boundary_edges_mask.sum()
+            # masked_boundary_dynamic_edges = self._get_empty_feature_tensor(features=self.DYNAMIC_EDGE_FEATURES,
+            #                                                             other_dims=(num_ts, num_boundary_edges),
+            #                                                             dtype=ts_dynamic_features.dtype)
 
-            inflow_dynamic_edges = ts_dynamic_features[:, inflow_edges_mask, :].copy()
-            edges_overwrite_mask = np.any(np.isin(edge_index[:, boundary_edges_mask], inflow_boundary_nodes), axis=0)
-            masked_boundary_dynamic_edges[:, edges_overwrite_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
+            # inflow_dynamic_edges = ts_dynamic_features[:, inflow_edges_mask, :].copy()
+            # edges_overwrite_mask = np.any(np.isin(edge_index[:, boundary_edges_mask], inflow_boundary_nodes), axis=0)
+            # masked_boundary_dynamic_edges[:, edges_overwrite_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
 
-            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_edges_mask, :], masked_boundary_dynamic_edges], axis=1)
+            # ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_edges_mask, :], masked_boundary_dynamic_edges], axis=1)
 
             ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
             ts_data.append(ts_features)
@@ -138,13 +138,17 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
         label_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
         # (num_nodes, 1, num_label_timesteps)
-        label_nodes = node_dynamic_features[start_label_idx:end_label_idx, :, label_nodes_idx]
+        current_nodes = node_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_nodes_idx]
+        next_nodes = node_dynamic_features[start_label_idx:end_label_idx, :, label_nodes_idx]
+        label_nodes = next_nodes - current_nodes
         label_nodes = label_nodes.T[:, None, :]
         label_nodes = torch.from_numpy(label_nodes)
 
         label_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
-        # (num_nodes, 1, num_label_timesteps)
-        label_edges = edge_dynamic_features[start_label_idx:end_label_idx, :, label_edges_idx]
+        # (num_edges, 1, num_label_timesteps)
+        current_edges = edge_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_edges_idx]
+        next_edges = edge_dynamic_features[start_label_idx:end_label_idx, :, label_edges_idx]
+        label_edges = next_edges - current_edges
         label_edges = label_edges.T[:, None, :]
         label_edges = torch.from_numpy(label_edges)
 

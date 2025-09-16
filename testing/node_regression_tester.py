@@ -45,10 +45,12 @@ class NodeRegressionTester(BaseTester):
                 graph = graph.to(self.device)
 
                 x, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
-                pred = self.model(x, edge_index, edge_attr)
+                pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                pred[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+                pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+
+                pred = x[:, [self.end_node_target_idx-1]] + pred_diff
 
                 # Requires normalized physics-informed loss
                 if self.include_physics_loss:
@@ -59,7 +61,7 @@ class NodeRegressionTester(BaseTester):
                     prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
-                label = graph.y
+                label = x[:, [self.end_node_target_idx-1]] + graph.y
                 if self.dataset.is_normalized:
                     pred = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, pred)
                     label = self.dataset.normalizer.denormalize(self.dataset.NODE_TARGET_FEATURE, label)

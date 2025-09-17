@@ -21,7 +21,7 @@ class EarlyStopping:
             return False
 
         if isinstance(val_loss, tuple):
-            is_improving = any(val_loss[i] < self.best_loss[i] - self.min_delta for i in range(len(self.best_loss)))
+            is_improving = all(val_loss[i] < self.best_loss[i] - self.min_delta for i in range(len(self.best_loss)))
         else: # Assumed to be a single Tensor
             is_improving = val_loss < self.best_loss - self.min_delta
 

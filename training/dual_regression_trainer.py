@@ -33,13 +33,13 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
 
                 batch = batch.to(self.device)
                 x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
-                pred, edge_pred = self.model(x, edge_index, edge_attr)
-                pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch)
+                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                pred_diff, edge_pred_diff = self._override_pred_bc(pred_diff, edge_pred_diff, batch)
 
-                pred_loss = self._compute_node_loss(pred, batch)
+                pred_loss = self._compute_node_loss(pred_diff, batch)
                 running_pred_loss += pred_loss.item()
 
-                edge_pred_loss = self._compute_edge_loss(edge_pred, batch)
+                edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch)
                 edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
@@ -48,6 +48,8 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                 if self.use_physics_loss:
                     previous_timesteps = self.dataloader.dataset.previous_timesteps
                     curr_water_volume = train_utils.get_curr_volume_from_node_features(x, previous_timesteps)
+                    pred = curr_water_volume + pred_diff
+
                     curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
                     # Need to overwrite boundary conditions as these are masked
                     curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)

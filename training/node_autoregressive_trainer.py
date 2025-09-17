@@ -99,17 +99,19 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 # Override graph data with sliding window
                 x = torch.concat([x[:, :self.start_node_target_idx], sliding_window, x[:, self.end_node_target_idx:]], dim=1)
 
-                pred = self.model(x, edge_index, edge_attr)
-                pred = self._override_pred_bc(pred, batch, i)
+                pred_diff = self.model(x, edge_index, edge_attr)
+                pred_diff = self._override_pred_bc(pred_diff, batch, i)
 
-                pred_loss = self._compute_node_loss(pred, batch, i)
+                pred_loss = self._compute_node_loss(pred_diff, batch, i)
                 running_pred_loss += pred_loss.item()
 
                 step_loss = pred_loss
 
+                previous_timesteps = self.dataloader.dataset.previous_timesteps
+                prev_node_pred = sliding_window[:, [-1]]
+                pred = prev_node_pred + pred_diff
+
                 if self.use_physics_loss:
-                    previous_timesteps = self.dataloader.dataset.previous_timesteps
-                    prev_node_pred = sliding_window[:, [-1]]
                     curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
                     # Need to overwrite boundary conditions for first timestep as these are masked
                     curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)

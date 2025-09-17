@@ -103,21 +103,24 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 x = torch.concat([x[:, :self.start_node_target_idx], sliding_window, x[:, self.end_node_target_idx:]], dim=1)
                 edge_attr = torch.concat([edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, edge_attr[:, self.end_edge_target_idx:]], dim=1)
 
-                pred, edge_pred = self.model(x, edge_index, edge_attr)
-                pred, edge_pred = self._override_pred_bc(pred, edge_pred, batch, i)
+                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                pred_diff, edge_pred_diff = self._override_pred_bc(pred_diff, edge_pred_diff, batch, i)
 
-                pred_loss = self._compute_node_loss(pred, batch, i)
+                pred_loss = self._compute_node_loss(pred_diff, batch, i)
                 running_pred_loss += pred_loss.item()
 
-                edge_pred_loss = self._compute_edge_loss(edge_pred, batch, i)
+                edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch, i)
                 edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
                 step_loss = pred_loss + edge_pred_loss
 
+                prev_node_pred = sliding_window[:, [-1]]
+                pred = prev_node_pred + pred_diff
+                prev_edge_pred = edge_sliding_window[:, [-1]]
+                edge_pred = prev_edge_pred + edge_pred_diff
+
                 if self.use_physics_loss:
-                    prev_node_pred = sliding_window[:, [-1]]
-                    prev_edge_pred = edge_sliding_window[:, [-1]]
                     if i == 0:
                         # Need to overwrite boundary conditions for first timestep as these are masked
                         prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, batch)

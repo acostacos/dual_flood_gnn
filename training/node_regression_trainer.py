@@ -4,7 +4,6 @@ import numpy as np
 from contextlib import redirect_stdout
 from data import FloodEventDataset
 from torch import Tensor
-from torch.optim.lr_scheduler import StepLR
 from testing import NodeAutoregressiveTester
 from utils import train_utils
 
@@ -16,8 +15,6 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
 
         ds: FloodEventDataset = self.dataloader.dataset
         self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
-
-        self.lr_scheduler = StepLR(self.optimizer, step_size=1, gamma=0.9999979)
 
     def train(self):
         self.training_stats.start_train()
@@ -32,15 +29,17 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
 
                 batch = batch.to(self.device)
                 x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
-                pred = self.model(x, edge_index, edge_attr)
-                pred = self._override_pred_bc(pred, batch)
+                pred_diff = self.model(x, edge_index, edge_attr)
+                pred_diff = self._override_pred_bc(pred_diff, batch)
 
-                loss = self._compute_node_loss(pred, batch)
+                loss = self._compute_node_loss(pred_diff, batch)
                 running_pred_loss += loss.item()
 
                 if self.use_physics_loss:
                     previous_timesteps = self.dataloader.dataset.previous_timesteps
                     curr_water_volume = train_utils.get_curr_volume_from_node_features(x, previous_timesteps)
+                    pred = curr_water_volume + pred_diff
+
                     curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
                     # Need to overwrite boundary conditions as these are masked
                     curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)
@@ -73,9 +72,6 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                 if self.early_stopping(val_node_rmse, self.model):
                     self.training_stats.log(f'Early stopping triggered at epoch {epoch + 1}.')
                     break
-
-            # TODO: Remove me
-            self.lr_scheduler.step()
 
         self.training_stats.end_train()
         self._add_scaled_physics_loss_history()

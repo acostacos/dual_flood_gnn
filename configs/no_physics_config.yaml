@@ -5,7 +5,7 @@ dataset_parameters:
   edges_shp_file: 'New_Geometry/links_with_slope.shp'        # Filename of shapefile containing edge information
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
 
-  previous_timesteps: 2                                      # Number of previous timesteps to consider for input features
+  previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
   timestep_interval: 900                                     # Interval between timesteps in seconds
   spin_up_time: 259200                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
@@ -52,8 +52,8 @@ training_parameters:
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
-  node_loss: 'huber'                                         # Loss function for node features. Options: 'mse', 'mae', 'huber'
-  edge_loss: 'huber'                                         # Loss function for edge features. Options: 'mse', 'mae', 'huber'
+  node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
+  edge_loss: 'mse'                                           # Loss function for edge features. Options: 'mse', 'mae', 'huber'
   edge_pred_loss_scale: 1.48e-1                              # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   use_global_mass_loss: False                                # Enable global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss. This is used as an initial value when using dynamic loss scaling
@@ -73,18 +73,18 @@ model_parameters:                                            # Model-specific pa
   GCN:
     hidden_features: 32
     num_layers: 2
-    activation: 'prelu'
+    activation: 'relu'
     residual: True
-    encoder_layers: 2
-    encoder_activation: 'prelu'
-    decoder_layers: 2
-    decoder_activation: 'prelu'
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
 
   GAT:
     hidden_features: 32
     use_edge_features: False
     num_layers: 2
-    activation: 'prelu'
+    activation: 'relu'
     residual: True
     num_heads: 1
     dropout: 0.0
@@ -92,57 +92,66 @@ model_parameters:                                            # Model-specific pa
     negative_slope: 0.2
     attn_bias: True
     attn_residual: True
-    encoder_layers: 2
-    encoder_activation: 'prelu'
-    decoder_layers: 2
-    decoder_activation: 'prelu'
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
 
   NodeEdgeGNN:
-    hidden_features: 16
-    num_layers: 2
-    activation: 'prelu'
-    residual: True
-    mlp_layers: 2
-    encoder_layers: 2
-    encoder_activation: 'prelu'
-    decoder_layers: 2
-    decoder_activation: 'prelu'
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
 
   NodeEdgeGNNAttn:
-    hidden_features: 16
-    num_layers: 2
-    activation: 'prelu'
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
-    attn_mlp_layers: 2
-    encoder_layers: 2
-    encoder_activation: 'prelu'
-    decoder_layers: 2
-    decoder_activation: 'prelu'
+    attn_mlp_layers: 3
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
   
   NodeGNNAttn:
     hidden_features: 8
     num_layers: 2
-    activation: 'prelu'
+    activation: 'relu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
     attn_mlp_layers: 2
     encoder_layers: 2
-    encoder_activation: 'prelu'
+    encoder_activation: 'relu'
     decoder_layers: 2
-    decoder_activation: 'prelu'
+    decoder_activation: 'relu'
 
   EdgeGNNAttn:
     hidden_features: 8
     num_layers: 2
-    activation: 'prelu'
+    activation: 'relu'
     residual: True
     dropout: 0.0
     negative_slope: 0.2
     attn_mlp_layers: 2
     encoder_layers: 2
-    encoder_activation: 'prelu'
+    encoder_activation: 'relu'
     decoder_layers: 2
-    decoder_activation: 'prelu'
+    decoder_activation: 'relu'
+
+  HydroGraphNet:
+    hidden_features: 128
+    num_layers: 15
+    mlp_layers: 3
+    activation: 'relu'
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'

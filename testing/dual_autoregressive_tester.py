@@ -3,7 +3,7 @@ import numpy as np
 
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
-from utils import train_utils
+from utils import physics_utils
 
 from .base_tester import BaseTester
 
@@ -61,16 +61,16 @@ class DualAutoregressiveTester(BaseTester):
                 # Only override inflow edges as outflow edges are predicted by the model
                 edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
 
-                pred = sliding_window[:, [-1]] + pred_diff
-                edge_pred = edge_sliding_window[:, [-1]] + edge_pred_diff
+                prev_node_pred = sliding_window[:, [-1]]
+                pred = prev_node_pred + pred_diff
+                prev_edge_pred = edge_sliding_window[:, [-1]]
+                edge_pred = prev_edge_pred + edge_pred_diff
 
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
-                    prev_node_pred = sliding_window[:, [-1]]
-                    prev_edge_pred = edge_sliding_window[:, [-1]]
                     if i == 0:
                         # Need to overwrite boundary conditions for first timestep as these are masked
-                        prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
+                        prev_edge_pred = physics_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)

@@ -6,7 +6,7 @@ from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
 from typing import Tuple, Callable
-from utils import EarlyStopping, LossScaler, train_utils
+from utils import EarlyStopping, LossScaler, physics_utils
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
@@ -63,7 +63,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             is_early_stopped = self.early_stopping((val_node_rmse, val_edge_rmse), self.model)
             is_max_exceeded = self.max_curriculum_epochs is not None and current_timestep_epochs >= self.max_curriculum_epochs
             if (is_early_stopped or is_max_exceeded) and current_num_timesteps < self.total_num_timesteps:
-                self.training_stats.log(f'\tCurriculum learning for {current_num_timesteps} ended after {current_timestep_epochs} epochs.')
+                self.training_stats.log(f'\tCurriculum learning for {current_num_timesteps} steps ended after {current_timestep_epochs} epochs.')
                 current_num_timesteps += 1
                 current_timestep_epochs = 0
                 self.early_stopping = EarlyStopping(patience=self.early_stopping.patience)
@@ -123,9 +123,10 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 if self.use_physics_loss:
                     if i == 0:
                         # Need to overwrite boundary conditions for first timestep as these are masked
-                        prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, batch)
+                        prev_edge_pred = physics_utils.overwrite_outflow_boundary(prev_edge_pred, batch)
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
-                                                                prev_edge_pred, pred_loss, batch)
+                                                                prev_edge_pred, pred_loss, batch,
+                                                                current_timestep=i)
                     step_loss = step_loss + physics_loss
 
                 total_batch_loss = total_batch_loss + step_loss

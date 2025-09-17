@@ -50,7 +50,7 @@ def run_test(model: torch.nn.Module,
         'dataset': dataset,
         'rollout_start': rollout_start,
         'rollout_timesteps': rollout_timesteps,
-        'include_physics_loss': False,
+        'include_physics_loss': True,
         'logger': logger,
         'device': device,
     }

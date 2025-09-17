@@ -2,7 +2,7 @@ import torch
 
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
-from utils import train_utils
+from utils import physics_utils
 
 from .base_tester import BaseTester
 
@@ -54,15 +54,13 @@ class NodeAutoregressiveTester(BaseTester):
                 # Override boundary conditions in predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
 
-                pred = sliding_window[:, [-1]] + pred_diff
+                prev_node_pred = sliding_window[:, [-1]]
+                pred = prev_node_pred + pred_diff
 
                 # Requires normalized physics-informed loss
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
-                    prev_node_pred = sliding_window[:, [-1]]
-                    prev_edge_pred = train_utils.get_curr_flow_from_edge_features(edge_attr, self.dataset.previous_timesteps)
-                    # Need to overwrite boundary conditions as these are masked
-                    prev_edge_pred = train_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
+                    prev_edge_pred = physics_utils.get_physics_info_edge(edge_attr, self.dataset.previous_timesteps, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
 
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)

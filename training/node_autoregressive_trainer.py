@@ -8,7 +8,7 @@ from torch import Tensor
 from data import AutoregressiveFloodDataset
 from testing import NodeAutoregressiveTester
 from typing import Tuple
-from utils import EarlyStopping, train_utils
+from utils import EarlyStopping, physics_utils
 
 from .base_autoregressive_trainer import BaseAutoregressiveTrainer
 from .physics_informed_trainer import PhysicsInformedTrainer
@@ -63,7 +63,7 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             is_early_stopped = self.early_stopping(val_node_rmse, self.model)
             is_max_exceeded = self.max_curriculum_epochs is not None and current_timestep_epochs >= self.max_curriculum_epochs
             if (is_early_stopped or is_max_exceeded) and current_num_timesteps < self.total_num_timesteps:
-                self.training_stats.log(f'\tCurriculum learning for {current_num_timesteps} ended after {current_timestep_epochs} epochs.')
+                self.training_stats.log(f'\tCurriculum learning for {current_num_timesteps} steps ended after {current_timestep_epochs} epochs.')
                 current_num_timesteps += 1
                 current_timestep_epochs = 0
                 self.early_stopping = EarlyStopping(patience=self.early_stopping.patience)
@@ -112,11 +112,10 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 pred = prev_node_pred + pred_diff
 
                 if self.use_physics_loss:
-                    curr_face_flow = train_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
-                    # Need to overwrite boundary conditions for first timestep as these are masked
-                    curr_face_flow = train_utils.overwrite_outflow_boundary(curr_face_flow, batch)
+                    curr_face_flow = physics_utils.get_physics_info_edge(edge_attr, previous_timesteps, batch)
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
-                                                                curr_face_flow, pred_loss, batch)
+                                                                curr_face_flow, pred_loss, batch,
+                                                                current_timestep=i)
                     step_loss = step_loss + physics_loss
 
                 total_batch_loss = total_batch_loss + step_loss

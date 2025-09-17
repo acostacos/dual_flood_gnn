@@ -138,11 +138,11 @@ class FloodEventDataset(Dataset):
 
         # Global Mass Loss Features
         global_mass_info = self._get_global_mass_info(dynamic_nodes, dynamic_edges)
-        total_rainfall_per_ts, edge_face_flow_per_ts = global_mass_info
+        total_rainfall_per_ts, boundary_outflow_per_ts = global_mass_info
 
         # Local Mass Loss Features
         local_mass_info = self._get_local_mass_loss_info(dynamic_nodes, dynamic_edges)
-        node_rainfall_per_ts, edge_face_flow_per_ts = local_mass_info
+        node_rainfall_per_ts, boundary_outflow_per_ts = local_mass_info
 
         if self.is_normalized:
             static_nodes = self.normalizer.normalize_feature_vector(self.STATIC_NODE_FEATURES, static_nodes)
@@ -170,7 +170,7 @@ class FloodEventDataset(Dataset):
             # Local Mass Conservation Features
             event_rainfall_per_ts = node_rainfall_per_ts[start_idx:end_idx].copy()
 
-            event_face_flow_per_ts = edge_face_flow_per_ts[start_idx:end_idx].copy()
+            event_outflow_per_ts = boundary_outflow_per_ts[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 4]
             np.savez(save_path,
@@ -179,7 +179,7 @@ class FloodEventDataset(Dataset):
                      dynamic_edges=event_dynamic_edges,
                      total_rainfall_per_ts=event_total_rainfall_per_ts,
                      node_rainfall_per_ts=event_rainfall_per_ts,
-                     edge_face_flow_per_ts=event_face_flow_per_ts)
+                     boundary_outflow_per_ts=event_outflow_per_ts)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
@@ -230,17 +230,17 @@ class FloodEventDataset(Dataset):
         global_mass_info = None
         if self.with_global_mass_loss:
             total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
-            event_face_flow_per_ts: ndarray = dynamic_values['event_face_flow_per_ts']
+            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
             global_mass_info = self._get_global_mass_info_for_timestep(total_rainfall_per_ts,
-                                                                       event_face_flow_per_ts,
+                                                                       boundary_outflow_per_ts,
                                                                        within_event_idx)
 
         local_mass_info = None
         if self.with_local_mass_loss:
             node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-            edge_face_flow_per_ts: ndarray = dynamic_values['edge_face_flow_per_ts']
+            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
             local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                     edge_face_flow_per_ts,
+                                                                     boundary_outflow_per_ts,
                                                                      within_event_idx)
 
         edge_index = torch.from_numpy(edge_index)
@@ -581,16 +581,20 @@ class FloodEventDataset(Dataset):
         node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
         total_rainfall_per_ts = node_rainfall_per_ts.sum(axis=1)
 
-        # Normalized Face flow (w/ unmasked outflow values)
+        # Unmasked Normalized Outflow Values
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
         edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
         if self.is_normalized:
-            # Manually compute as mean and std has not yet been saved
-            mean = edge_face_flow_per_ts.mean().item()
-            std = edge_face_flow_per_ts.std().item()
+            if self.mode == 'test':
+                mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            else:
+                # Manually compute as mean and std has not yet been saved
+                mean = edge_face_flow_per_ts.mean().item()
+                std = edge_face_flow_per_ts.std().item()
             edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
+        boundary_outflow_per_ts = edge_face_flow_per_ts[:, self.boundary_condition.outflow_edges_mask]
 
-        return total_rainfall_per_ts, edge_face_flow_per_ts
+        return total_rainfall_per_ts, boundary_outflow_per_ts
 
     def _get_local_mass_loss_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
         # Rainfall
@@ -598,16 +602,20 @@ class FloodEventDataset(Dataset):
         non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
         node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
 
-        # Normalized Face flow (w/ unmasked outflow values)
+        # Unmasked Normalized Outflow Values
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
         edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
         if self.is_normalized:
-            # Manually compute as mean and std has not yet been saved
-            mean = edge_face_flow_per_ts.mean().item()
-            std = edge_face_flow_per_ts.std().item()
+            if self.mode == 'test':
+                mean, std = self.normalizer.get_feature_mean_std('face_flow')
+            else:
+                # Manually compute as mean and std has not yet been saved
+                mean = edge_face_flow_per_ts.mean().item()
+                std = edge_face_flow_per_ts.std().item()
             edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
+        boundary_outflow_per_ts = edge_face_flow_per_ts[:, self.boundary_condition.outflow_edges_mask]
 
-        return node_rainfall_per_ts, edge_face_flow_per_ts
+        return node_rainfall_per_ts, boundary_outflow_per_ts
 
     # =========== get() methods ===========
 
@@ -702,11 +710,12 @@ class FloodEventDataset(Dataset):
     
     def _get_global_mass_info_for_timestep(self,
                                            total_rainfall_per_ts: ndarray,
-                                           edge_face_flow_per_ts: ndarray,
+                                           boundary_outflow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
-        boundary_outflow = edge_face_flow_per_ts[timestep_idx][self.boundary_condition.outflow_edges_mask][:, None]
+        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
+        total_rainfall = total_rainfall_per_ts[[timestep_idx]]
 
-        total_rainfall = torch.from_numpy(total_rainfall_per_ts[[timestep_idx]])
+        total_rainfall = torch.from_numpy(total_rainfall)
         boundary_outflow = torch.from_numpy(boundary_outflow)
         inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
@@ -722,11 +731,12 @@ class FloodEventDataset(Dataset):
 
     def _get_local_mass_info_for_timestep(self,
                                           node_rainfall_per_ts: ndarray,
-                                          edge_face_flow_per_ts: ndarray,
+                                          boundary_outflow_per_ts: ndarray,
                                           timestep_idx: int) -> Dict[str, Tensor]:
-        boundary_outflow = edge_face_flow_per_ts[timestep_idx][self.boundary_condition.outflow_edges_mask][:, None]
+        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
+        rainfall = node_rainfall_per_ts[timestep_idx]
 
-        rainfall = torch.from_numpy(node_rainfall_per_ts[timestep_idx])
+        rainfall = torch.from_numpy(rainfall)
         boundary_outflow = torch.from_numpy(boundary_outflow)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
         non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)

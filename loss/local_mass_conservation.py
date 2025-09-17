@@ -25,6 +25,7 @@ class LocalMassConservationLoss(Module):
                 batch_node_pred: Tensor, # Normalized predicted water volume (t+1)
                 batch_node_input: Tensor, # Normalized given water volume (t)
                 batch_edge_input: Tensor, # Normalized given water flow w/ unmasked outflow (t)
+                rainfall: Tensor, # Actual rainfall (not normalized), from local_mass_info
                 databatch) -> Tensor:
         batch = databatch.batch
         edge_index = databatch.edge_index
@@ -33,7 +34,6 @@ class LocalMassConservationLoss(Module):
         local_mass_info: Dict[str, Tensor] = databatch.local_mass_info
 
         # Get predefined information
-        rainfall = local_mass_info['rainfall']
         non_boundary_nodes_mask = local_mass_info['non_boundary_nodes_mask']
 
         # Get current total water volume (t)

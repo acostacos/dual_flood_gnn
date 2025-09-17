@@ -1,7 +1,8 @@
 from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data import FloodEventDataset
 from torch import Tensor
-from utils import LossScaler
+from utils import LossScaler, physics_utils
+from typing import Optional
 
 from .base_trainer import BaseTrainer
 
@@ -81,8 +82,10 @@ class PhysicsInformedTrainer(BaseTrainer):
                                     prev_node_pred: Tensor,
                                     prev_edge_pred: Tensor,
                                     basis_loss: Tensor,
-                                    batch) -> Tensor:
-        global_physics_loss = self.global_loss_func(pred, prev_node_pred, prev_edge_pred, batch)
+                                    batch,
+                                    current_timestep: Optional[int] = None) -> Tensor:
+        total_rainfall = physics_utils.get_total_rainfall(batch, current_timestep)
+        global_physics_loss = self.global_loss_func(pred, prev_node_pred, prev_edge_pred, total_rainfall, batch)
         self.running_orig_global_physics_loss += global_physics_loss.item()
 
         scaled_global_physics_loss = self._scale_global_mass_loss(epoch, basis_loss, global_physics_loss)
@@ -101,8 +104,10 @@ class PhysicsInformedTrainer(BaseTrainer):
                                    prev_node_pred: Tensor,
                                    prev_edge_pred: Tensor,
                                    basis_loss: Tensor,
-                                   batch) -> Tensor:
-        local_physics_loss = self.local_loss_func(pred, prev_node_pred, prev_edge_pred, batch)
+                                   batch,
+                                   current_timestep: Optional[int] = None) -> Tensor:
+        rainfall = physics_utils.get_rainfall(batch, current_timestep)
+        local_physics_loss = self.local_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, batch)
         self.running_orig_local_physics_loss += local_physics_loss.item()
 
         scaled_local_physics_loss = self._scale_local_mass_loss(epoch, basis_loss, local_physics_loss)

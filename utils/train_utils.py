@@ -1,9 +1,7 @@
 import os
 import pandas as pd
 
-from data import FloodEventDataset
 from typing import Tuple
-from torch import Tensor
 
 from .logger import Logger
 from .file_utils import create_temp_dirs
@@ -115,25 +113,3 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         })
 
     return trainer_params
-
-def get_curr_volume_from_node_features(x: Tensor, previous_timesteps: int) -> Tensor:
-    water_volume_dyn_num = FloodEventDataset.DYNAMIC_NODE_FEATURES.index('water_volume') + 1
-    num_static_node_features = len(FloodEventDataset.STATIC_NODE_FEATURES)
-    curr_water_volume_idx = num_static_node_features + ((previous_timesteps + 1) * water_volume_dyn_num) - 1
-    curr_water_volume = x[:, [curr_water_volume_idx]]
-    return curr_water_volume
-
-def get_curr_flow_from_edge_features(edge_attr: Tensor, previous_timesteps: int) -> Tensor:
-    flow_dyn_num = FloodEventDataset.DYNAMIC_EDGE_FEATURES.index('face_flow') + 1
-    num_static_edge_features = len(FloodEventDataset.STATIC_EDGE_FEATURES)
-    curr_flow_idx = num_static_edge_features + ((previous_timesteps + 1) * flow_dyn_num) - 1
-    curr_flow = edge_attr[:, [curr_flow_idx]]
-    return curr_flow
-
-def overwrite_outflow_boundary(edge_pred: Tensor, batch) -> Tensor:
-    assert hasattr(batch, 'global_mass_info') or hasattr(batch, 'local_mass_info'), "Physics-informed data must be included in the dataset"
-    physics_obj = batch.global_mass_info if hasattr(batch, 'global_mass_info') else batch.local_mass_info
-    boundary_outflow = physics_obj['boundary_outflow']
-    outflow_edges_mask = physics_obj['outflow_edges_mask']
-    edge_pred[outflow_edges_mask] = boundary_outflow
-    return edge_pred

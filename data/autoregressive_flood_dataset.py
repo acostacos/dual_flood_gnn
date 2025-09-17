@@ -4,6 +4,7 @@ import numpy as np
 from numpy import ndarray
 from torch import Tensor
 from typing import Tuple
+from typing import Dict
 
 from .flood_event_dataset import FloodEventDataset
 
@@ -137,19 +138,59 @@ class AutoregressiveFloodDataset(FloodEventDataset):
         end_label_idx = start_label_idx + self.num_label_timesteps
 
         label_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
-        # (num_nodes, 1, num_label_timesteps)
         current_nodes = node_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_nodes_idx]
         next_nodes = node_dynamic_features[start_label_idx:end_label_idx, :, label_nodes_idx]
         label_nodes = next_nodes - current_nodes
-        label_nodes = label_nodes.T[:, None, :]
+        label_nodes = label_nodes.T[:, None, :] # (num_nodes, 1, num_label_timesteps)
         label_nodes = torch.from_numpy(label_nodes)
 
         label_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
-        # (num_edges, 1, num_label_timesteps)
         current_edges = edge_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_edges_idx]
         next_edges = edge_dynamic_features[start_label_idx:end_label_idx, :, label_edges_idx]
         label_edges = next_edges - current_edges
-        label_edges = label_edges.T[:, None, :]
+        label_edges = label_edges.T[:, None, :] # (num_edges, 1, num_label_timesteps)
         label_edges = torch.from_numpy(label_edges)
 
         return label_nodes, label_edges
+
+    def _get_global_mass_info_for_timestep(self,
+                                           total_rainfall_per_ts: ndarray,
+                                           boundary_outflow_per_ts: ndarray,
+                                           timestep_idx: int) -> Dict[str, Tensor]:
+        end_idx = timestep_idx + self.num_label_timesteps
+        total_rainfall = total_rainfall_per_ts[timestep_idx:end_idx][None, :]
+        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
+
+        total_rainfall = torch.from_numpy(total_rainfall)
+        boundary_outflow = torch.from_numpy(boundary_outflow)
+        inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
+        outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
+        non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
+
+        return {
+            'total_rainfall': total_rainfall,
+            'boundary_outflow': boundary_outflow,
+            'inflow_edges_mask': inflow_edges_mask,
+            'outflow_edges_mask': outflow_edges_mask,
+            'non_boundary_nodes_mask': non_boundary_nodes_mask,
+        }
+
+    def _get_local_mass_info_for_timestep(self,
+                                          node_rainfall_per_ts: ndarray,
+                                          boundary_outflow_per_ts: ndarray,
+                                          timestep_idx: int) -> Dict[str, Tensor]:
+        end_ts = timestep_idx + self.num_label_timesteps
+        rainfall = node_rainfall_per_ts[timestep_idx:end_ts].T
+        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
+
+        rainfall = torch.from_numpy(rainfall)
+        boundary_outflow = torch.from_numpy(boundary_outflow)
+        outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
+        non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
+
+        return {
+            'rainfall': rainfall,
+            'boundary_outflow': boundary_outflow,
+            'outflow_edges_mask': outflow_edges_mask,
+            'non_boundary_nodes_mask': non_boundary_nodes_mask,
+        }

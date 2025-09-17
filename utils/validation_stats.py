@@ -8,6 +8,7 @@ from torch import Tensor
 from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data.dataset_normalizer import DatasetNormalizer
 from typing import Optional
+from utils import physics_utils
 
 from . import Logger
 from .metric_utils import RMSE, MAE, NSE, CSI
@@ -139,11 +140,13 @@ class ValidationStats:
             "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
 
         global_mass_loss_func = GlobalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
-        global_mass_loss = global_mass_loss_func(pred, prev_node_pred, prev_edge_pred, databatch)
+        total_rainfall = physics_utils.get_total_rainfall(databatch)
+        global_mass_loss = global_mass_loss_func(pred, prev_node_pred, prev_edge_pred, total_rainfall, databatch)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
         local_mass_loss_func = LocalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
-        local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, databatch)
+        rainfall = physics_utils.get_rainfall(databatch)
+        local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, databatch)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())
 
     def print_stats_summary(self):

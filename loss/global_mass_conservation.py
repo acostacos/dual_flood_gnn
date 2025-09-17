@@ -24,13 +24,13 @@ class GlobalMassConservationLoss(Module):
                 batch_node_pred: Tensor, # Normalized predicted water volume (t+1)
                 batch_node_input: Tensor, # Normalized given water volume (t)
                 batch_edge_input: Tensor, # Normalized given water flow w/ unmasked outflow (t)
+                total_rainfall: Tensor, # Actual total rainfall (not normalized), from global_mass_info
                 databatch) -> Tensor:
         batch = databatch.batch
         edge_index = databatch.edge_index
         global_mass_info: Dict[str, Tensor] = databatch.global_mass_info
 
         # Get predefined information
-        total_rainfall = global_mass_info['total_rainfall']
         inflow_edges_mask = global_mass_info['inflow_edges_mask']
         outflow_edges_mask = global_mass_info['outflow_edges_mask']
         non_boundary_nodes_mask = global_mass_info['non_boundary_nodes_mask']

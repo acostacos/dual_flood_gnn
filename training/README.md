@@ -2,6 +2,9 @@
 
 Contains Trainer classes used to train the model.
 
+Notes:
+- Physics-informed training is only applied to models that perform node prediction.
+
 ### Overview
 
 | Filename | Class Name | Description |

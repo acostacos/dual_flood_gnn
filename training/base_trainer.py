@@ -2,6 +2,7 @@ import torch
 
 from data import FloodEventDataset
 from torch.nn import Module
+from torch import Tensor
 from torch.optim import Optimizer
 from torch_geometric.loader import DataLoader
 from typing import Callable, Optional
@@ -14,6 +15,7 @@ class BaseTrainer:
                  dataset: FloodEventDataset,
                  optimizer: Optimizer,
                  loss_func: Callable,
+                 node_loss_weight: float = 1.0,
                  batch_size: int = 64,
                  num_epochs: int = 100,
                  num_epochs_dyn_loss: int = 10,
@@ -26,6 +28,7 @@ class BaseTrainer:
         self.model = model
         self.optimizer = optimizer
         self.loss_func = loss_func
+        self.node_loss_weight = node_loss_weight
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.num_epochs_dyn_loss = num_epochs_dyn_loss
@@ -46,6 +49,11 @@ class BaseTrainer:
 
     def validate(self):
         raise NotImplementedError("Subclasses should implement this method if using early stopping.")
+
+    def _scale_node_pred_loss(self, epoch: int, pred_loss: Tensor) -> Tensor:
+        if epoch < self.num_epochs_dyn_loss:
+            return pred_loss
+        return pred_loss * self.node_loss_weight
 
     def _clip_gradients(self):
         if self.gradient_clip_value is not None:

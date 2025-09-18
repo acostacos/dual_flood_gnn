@@ -15,10 +15,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
     def __init__(self,
                  edge_loss_func: Callable,
                  edge_pred_loss_scale: float = 1.0,
+                 edge_loss_weight: float = 1.0,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.edge_loss_func = edge_loss_func
+        self.edge_loss_weight = edge_loss_weight
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
 
     def train(self):
@@ -107,6 +109,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 pred_diff, edge_pred_diff = self._override_pred_bc(pred_diff, edge_pred_diff, batch, i)
 
                 pred_loss = self._compute_node_loss(pred_diff, batch, i)
+                pred_loss = self._scale_node_pred_loss(epoch, pred_loss)
                 running_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch, i)
@@ -176,5 +179,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
     def _scale_edge_pred_loss(self, epoch: int, pred_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
             self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+        else:
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_loss_weight
         return scaled_edge_pred_loss

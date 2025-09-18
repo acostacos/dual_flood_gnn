@@ -54,13 +54,16 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
     early_stopping_patience = train_config['early_stopping_patience']
     num_epochs = train_config['num_epochs']
     num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
+    node_loss_weight = loss_func_parameters['node_loss_weight']
     log(f'Using dynamic loss weight adjustment for the first {num_epochs_dyn_loss}/{num_epochs} epochs')
+    log(f'Applying importance weight of {node_loss_weight} to node prediction loss after scaling')
     base_config = {
         'num_epochs': num_epochs,
         'num_epochs_dyn_loss': num_epochs_dyn_loss,
         'batch_size': train_config['batch_size'],
         'gradient_clip_value': train_config['gradient_clip_value'],
         'loss_func': loss_func,
+        'node_loss_weight': node_loss_weight,
         'early_stopping_patience': early_stopping_patience,
     }
     log(f'Using training configuration: {base_config}')
@@ -70,19 +73,23 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
     if model_name not in EDGE_MODELS:
         use_global_mass_loss = loss_func_parameters['use_global_mass_loss']
         global_mass_loss_scale = loss_func_parameters['global_mass_loss_scale']
+        global_mass_loss_weight = loss_func_parameters['global_mass_loss_weight']
         if use_global_mass_loss:
-            log(f'Using global mass conservation loss with scale {global_mass_loss_scale}')
+            log(f'Using global mass conservation loss with scale {global_mass_loss_scale} with importance weight {global_mass_loss_weight}')
 
         use_local_mass_loss = loss_func_parameters['use_local_mass_loss']
         local_mass_loss_scale = loss_func_parameters['local_mass_loss_scale']
+        local_mass_loss_weight = loss_func_parameters['local_mass_loss_weight']
         if use_local_mass_loss:
-            log(f'Using local mass conservation loss with scale {local_mass_loss_scale}')
+            log(f'Using local mass conservation loss with scale {local_mass_loss_scale} with importance weight {local_mass_loss_weight}')
 
         trainer_params.update({
             'use_global_loss': use_global_mass_loss,
             'global_mass_loss_scale': global_mass_loss_scale,
+            'global_mass_loss_weight': global_mass_loss_weight,
             'use_local_loss': use_local_mass_loss,
             'local_mass_loss_scale': local_mass_loss_scale,
+            'local_mass_loss_weight': local_mass_loss_weight,
         })
 
     # Autoregressive training parameters
@@ -105,11 +112,13 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
     # Node/Edge prediction parameters
     if 'NodeEdgeGNN' in model_name:
         edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
-        log(f'Using edge prediction loss with scale {edge_pred_loss_scale}')
+        edge_pred_loss_weight = loss_func_parameters['edge_loss_weight']
+        log(f'Using edge prediction loss with scale {edge_pred_loss_scale} with importance weight {edge_pred_loss_weight}')
         log(f"Using {edge_criterion.__class__.__name__} loss for edge prediction")
         trainer_params.update({
             'edge_loss_func': edge_criterion,
             'edge_pred_loss_scale': edge_pred_loss_scale,
+            'edge_loss_weight': edge_pred_loss_weight,
         })
 
     return trainer_params

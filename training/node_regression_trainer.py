@@ -33,6 +33,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                 pred_diff = self._override_pred_bc(pred_diff, batch)
 
                 loss = self._compute_node_loss(pred_diff, batch)
+                loss = self._scale_node_pred_loss(epoch, loss)
                 running_pred_loss += loss.item()
 
                 if self.use_physics_loss:

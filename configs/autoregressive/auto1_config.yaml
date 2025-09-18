@@ -46,6 +46,7 @@ training_parameters:
   # learning_rate        : 3.43e-5   # Auto 4                             # Learning rate
   # learning_rate        : 2.4e-5   # Auto 5-6                             # Learning rate
   # learning_rate        : 1.18e-5   # Auto 7-8                             # Learning rate
+  # learning_rate        : 5.78e-6   # Auto 9-10                             # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value; If None, no gradient clipping is applied
   early_stopping_patience: 15                                 # Early stopping patience for autoregressive training

@@ -35,20 +35,20 @@ training_parameters:
   model_dir            : 'saved_models'                      # Path to directory to save trained models
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 120                                 # Number of epochs
+  num_epochs           : 600                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
-  batch_size           : 64                                  # Batch size
+  batch_size           : 32                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
-  early_stopping_patience: 10                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
+  early_stopping_patience: 15                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
 
   autoregressive:
     enabled            : True                                # Enable autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
-    total_num_timesteps: 8                                   # Total number of timesteps for autoregressive training
-    max_curriculum_epochs: 15                                # Maximum number of curriculum steps
+    total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
+    max_curriculum_epochs: 100                               # Maximum number of curriculum steps
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:

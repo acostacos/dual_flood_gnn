@@ -78,10 +78,10 @@ model_parameters:                                            # Model-specific pa
     hidden_features: 32
     num_layers: 2
     activation: 'relu'
-    residual: True
-    encoder_layers: 0
+    residual: False
+    encoder_layers: 2
     encoder_activation: 'relu'
-    decoder_layers: 0
+    decoder_layers: 2
     decoder_activation: 'relu'
 
   GAT:
@@ -89,16 +89,16 @@ model_parameters:                                            # Model-specific pa
     use_edge_features: False
     num_layers: 2
     activation: 'relu'
-    residual: True
+    residual: False
     num_heads: 1
     dropout: 0.0
     add_self_loops: True
     negative_slope: 0.2
     attn_bias: True
     attn_residual: True
-    encoder_layers: 0
+    encoder_layers: 2
     encoder_activation: 'relu'
-    decoder_layers: 0
+    decoder_layers: 2
     decoder_activation: 'relu'
 
   NodeEdgeGNN:

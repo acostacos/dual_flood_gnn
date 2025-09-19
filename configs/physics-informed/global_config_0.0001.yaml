@@ -31,12 +31,12 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'                # Filename for the yaml file containing testing event statistics. Generated when initializing the dataset
 
 training_parameters:
-  log_path             : 'physics_informed_baselines/logs/global_0.0001_train.log'                                # Path to save training logs
-  model_dir            : 'physics_informed_baselines/model'                      # Path to directory to save trained models
-  stats_dir            : 'physics_informed_baselines/train'                    # Path to directory to save training statistics
+  log_path             : 'physics_informed/logs/global_0.0001_train.log'                                # Path to save training logs
+  model_dir            : 'physics_informed/model'                      # Path to directory to save trained models
+  stats_dir            : 'physics_informed/train'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 10                                 # Number of epochs
-  num_epochs_dyn_loss  : 10                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
+  num_epochs           : 600                                 # Number of epochs
+  num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 32                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay

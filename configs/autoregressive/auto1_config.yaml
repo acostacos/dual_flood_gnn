@@ -114,6 +114,7 @@ model_parameters:
     num_layers: 3
     activation: 'relu'
     mlp_layers: 3
+    residual: True
     encoder_layers: 3
     encoder_activation: 'relu'
     decoder_layers: 3

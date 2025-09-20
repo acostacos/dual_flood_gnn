@@ -105,6 +105,7 @@ model_parameters:                                            # Model-specific pa
     hidden_features: 64
     num_layers: 3
     activation: 'relu'
+    residual: True
     mlp_layers: 3
     encoder_layers: 3
     encoder_activation: 'relu'

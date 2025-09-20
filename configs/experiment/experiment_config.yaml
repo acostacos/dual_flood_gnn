@@ -31,9 +31,9 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'
 
 training_parameters:
-  log_path             : 'autoregressive/logs/auto1_train.log'                                # Path to save training logs
-  model_dir            : 'autoregressive/model'                      # Directory to save trained models
-  stats_dir            : 'autoregressive/train'                    # Directory to save training statistics
+  log_path             : 'experiment_w_variations/logs/train.log'                                # Path to save training logs
+  model_dir            : 'experiment_w_variations/model'                      # Directory to save trained models
+  stats_dir            : 'experiment_w_variations/train'                    # Directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If None, no pre-trained model is loaded
   num_epochs           : 100                                # Number of epochs
   num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
@@ -76,8 +76,8 @@ loss_func_parameters:
     delta: 0.15                                             # Delta parameter for Huber loss function.
 
 testing_parameters:
-  log_path: 'autoregressive/logs/auto1_test.log'                                        # Path to save testing logs
-  output_dir: 'autoregressive/test'                           # Directory to save testing results
+  log_path: 'experiment_w_variations/logs/test.log'                                        # Path to save testing logs
+  output_dir: 'experiment_w_variations/test'                           # Directory to save testing results
   rollout_start: 0                                      # Start timestep for the test rollout
   rollout_timesteps: null                               # Number of timesteps for the test rollout (30 seconds each)
 
@@ -110,6 +110,17 @@ model_parameters:
     decoder_activation: 'relu'
 
   NodeEdgeGNN:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    residual: True
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
+  NodeEdgeGNNTransformer:
     hidden_features: 64
     num_layers: 3
     activation: 'relu'

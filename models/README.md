@@ -14,3 +14,4 @@ Contains different GNN model architectures.
 | edge_gnn_attn.py | EdgeGNNAttn | Edge prediction model based on NodeEdgeGNNAttn. |
 | gcn.py | GCN | [GCN](https://arxiv.org/abs/1609.02907) with encoder and decoder. |
 | gat.py | GAT | [GAT](https://arxiv.org/abs/1710.10903v3) with encoder and decoder. |
+| hydrographnet.py | HydroGraphNet | Personal implementation of [HydroGraphNet](https://onlinelibrary.wiley.com/doi/10.1111/mice.13484). |

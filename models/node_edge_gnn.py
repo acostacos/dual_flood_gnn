@@ -1,6 +1,5 @@
 import torch
 from torch import Tensor
-from torch.nn import Identity
 from torch_geometric.nn import MessagePassing, Sequential as PygSequential
 from typing import Tuple
 from utils.model_utils import make_mlp
@@ -13,8 +12,9 @@ class NodeEdgeGNN(BaseModel):
     '''
     def __init__(self,
                  hidden_features: int = None,
-                 num_layers: int = 1,
-                 activation: str = 'prelu',
+                 num_layers: int = 2,
+                 activation: str = 'relu',
+                 residual: bool = True,
                  mlp_layers: int = 2,
 
                  # Encoder Decoder Parameters
@@ -33,11 +33,11 @@ class NodeEdgeGNN(BaseModel):
         encoder_decoder_hidden = hidden_features*2
         if self.with_encoder:
             self.node_encoder = make_mlp(input_size=self.input_node_features, output_size=hidden_features,
-                                                hidden_size=encoder_decoder_hidden, num_layers=encoder_layers,
-                                            activation=encoder_activation, bias=False, device=self.device)
+                                         hidden_size=encoder_decoder_hidden, num_layers=encoder_layers,
+                                         activation=encoder_activation, bias=False, device=self.device)
             self.edge_encoder = make_mlp(input_size=self.input_edge_features, output_size=hidden_features,
-                                                hidden_size=hidden_features, num_layers=encoder_layers,
-                                            activation=encoder_activation, bias=False, device=self.device)
+                                         hidden_size=hidden_features, num_layers=encoder_layers,
+                                         activation=encoder_activation, bias=False, device=self.device)
 
         input_node_size = hidden_features if self.with_encoder else self.input_node_features
         output_node_size = hidden_features if self.with_decoder else self.output_node_features
@@ -46,7 +46,7 @@ class NodeEdgeGNN(BaseModel):
         self.convs = self._make_gnn(input_node_size=input_node_size, output_node_size=output_node_size,
                                     input_edge_size=input_edge_size, output_edge_size=output_edge_size,
                                     hidden_features=hidden_features, num_layers=num_layers, mlp_layers=mlp_layers,
-                                    activation=activation, device=self.device)
+                                    activation=activation, residual=residual, device=self.device)
 
         # Decoder
         if self.with_decoder:
@@ -58,12 +58,12 @@ class NodeEdgeGNN(BaseModel):
                                         activation=decoder_activation, bias=False, device=self.device)
 
     def _make_gnn(self, input_node_size: int, output_node_size: int, input_edge_size: int, output_edge_size: int,
-                  hidden_features: int, num_layers: int, mlp_layers: int, activation: str, device: str):
+                  hidden_features: int, num_layers: int, mlp_layers: int, activation: str, residual: bool, device: str):
         if num_layers == 1:
             return NodeEdgeConv(node_in_channels=input_node_size, edge_in_channels=input_edge_size,
                                 node_out_channels=output_node_size, edge_out_channels=output_edge_size,
                                 hidden_size=hidden_features, num_layers=mlp_layers, activation=activation,
-                                norm=None, bias=False, device=device)
+                                residual=residual, bias=False, device=device)
 
         layers = []
         for _ in range(num_layers):
@@ -71,7 +71,7 @@ class NodeEdgeGNN(BaseModel):
                 NodeEdgeConv(node_in_channels=input_node_size, edge_in_channels=input_edge_size,
                              node_out_channels=output_node_size, edge_out_channels=output_edge_size,
                              hidden_size=hidden_features, num_layers=mlp_layers, activation=activation,
-                             norm=None, bias=False, device=device),
+                             residual=residual, bias=False, device=device),
                 'x, edge_index, edge_attr -> x, edge_attr',
             ))
         return PygSequential('x, edge_index, edge_attr', layers)
@@ -90,20 +90,27 @@ class NodeEdgeGNN(BaseModel):
         return x, edge_attr
 
 class NodeEdgeConv(MessagePassing):
+    '''
+    Message = MLP(node_i, edge_attr, node_j)
+    Aggregate = sum
+    Update = MLP(aggregated_message)
+    '''
     def __init__(self, node_in_channels: int, edge_in_channels: int,
                  node_out_channels: int, edge_out_channels: int,
                  hidden_size: int, num_layers: int = 2, activation: str = 'relu',
-                 norm: str = 'layernorm', bias: bool = False, device: str = 'cpu'):
+                 residual: bool = True, bias: bool = False, device: str = 'cpu'):
         super().__init__(aggr='sum')
+        self.residual = residual
+
         input_size = node_in_channels
         output_size = node_out_channels
         self.node_mlp = make_mlp(input_size=input_size, output_size=output_size, hidden_size=hidden_size,
-                                 num_layers=num_layers, activation=activation, norm=norm, bias=bias, device=device)
+                                 num_layers=num_layers, activation=activation, bias=bias, device=device)
 
         input_size = (node_in_channels * 2 + edge_in_channels)
         output_size = edge_out_channels
         self.edge_mlp = make_mlp(input_size=input_size, output_size=output_size, hidden_size=hidden_size,
-                                 num_layers=num_layers, activation=activation, norm=norm, bias=bias, device=device)
+                                 num_layers=num_layers, activation=activation, bias=bias, device=device)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
         return self.propagate(edge_index, x=x, edge_attr=edge_attr)
@@ -125,7 +132,13 @@ class NodeEdgeConv(MessagePassing):
 
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr: Tensor) -> Tensor:
         cat_feats = torch.cat([x_i, edge_attr, x_j], dim=-1)
-        return self.edge_mlp(cat_feats)+ edge_attr
+        msg = self.edge_mlp(cat_feats)
+        if self.residual:
+            msg = msg + edge_attr
+        return msg
 
     def update(self, aggr: Tensor, x: Tensor) -> Tensor:
-        return self.node_mlp(aggr) + x
+        out = self.node_mlp(aggr)
+        if self.residual:
+            out = out + x
+        return out

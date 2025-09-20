@@ -41,13 +41,15 @@ class EdgeRegressionTester(BaseTester):
                 graph = graph.to(self.device)
 
                 x, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
-                edge_pred = self.model(x, edge_index, edge_attr)
+                edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
                 # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
 
-                label_edge = graph.y_edge
+                edge_pred = edge_attr[:, [self.end_edge_target_idx-1]] + edge_pred_diff
+
+                label_edge = edge_attr[:, [self.end_edge_target_idx-1]] + graph.y_edge
                 if self.dataset.is_normalized:
                     edge_pred = self.dataset.normalizer.denormalize(self.dataset.EDGE_TARGET_FEATURE, edge_pred)
                     label_edge = self.dataset.normalizer.denormalize(self.dataset.EDGE_TARGET_FEATURE, label_edge)

@@ -90,15 +90,16 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
                 # Override graph data with sliding window
                 edge_attr = torch.concat([edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, edge_attr[:, self.end_edge_target_idx:]], dim=1)
 
-                edge_pred = self.model(x, edge_index, edge_attr)
-                edge_pred = self._override_pred_bc(edge_pred, batch, i)
+                edge_pred_diff = self.model(x, edge_index, edge_attr)
+                edge_pred_diff = self._override_pred_bc(edge_pred_diff, batch, i)
 
-                loss = self._compute_edge_loss(edge_pred, batch, i)
+                loss = self._compute_edge_loss(edge_pred_diff, batch, i)
                 running_edge_pred_loss += loss.item()
 
                 total_batch_loss = total_batch_loss + loss
 
                 if i < current_num_timesteps - 1:  # Don't update on last iteration
+                    edge_pred = edge_sliding_window[:, [-1]] + edge_pred_diff
                     next_edge_sliding_window = torch.cat((edge_sliding_window[:, 1:], edge_pred), dim=1)
 
                     edge_sliding_window = next_edge_sliding_window

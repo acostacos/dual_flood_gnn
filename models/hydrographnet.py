@@ -72,9 +72,7 @@ class HydroGraphNet(BaseModel):
 
         if self.with_decoder:
             x = self.node_decoder(x)
-            # edge_attr = self.edge_decoder(edge_attr)
 
-        # return x, edge_attr
         return x
 
 class MeshEdgeBlock(MessagePassing):

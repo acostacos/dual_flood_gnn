@@ -45,11 +45,13 @@ class EdgeAutoregressiveTester(BaseTester):
                 edge_attr = torch.concat([graph.edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, graph.edge_attr[:, self.end_edge_target_idx:]], dim=1)
                 x, edge_index = graph.x, graph.edge_index
 
-                edge_pred = self.model(x, edge_index, edge_attr)
+                edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
                 # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+
+                edge_pred = edge_sliding_window[:, [-1]] + edge_pred_diff
 
                 edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
 

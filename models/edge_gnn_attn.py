@@ -119,8 +119,8 @@ class EdgeGNNAttn(BaseModel):
         if self.with_decoder:
             edge_attr = self.edge_decoder(edge_attr)
 
-        if hasattr(self, 'residual'):
-            edge_attr = edge_attr + self.residual(edge_attr0[:, -self.output_edge_features:])
+        # if hasattr(self, 'residual'):
+        #     edge_attr = edge_attr + self.residual(edge_attr0[:, -self.output_edge_features:])
 
         return edge_attr
 

@@ -29,6 +29,7 @@ __all__ = [
     'EdgeGNNAttn',
     'GAT',
     'GCN',
+    'HydroGraphNet',
     'NodeEdgeGNN',
     'NodeEdgeGNNAttn',
     'NodeGNNAttn',

@@ -118,8 +118,8 @@ class NodeGNNAttn(BaseModel):
         if self.with_decoder:
             x = self.node_decoder(x)
 
-        if hasattr(self, 'residual'):
-            x = x + self.residual(x0[:, -self.output_node_features:])
+        # if hasattr(self, 'residual'):
+        #     x = x + self.residual(x0[:, -self.output_node_features:])
 
         return x
 

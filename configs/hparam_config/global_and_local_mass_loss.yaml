@@ -1,5 +1,5 @@
 output_dir: 'hp_stats'
-num_trials: 20
+num_trials: 50
 num_folds: 5
 hyperparameters:
   # edge_loss_weight:
@@ -11,12 +11,12 @@ hyperparameters:
   global_mass_loss_weight:
     path: 'loss_func_parameters.global_mass_loss_weight'
     type: 'float'
-    min: 1.0e-3
-    max: 1.0e-1
+    min: 5.0e-4
+    max: 5.0e-2
     log: True
   local_mass_loss_weight:
     path: 'loss_func_parameters.local_mass_loss_weight'
     type: 'float'
-    min: 1.0e-3
-    max: 1.0e-1
+    min: 5.0e-4
+    max: 5.0e-2
     log: True

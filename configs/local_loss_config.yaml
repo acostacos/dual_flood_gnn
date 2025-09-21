@@ -62,7 +62,7 @@ loss_func_parameters:
   global_mass_loss_weight: 1.0                               # Importance weight for global mass conservation loss. Applied after scaling.
   use_local_mass_loss: True                                  # Enable local mass conservation in loss function
   local_mass_loss_scale: 6.8e-10                             # Value used to scale local mass conservation loss. This is used as an initial value when using dynamic loss scaling
-  local_mass_loss_weight: 1.0                                # Importance weight for local mass conservation loss. Applied after scaling.
+  local_mass_loss_weight: 0.01                               # Importance weight for local mass conservation loss. Applied after scaling.
 
   huber:
     delta: 0.15                                               # Delta parameter for Huber loss function.

@@ -55,7 +55,7 @@ loss_func_parameters:
   node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
   edge_loss: 'mse'                                           # Loss function for edge features. Options: 'mse', 'mae', 'huber'
   node_loss_weight: 1.0                                      # Importance weight for node prediction loss. Applied after scaling.
-  edge_pred_loss_scale: 1.48                                 # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_pred_loss_scale: 3.5                                  # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
   edge_loss_weight: 1.0                                      # Importance weight for edge prediction loss. Applied after scaling.
   use_global_mass_loss: False                                # Enable global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss. This is used as an initial value when using dynamic loss scaling

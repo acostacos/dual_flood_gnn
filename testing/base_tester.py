@@ -67,11 +67,11 @@ class BaseTester:
         return np.mean(edge_rmses) if edge_rmses else 0.0
 
     def get_avg_global_mass_loss(self) -> float:
-        losses = [stat.get_avg_global_mass_loss() for stat in self.events_validation_stats]
+        losses = [stat.get_total_global_mass_loss() for stat in self.events_validation_stats]
         return np.mean(losses) if losses else 0.0
 
     def get_avg_local_mass_loss(self) -> float:
-        losses = [stat.get_avg_local_mass_loss() for stat in self.events_validation_stats]
+        losses = [stat.get_total_local_mass_loss() for stat in self.events_validation_stats]
         return np.mean(losses) if losses else 0.0
 
     def save_stats(self, output_dir: str, stats_filename_prefix: Optional[str] = None):

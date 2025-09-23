@@ -136,13 +136,8 @@ class FloodEventDataset(Dataset):
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
 
-        # Global Mass Loss Features
-        global_mass_info = self._get_global_mass_info(dynamic_nodes, dynamic_edges)
-        total_rainfall_per_ts, boundary_outflow_per_ts = global_mass_info
-
-        # Local Mass Loss Features
-        local_mass_info = self._get_local_mass_loss_info(dynamic_nodes, dynamic_edges)
-        node_rainfall_per_ts, boundary_outflow_per_ts = local_mass_info
+        # Physics-informed Loss Features
+        node_rainfall_per_ts, boundary_outflow_per_ts = self._get_physics_info(dynamic_nodes, dynamic_edges)
 
         if self.is_normalized:
             static_nodes = self.normalizer.normalize_feature_vector(self.STATIC_NODE_FEATURES, static_nodes)
@@ -164,12 +159,8 @@ class FloodEventDataset(Dataset):
             event_dynamic_nodes = dynamic_nodes[start_idx:end_idx].copy()
             event_dynamic_edges = dynamic_edges[start_idx:end_idx].copy()
 
-            # Global Mass Conservation Features
-            event_total_rainfall_per_ts = total_rainfall_per_ts[start_idx:end_idx].copy()
-
-            # Local Mass Conservation Features
+            # Physics-informed Loss Features
             event_rainfall_per_ts = node_rainfall_per_ts[start_idx:end_idx].copy()
-
             event_outflow_per_ts = boundary_outflow_per_ts[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 4]
@@ -177,7 +168,6 @@ class FloodEventDataset(Dataset):
                      event_timesteps=event_timesteps,
                      dynamic_nodes=event_dynamic_nodes,
                      dynamic_edges=event_dynamic_edges,
-                     total_rainfall_per_ts=event_total_rainfall_per_ts,
                      node_rainfall_per_ts=event_rainfall_per_ts,
                      boundary_outflow_per_ts=event_outflow_per_ts)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
@@ -228,20 +218,22 @@ class FloodEventDataset(Dataset):
 
         # Get physics-informed loss information
         global_mass_info = None
-        if self.with_global_mass_loss:
-            total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
-            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
-            global_mass_info = self._get_global_mass_info_for_timestep(total_rainfall_per_ts,
-                                                                       boundary_outflow_per_ts,
-                                                                       within_event_idx)
-
         local_mass_info = None
-        if self.with_local_mass_loss:
+        if self.with_global_mass_loss or self.with_local_mass_loss:
             node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
             boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
-            local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                     boundary_outflow_per_ts,
-                                                                     within_event_idx)
+            if self.with_global_mass_loss:
+                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts,
+                                                                           boundary_outflow_per_ts,
+                                                                           within_event_idx)
+
+            if self.with_local_mass_loss:
+                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
+                                                                         boundary_outflow_per_ts,
+                                                                         within_event_idx)
+
+            node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
+            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
 
         edge_index = torch.from_numpy(edge_index)
         data = Data(x=node_features,
@@ -359,7 +351,7 @@ class FloodEventDataset(Dataset):
             assert peak_idx + num_timesteps_after_peak < len(timesteps), "Timesteps after peak exceeds the available timesteps."
             self._event_peak_idx.append(peak_idx)
 
-            timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
+            timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx, aggr='first')
             all_event_timesteps.append(timesteps)
 
             num_timesteps = len(timesteps)
@@ -454,42 +446,27 @@ class FloodEventDataset(Dataset):
         return static_features
 
     def _get_dynamic_node_features(self) -> ndarray:
-        def get_interval_rainfall(hec_ras_paths: List[str]):
+        def get_interval_rainfall(hec_ras_path: str):
             """Get interval rainfall from cumulative rainfall"""
-            all_event_data = []
-            for i, path in enumerate(hec_ras_paths):
-                cumulative_rainfall = get_cumulative_rainfall(path)
-                cumulative_rainfall = self._get_trimmed_dynamic_data(cumulative_rainfall, i)
+            cumulative_rainfall = get_cumulative_rainfall(hec_ras_path)
+            last_ts_rainfall = np.zeros((1, cumulative_rainfall.shape[1]), dtype=cumulative_rainfall.dtype)
+            intervals = np.diff(cumulative_rainfall, axis=0)
+            interval_rainfall = np.concatenate((intervals, last_ts_rainfall), axis=0)
+            return interval_rainfall
 
-                last_ts_rainfall = np.zeros((1, cumulative_rainfall.shape[1]), dtype=cumulative_rainfall.dtype)
-                intervals = np.diff(cumulative_rainfall, axis=0)
-                interval_rainfall = np.concatenate((intervals, last_ts_rainfall), axis=0)
-
-                all_event_data.append(interval_rainfall)
-            all_event_data = np.concatenate(all_event_data, axis=0)
-            return all_event_data
-
-        def get_inflow_hydrograph(hec_ras_paths: List[str], edges_shp_path: str, inflow_boundary_nodes: List[int]):
+        edge_index = get_edge_index(self.raw_paths[1])
+        num_nodes = edge_index.max() + 1
+        inflow_to_boundary_mask = np.isin(edge_index[1], self.inflow_boundary_nodes)
+        inflow_edges_mask = np.any(np.isin(edge_index, self.inflow_boundary_nodes), axis=0)
+        def get_inflow_hydrograph(hec_ras_path: str):
             """Get inflow at boundary nodes"""
-            edge_index = get_edge_index(edges_shp_path)
-            inflow_to_boundary_mask = np.isin(edge_index[1], inflow_boundary_nodes)
-            inflow_edges_mask = np.any(np.isin(edge_index, inflow_boundary_nodes), axis=0)
-
-            all_event_data = []
-            for i, path in enumerate(hec_ras_paths):
-                face_flow = get_face_flow(path)
-                if np.any(inflow_to_boundary_mask):
-                    # Flip the dynamic edge features accordingly
-                    face_flow[:, inflow_to_boundary_mask] *= -1
-                inflow = face_flow[:, inflow_edges_mask].sum(axis=1)[:, None]
-
-                num_nodes = edge_index.max() + 1
-                inflow = np.repeat(inflow, num_nodes, axis=-1)
-
-                inflow = self._get_trimmed_dynamic_data(inflow, i)
-                all_event_data.append(inflow)
-            all_event_data = np.concatenate(all_event_data, axis=0)
-            return all_event_data
+            face_flow = get_face_flow(hec_ras_path)
+            if np.any(inflow_to_boundary_mask):
+                # Flip the dynamic edge features accordingly
+                face_flow[:, inflow_to_boundary_mask] *= -1
+            inflow = face_flow[:, inflow_edges_mask].sum(axis=1)[:, None]
+            inflow = np.repeat(inflow, num_nodes, axis=-1)
+            return inflow
 
         def get_water_depth(hec_ras_path: str):
             """Get water depth from water level and elevation"""
@@ -506,10 +483,10 @@ class FloodEventDataset(Dataset):
             return water_volume
 
         DYNAMIC_NODE_RETRIEVAL_MAP = {
-            "inflow": lambda: get_inflow_hydrograph(self.raw_paths[2:], self.raw_paths[1], self.inflow_boundary_nodes),
-            "rainfall": lambda: get_interval_rainfall(self.raw_paths[2:]),
-            "water_depth": lambda: self._get_dynamic_from_all_events(get_water_depth),
-            "water_volume": lambda: self._get_dynamic_from_all_events(get_clipped_water_volume),
+            "inflow": lambda: self._get_dynamic_from_all_events(get_inflow_hydrograph, aggr='mean'),
+            "rainfall": lambda: self._get_dynamic_from_all_events(get_interval_rainfall, aggr='sum'),
+            "water_depth": lambda: self._get_dynamic_from_all_events(get_water_depth, aggr='mean'),
+            "water_volume": lambda: self._get_dynamic_from_all_events(get_clipped_water_volume, aggr='mean'),
         }
 
         dynamic_features = self._get_features(feature_list=self.DYNAMIC_NODE_FEATURES,
@@ -519,8 +496,8 @@ class FloodEventDataset(Dataset):
 
     def _get_dynamic_edge_features(self) -> ndarray:
         DYNAMIC_EDGE_RETRIEVAL_MAP = {
-            "velocity": lambda: self._get_dynamic_from_all_events(get_velocity),
-            "face_flow": lambda: self._get_dynamic_from_all_events(get_face_flow),
+            "velocity": lambda: self._get_dynamic_from_all_events(get_velocity, aggr='mean'),
+            "face_flow": lambda: self._get_dynamic_from_all_events(get_face_flow, aggr='mean'),
         }
 
         dynamic_features = self._get_features(feature_list=self.DYNAMIC_EDGE_FEATURES,
@@ -528,16 +505,16 @@ class FloodEventDataset(Dataset):
         dynamic_features = np.array(dynamic_features).transpose(1, 2, 0)
         return dynamic_features
 
-    def _get_dynamic_from_all_events(self, retrieval_func: Callable) -> ndarray:
+    def _get_dynamic_from_all_events(self, retrieval_func: Callable, aggr: str = 'first') -> ndarray:
         all_event_data = []
         for i, hec_ras_path in enumerate(self.raw_paths[2:]):
             event_data = retrieval_func(hec_ras_path)
-            event_data = self._get_trimmed_dynamic_data(event_data, i)
+            event_data = self._get_trimmed_dynamic_data(event_data, i, aggr)
             all_event_data.append(event_data)
         all_event_data = np.concatenate(all_event_data, axis=0)
         return all_event_data
 
-    def _get_trimmed_dynamic_data(self, dynamic_data: ndarray, event_idx: int) -> ndarray:
+    def _get_trimmed_dynamic_data(self, dynamic_data: ndarray, event_idx: int, aggr: str = 'first') -> ndarray:
         start = 0
         if self.spin_up_time is not None:
             if isinstance(self.spin_up_time, int):
@@ -559,9 +536,37 @@ class FloodEventDataset(Dataset):
             timesteps_from_peak = self.time_from_peak // self._event_base_timestep_interval[event_idx]
             end = event_peak + timesteps_from_peak
 
-        step = self.timestep_interval // self._event_base_timestep_interval[event_idx]
+        trimmed = dynamic_data[start:end]
 
-        return dynamic_data[start:end:step]
+        step = self.timestep_interval // self._event_base_timestep_interval[event_idx]
+        downsampled = self._downsample_dynamic_data(trimmed, step, aggr)
+
+        return downsampled
+
+    def _downsample_dynamic_data(self, dynamic_data: ndarray, step: int, aggr: str = 'first') -> ndarray:
+        if step == 1:
+            return dynamic_data
+
+        # Trim array to be divisible by step
+        trimmed_length = (dynamic_data.shape[0] // step) * step
+        trimmed_array = dynamic_data[:trimmed_length]
+
+        if aggr == 'first':
+            return trimmed_array[::step]
+
+        elif aggr in ['mean', 'sum']:
+            # Reshape to group consecutive elements
+            if dynamic_data.ndim == 1:
+                reshaped = trimmed_array.reshape(-1, step) # (timesteps, step)
+            else:
+                reshaped = trimmed_array.reshape(-1, step, dynamic_data.shape[1]) # (timesteps, step, feature)
+
+            if aggr == 'mean':
+                return np.mean(reshaped, axis=1)
+            elif aggr == 'sum':
+                return np.sum(reshaped, axis=1)
+
+        raise ValueError(f"Aggregation method '{aggr}' is not supported")
 
     def _get_features(self, feature_list: List[str], feature_retrieval_map: Dict[str, Callable]) -> List:
         features = []
@@ -574,29 +579,7 @@ class FloodEventDataset(Dataset):
 
         return features
 
-    def _get_global_mass_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
-        # Total rainfall 
-        rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
-        non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
-        node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
-        total_rainfall_per_ts = node_rainfall_per_ts.sum(axis=1)
-
-        # Unmasked Normalized Outflow Values
-        face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
-        edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
-        if self.is_normalized:
-            if self.mode == 'test':
-                mean, std = self.normalizer.get_feature_mean_std('face_flow')
-            else:
-                # Manually compute as mean and std has not yet been saved
-                mean = edge_face_flow_per_ts.mean().item()
-                std = edge_face_flow_per_ts.std().item()
-            edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
-        boundary_outflow_per_ts = edge_face_flow_per_ts[:, self.boundary_condition.outflow_edges_mask]
-
-        return total_rainfall_per_ts, boundary_outflow_per_ts
-
-    def _get_local_mass_loss_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
+    def _get_physics_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
         # Rainfall
         rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
         non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
@@ -709,11 +692,11 @@ class FloodEventDataset(Dataset):
         return label_nodes, label_edges
     
     def _get_global_mass_info_for_timestep(self,
-                                           total_rainfall_per_ts: ndarray,
+                                           node_rainfall_per_ts: ndarray,
                                            boundary_outflow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
         boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
-        total_rainfall = total_rainfall_per_ts[[timestep_idx]]
+        total_rainfall = node_rainfall_per_ts[[timestep_idx]].sum(axis=1)
 
         total_rainfall = torch.from_numpy(total_rainfall)
         boundary_outflow = torch.from_numpy(boundary_outflow)

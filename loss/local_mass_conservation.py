@@ -5,17 +5,24 @@ from numpy import ndarray
 from torch import Tensor
 from torch.nn import Module
 from torch_geometric.utils import scatter
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Literal
 
 from .loss_helper import get_orig_water_volume, get_orig_water_flow
 
 class LocalMassConservationLoss(Module):
+    '''
+    Implements local mass conservation loss. Behavior changes depending on mode (train/test).
+    During training, we take the absolute value of the loss to convert it to a convex function.
+    During testing, we return the original signed values.
+    '''
     def __init__(self,
+                 mode: Literal['train', 'test'],
                  previous_timesteps: int,
                  normalizer: DatasetNormalizer,
                  is_normalized: bool = True,
                  delta_t: int = 30):
         super(LocalMassConservationLoss, self).__init__()
+        self.mode = mode
         self.previous_timesteps = previous_timesteps
         self.normalizer = normalizer
         self.is_normalized = is_normalized
@@ -53,7 +60,10 @@ class LocalMassConservationLoss(Module):
         outflow_volume = total_outflow * self.delta_t
 
         local_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
-        local_volume_error = torch.abs(local_volume_error)
+
+        if self.mode == 'train':
+            local_volume_error = torch.abs(local_volume_error)
+
         non_boundary_batch = batch[non_boundary_nodes_mask]
         total_local_volume_error = scatter(local_volume_error, non_boundary_batch, reduce='sum', dim_size=num_graphs)
 

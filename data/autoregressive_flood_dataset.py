@@ -42,7 +42,7 @@ class AutoregressiveFloodDataset(FloodEventDataset):
             assert peak_idx + num_timesteps_after_peak < len(timesteps), "Timesteps after peak exceeds the available timesteps."
             self._event_peak_idx.append(peak_idx)
 
-            timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx)
+            timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx, aggr='first')
             all_event_timesteps.append(timesteps)
 
             num_timesteps = len(timesteps)
@@ -154,11 +154,11 @@ class AutoregressiveFloodDataset(FloodEventDataset):
         return label_nodes, label_edges
 
     def _get_global_mass_info_for_timestep(self,
-                                           total_rainfall_per_ts: ndarray,
+                                           node_rainfall_per_ts: ndarray,
                                            boundary_outflow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
         end_idx = timestep_idx + self.num_label_timesteps
-        total_rainfall = total_rainfall_per_ts[timestep_idx:end_idx][None, :]
+        total_rainfall = node_rainfall_per_ts[timestep_idx:end_idx].sum(axis=1)[None, :]
         boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
 
         total_rainfall = torch.from_numpy(total_rainfall)

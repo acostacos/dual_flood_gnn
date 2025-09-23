@@ -1,10 +1,9 @@
 import numpy as np
 
 from datetime import datetime
-from typing import List
 from utils.file_utils import read_hdf_file_as_numpy
 
-def get_event_timesteps(filepath: str) -> List[datetime]:
+def get_event_timesteps(filepath: str) -> np.ndarray:
     property_path = 'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Time Date Stamp'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
 
@@ -16,7 +15,7 @@ def get_event_timesteps(filepath: str) -> List[datetime]:
 
     vec_format = np.vectorize(format)
     time_series = vec_format(data)
-    return list(time_series)
+    return time_series
 
 def get_cell_area(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Cells Surface Area'
@@ -94,5 +93,10 @@ def get_velocity(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.d
 
 def get_face_flow(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Face Flow'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
+def get_inflow(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Boundary Conditions.UP_BC - Flow per Face'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)

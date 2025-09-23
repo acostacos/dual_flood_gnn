@@ -4,17 +4,24 @@ from data.dataset_normalizer import DatasetNormalizer
 from torch import Tensor
 from torch.nn import Module
 from torch_geometric.utils import scatter
-from typing import Dict
+from typing import Dict, Literal
 
 from .loss_helper import get_orig_water_volume, get_orig_water_flow
 
 class GlobalMassConservationLoss(Module):
+    '''
+    Implements global mass conservation loss. Behavior changes depending on mode (train/test).
+    During training, we take the absolute value of the loss to convert it to a convex function.
+    During testing, we return the original signed values.
+    '''
     def __init__(self,
+                 mode: Literal['train', 'test'],
                  previous_timesteps: int,
                  normalizer: DatasetNormalizer,
                  is_normalized: bool = True,
                  delta_t: int = 30):
         super(GlobalMassConservationLoss, self).__init__()
+        self.mode = mode
         self.previous_timesteps = previous_timesteps
         self.normalizer = normalizer
         self.is_normalized = is_normalized
@@ -64,7 +71,8 @@ class GlobalMassConservationLoss(Module):
         outflow_volume = total_outflow * self.delta_t
 
         global_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
-        global_volume_error = torch.abs(global_volume_error)
+        if self.mode == 'train':
+            global_volume_error = torch.abs(global_volume_error)
 
         global_loss = global_volume_error.mean()
         return global_loss

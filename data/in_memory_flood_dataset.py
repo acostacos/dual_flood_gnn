@@ -48,11 +48,7 @@ class InMemoryFloodDataset(FloodEventDataset):
                 dynamic_edges: ndarray = dynamic_values['dynamic_edges']
 
                 # Load physics-informed loss information
-                if self.with_global_mass_loss:
-                    total_rainfall_per_ts: ndarray = dynamic_values['total_rainfall_per_ts']
-                    boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
-
-                if self.with_local_mass_loss:
+                if self.with_global_mass_loss or self.with_local_mass_loss:
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
                     boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
 
@@ -67,7 +63,7 @@ class InMemoryFloodDataset(FloodEventDataset):
 
             global_mass_info = None
             if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(total_rainfall_per_ts,
+                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts,
                                                                            boundary_outflow_per_ts,
                                                                            within_event_idx)
 

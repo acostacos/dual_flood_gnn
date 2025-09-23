@@ -81,11 +81,11 @@ class ValidationStats:
     def get_avg_edge_rmse(self) -> float:
         return float(np.mean(self.edge_rmse_list))
 
-    def get_avg_global_mass_loss(self) -> float:
-        return float(np.mean(self.global_mass_loss_list))
+    def get_total_global_mass_loss(self) -> float:
+        return float(np.sum(self.global_mass_loss_list))
 
-    def get_avg_local_mass_loss(self) -> float:
-        return float(np.mean(self.local_mass_loss_list))
+    def get_total_local_mass_loss(self) -> float:
+        return float(np.sum(self.local_mass_loss_list))
 
     def update_stats_for_timestep(self,
                                   pred: Tensor,
@@ -139,12 +139,20 @@ class ValidationStats:
         assert self.previous_timesteps is not None and self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
             "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
 
-        global_mass_loss_func = GlobalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
+        global_mass_loss_func = GlobalMassConservationLoss(mode='test',
+                                                           previous_timesteps=self.previous_timesteps,
+                                                           normalizer=self.normalizer,
+                                                           is_normalized=self.is_normalized,
+                                                           delta_t=self.delta_t)
         total_rainfall = physics_utils.get_total_rainfall(databatch)
         global_mass_loss = global_mass_loss_func(pred, prev_node_pred, prev_edge_pred, total_rainfall, databatch)
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
-        local_mass_loss_func = LocalMassConservationLoss(self.previous_timesteps, self.normalizer, self.is_normalized, self.delta_t)
+        local_mass_loss_func = LocalMassConservationLoss(mode='test',
+                                                         previous_timesteps=self.previous_timesteps,
+                                                         normalizer=self.normalizer,
+                                                         is_normalized=self.is_normalized,
+                                                         delta_t=self.delta_t)
         rainfall = physics_utils.get_rainfall(databatch)
         local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, databatch)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())
@@ -179,9 +187,9 @@ class ValidationStats:
             self.log(f'Average Edge NSE (flooded): {np.mean(self.edge_nse_flooded_list):.4e}')
 
         if len(self.global_mass_loss_list) > 0:
-            self.log(f'\nAverage Global Mass Conservation Loss: {self.get_avg_global_mass_loss():.4e}')
+            self.log(f'\nTotal Global Mass Conservation Loss: {self.get_total_global_mass_loss():.4e}')
         if len(self.local_mass_loss_list) > 0:
-            self.log(f'\nAverage Local Mass Conservation Loss: {self.get_avg_local_mass_loss():.4e}')
+            self.log(f'\nTotal Local Mass Conservation Loss: {self.get_total_local_mass_loss():.4e}')
 
         if self.val_start_time is not None and self.val_end_time is not None:
             self.log(f'\nValidation time: {self.val_end_time - self.val_start_time:.2f} seconds')

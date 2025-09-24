@@ -58,7 +58,7 @@ def run_test(model: torch.nn.Module,
     is_dual_model = 'NodeEdgeGNN' in model.__class__.__name__
     if is_dual_model:
         tester = DualAutoregressiveTester(**tester_params)
-    elif model.__class__.__name__ in ['EdgeGNNAttn']:
+    elif model.__class__.__name__ in ['EdgeGNN']:
         tester = EdgeAutoregressiveTester(**tester_params)
     else:
         tester = NodeAutoregressiveTester(**tester_params)

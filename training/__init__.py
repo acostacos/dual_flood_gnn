@@ -12,7 +12,7 @@ def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> B
             return DualAutoregressiveTrainer(*args, **kwargs)
         return DualRegressionTrainer(*args, **kwargs)
 
-    if model_name in ['EdgeGNNAttn']:
+    if model_name in ['EdgeGNN']:
         if autoregressive:
             return EdgeAutoregressiveTrainer(*args, **kwargs)
         return EdgeRegressionTrainer(*args, **kwargs)

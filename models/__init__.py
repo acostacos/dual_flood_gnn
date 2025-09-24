@@ -1,17 +1,17 @@
 from torch.nn import Module
 
-from .edge_gnn_attn import EdgeGNNAttn
+from .edge_gnn import EdgeGNN
 from .gat import GAT
 from .gcn import GCN
 from .hydrographnet import HydroGraphNet
 from .node_edge_gnn import NodeEdgeGNN
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
-from .node_gnn_attn import NodeGNNAttn
+from .node_gnn import NodeGNN
 
 def model_factory(model_name: str, *args, **kwargs) -> Module:
-    if model_name == 'EdgeGNNAttn':
-        return EdgeGNNAttn(*args, **kwargs)
+    if model_name == 'EdgeGNN':
+        return EdgeGNN(*args, **kwargs)
     if model_name == 'GCN':
         return GCN(*args, **kwargs)
     if model_name == 'GAT':
@@ -24,18 +24,18 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
         return NodeEdgeGNNAttn(*args, **kwargs)
     if model_name == 'NodeEdgeGNNTransformer':
         return NodeEdgeGNNTransformer(*args, **kwargs)
-    if model_name == 'NodeGNNAttn':
-        return NodeGNNAttn(*args, **kwargs)
+    if model_name == 'NodeGNN':
+        return NodeGNN(*args, **kwargs)
     raise ValueError(f'Invalid model name: {model_name}')
 
 __all__ = [
-    'EdgeGNNAttn',
+    'EdgeGNN',
     'GAT',
     'GCN',
     'HydroGraphNet',
     'NodeEdgeGNN',
     'NodeEdgeGNNAttn',
     'NodeEdgeGNNTransformer',
-    'NodeGNNAttn',
+    'NodeGNN',
     'model_factory',
 ]

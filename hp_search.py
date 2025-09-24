@@ -74,7 +74,7 @@ def cross_validate(_config: Dict, cross_val_groups: List[str]) -> float | Tuple[
 
         if is_dual_model:
             tester = DualAutoregressiveTester(**tester_params)
-        elif model.__class__.__name__ in ['EdgeGNNAttn']:
+        elif model.__class__.__name__ in ['EdgeGNN']:
             tester = EdgeAutoregressiveTester(**tester_params)
         else:
             tester = NodeAutoregressiveTester(**tester_params)

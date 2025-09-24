@@ -125,30 +125,26 @@ model_parameters:                                            # Model-specific pa
     decoder_layers: 3
     decoder_activation: 'relu'
   
-  NodeGNNAttn:
-    hidden_features: 8
-    num_layers: 2
+  NodeGNN:
+    hidden_features: 64
+    num_layers: 3
     activation: 'relu'
+    mlp_layers: 3
     residual: True
-    dropout: 0.0
-    negative_slope: 0.2
-    attn_mlp_layers: 2
-    encoder_layers: 2
+    encoder_layers: 3
     encoder_activation: 'relu'
-    decoder_layers: 2
+    decoder_layers: 3
     decoder_activation: 'relu'
 
-  EdgeGNNAttn:
-    hidden_features: 8
-    num_layers: 2
+  EdgeGNN:
+    hidden_features: 64
+    num_layers: 3
     activation: 'relu'
+    mlp_layers: 3
     residual: True
-    dropout: 0.0
-    negative_slope: 0.2
-    attn_mlp_layers: 2
-    encoder_layers: 2
+    encoder_layers: 3
     encoder_activation: 'relu'
-    decoder_layers: 2
+    decoder_layers: 3
     decoder_activation: 'relu'
 
   HydroGraphNet:

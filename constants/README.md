@@ -10,4 +10,5 @@ Contains constants used throughout the codebase.
 
 Notes
 - The area below is selected for computation of local mass loss during testing.
+
 ![Testing Local Mass Loss nodes](../docs/selected_nodes_local_test.png)

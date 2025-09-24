@@ -66,6 +66,7 @@ The code is categorized in different folder based on their specific purpose. Bel
 | Folder | Description |
 |---|---|
 | [configs](https://github.com/acostacos/flood_pi_gnn/tree/master/configs) | Contains all the config files used to specify training and testing parameters. |
+| [constants](https://github.com/acostacos/flood_pi_gnn/tree/master/constants) | Contains constants used throughout the codebase. |
 | [data](https://github.com/acostacos/flood_pi_gnn/tree/master/data) | Contains the raw data and Dataset classes for accessing this data. |
 | [loss](https://github.com/acostacos/flood_pi_gnn/tree/master/loss) | Contains custom loss functions used for training (ex. physics-informed loss). |
 | [models](https://github.com/acostacos/flood_pi_gnn/tree/master/models) | Contains different GNN model architectures. |

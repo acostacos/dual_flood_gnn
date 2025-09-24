@@ -7,7 +7,7 @@ from numpy import ndarray
 from torch import Tensor
 from loss import GlobalMassConservationLoss, LocalMassConservationLoss
 from data.dataset_normalizer import DatasetNormalizer
-from typing import Optional
+from typing import Optional, List
 from utils import physics_utils
 
 from . import Logger
@@ -135,7 +135,8 @@ class ValidationStats:
                                                    pred: Tensor,
                                                    prev_node_pred: Tensor,
                                                    prev_edge_pred: Tensor,
-                                                   databatch):
+                                                   databatch,
+                                                   local_mass_nodes: List[int] = None):
         assert self.previous_timesteps is not None and self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
             "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
 
@@ -154,7 +155,13 @@ class ValidationStats:
                                                          is_normalized=self.is_normalized,
                                                          delta_t=self.delta_t)
         rainfall = physics_utils.get_rainfall(databatch)
-        local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, databatch)
+        local_nodes_mask = None
+        if local_mass_nodes is not None:
+            # Only compute local mass loss for specific nodes
+            assert databatch.num_graphs == 1, 'For testing, assume there is only one graph per batch.'
+            local_nodes_mask = np.isin(np.arange(databatch.num_nodes), local_mass_nodes)
+
+        local_mass_loss = local_mass_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, databatch, local_nodes_mask)
         self.local_mass_loss_list.append(local_mass_loss.cpu().item())
 
     def print_stats_summary(self):

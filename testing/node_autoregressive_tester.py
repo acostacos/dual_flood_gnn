@@ -1,5 +1,6 @@
 import torch
 
+from constants import TEST_LOCAL_MASS_LOSS_NODES
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
 from utils import physics_utils
@@ -61,7 +62,7 @@ class NodeAutoregressiveTester(BaseTester):
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
                     prev_edge_pred = physics_utils.get_physics_info_edge(edge_attr, self.dataset.previous_timesteps, graph)
-                    validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
+                    validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph, TEST_LOCAL_MASS_LOSS_NODES)
 
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
 

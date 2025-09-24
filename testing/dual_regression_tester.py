@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+from constants import TEST_LOCAL_MASS_LOSS_NODES
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
 from utils import physics_utils
@@ -60,7 +61,7 @@ class DualRegressionTester(BaseTester):
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
                     prev_node_pred, prev_edge_pred = physics_utils.get_physics_info_node_edge(x, edge_attr, self.dataset.previous_timesteps, graph)
-                    validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph)
+                    validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph, TEST_LOCAL_MASS_LOSS_NODES)
 
                 label = x[:, [self.end_node_target_idx-1]] + graph.y
                 if self.dataset.is_normalized:

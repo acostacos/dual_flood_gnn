@@ -582,8 +582,7 @@ class FloodEventDataset(Dataset):
     def _get_physics_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
         # Rainfall
         rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
-        non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
-        node_rainfall_per_ts = dynamic_nodes[:, non_boundary_nodes_mask, rainfall_idx]
+        node_rainfall_per_ts = dynamic_nodes[:, :, rainfall_idx]
 
         # Unmasked Normalized Outflow Values
         face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
@@ -695,14 +694,15 @@ class FloodEventDataset(Dataset):
                                            node_rainfall_per_ts: ndarray,
                                            boundary_outflow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
+        non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
         boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
-        total_rainfall = node_rainfall_per_ts[[timestep_idx]].sum(axis=1)
+        total_rainfall = node_rainfall_per_ts[timestep_idx, non_boundary_nodes_mask].sum(keepdims=True)
 
         total_rainfall = torch.from_numpy(total_rainfall)
         boundary_outflow = torch.from_numpy(boundary_outflow)
         inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
-        non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
+        non_boundary_nodes_mask = torch.from_numpy(non_boundary_nodes_mask)
 
         return {
             'total_rainfall': total_rainfall,

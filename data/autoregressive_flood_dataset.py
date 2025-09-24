@@ -158,14 +158,15 @@ class AutoregressiveFloodDataset(FloodEventDataset):
                                            boundary_outflow_per_ts: ndarray,
                                            timestep_idx: int) -> Dict[str, Tensor]:
         end_idx = timestep_idx + self.num_label_timesteps
-        total_rainfall = node_rainfall_per_ts[timestep_idx:end_idx].sum(axis=1)[None, :]
+        non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
+        total_rainfall = node_rainfall_per_ts[timestep_idx:end_idx, non_boundary_nodes_mask].sum(axis=1)[None, :]
         boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
 
         total_rainfall = torch.from_numpy(total_rainfall)
         boundary_outflow = torch.from_numpy(boundary_outflow)
         inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
-        non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
+        non_boundary_nodes_mask = torch.from_numpy(non_boundary_nodes_mask)
 
         return {
             'total_rainfall': total_rainfall,

@@ -5,7 +5,7 @@ from numpy import ndarray
 from torch import Tensor
 from torch.nn import Module
 from torch_geometric.utils import scatter
-from typing import Dict, Tuple, Literal
+from typing import Dict, Tuple, Literal, Optional
 
 from .loss_helper import get_orig_water_volume, get_orig_water_flow
 
@@ -33,25 +33,29 @@ class LocalMassConservationLoss(Module):
                 batch_node_input: Tensor, # Normalized given water volume (t)
                 batch_edge_input: Tensor, # Normalized given water flow w/ unmasked outflow (t)
                 rainfall: Tensor, # Actual rainfall (not normalized), from local_mass_info
-                databatch) -> Tensor:
+                databatch,
+                node_filter_mask: Optional[Tensor] = None) -> Tensor:
         batch = databatch.batch
         edge_index = databatch.edge_index
         num_nodes = databatch.num_nodes
         num_graphs = databatch.num_graphs
         local_mass_info: Dict[str, Tensor] = databatch.local_mass_info
 
-        # Get predefined information
-        non_boundary_nodes_mask = local_mass_info['non_boundary_nodes_mask']
+        if node_filter_mask is None:
+            # Default to using all non-boundary nodes
+            node_filter_mask = local_mass_info['non_boundary_nodes_mask']
 
         # Get current total water volume (t)
-        curr_water_volume = get_orig_water_volume(batch_node_input, self.normalizer, self.is_normalized, non_boundary_nodes_mask)
+        curr_water_volume = get_orig_water_volume(batch_node_input, self.normalizer, self.is_normalized, node_filter_mask)
 
         # Get next total water volume (t+1)
-        next_water_volume = get_orig_water_volume(batch_node_pred, self.normalizer, self.is_normalized, non_boundary_nodes_mask)
+        next_water_volume = get_orig_water_volume(batch_node_pred, self.normalizer, self.is_normalized, node_filter_mask)
 
         # Get current water flow (t)
         water_flow = get_orig_water_flow(batch_edge_input, self.normalizer, self.is_normalized)
-        total_inflow, total_outflow = self.get_batch_inflow_outflow(edge_index, water_flow, non_boundary_nodes_mask, num_nodes)
+        total_inflow, total_outflow = self.get_batch_inflow_outflow(edge_index, water_flow, node_filter_mask, num_nodes)
+
+        rainfall = rainfall[node_filter_mask]
 
         # Compute Local Mass Conservation
         delta_v = next_water_volume - curr_water_volume
@@ -64,7 +68,7 @@ class LocalMassConservationLoss(Module):
         if self.mode == 'train':
             local_volume_error = torch.abs(local_volume_error)
 
-        non_boundary_batch = batch[non_boundary_nodes_mask]
+        non_boundary_batch = batch[node_filter_mask]
         total_local_volume_error = scatter(local_volume_error, non_boundary_batch, reduce='sum', dim_size=num_graphs)
 
         local_loss = total_local_volume_error.mean()

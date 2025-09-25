@@ -17,13 +17,11 @@ class LocalMassConservationLoss(Module):
     '''
     def __init__(self,
                  mode: Literal['train', 'test'],
-                 previous_timesteps: int,
                  normalizer: DatasetNormalizer,
                  is_normalized: bool = True,
                  delta_t: int = 30):
         super(LocalMassConservationLoss, self).__init__()
         self.mode = mode
-        self.previous_timesteps = previous_timesteps
         self.normalizer = normalizer
         self.is_normalized = is_normalized
         self.delta_t = delta_t

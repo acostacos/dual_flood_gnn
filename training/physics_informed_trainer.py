@@ -26,7 +26,6 @@ class PhysicsInformedTrainer(BaseTrainer):
         if self.use_global_loss:
             self.global_loss_func = GlobalMassConservationLoss(
                 mode='train',
-                previous_timesteps=ds.previous_timesteps,
                 normalizer=ds.normalizer,
                 is_normalized=ds.is_normalized,
                 delta_t=self.delta_t
@@ -37,7 +36,6 @@ class PhysicsInformedTrainer(BaseTrainer):
         if self.use_local_loss:
             self.local_loss_func = LocalMassConservationLoss(
                 mode='train',
-                previous_timesteps=ds.previous_timesteps,
                 normalizer=ds.normalizer,
                 is_normalized=ds.is_normalized,
                 delta_t=self.delta_t,

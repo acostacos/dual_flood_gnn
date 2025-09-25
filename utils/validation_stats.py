@@ -16,11 +16,9 @@ from .metric_utils import RMSE, MAE, NSE, CSI
 class ValidationStats:
     def __init__(self,
                  logger: Optional[Logger] = None,
-                 previous_timesteps: Optional[int] = None,
                  normalizer: Optional[DatasetNormalizer] = None,
                  is_normalized: Optional[bool] = None,
                  delta_t: Optional[int] = None):
-        self.previous_timesteps = previous_timesteps
         self.normalizer = normalizer
         self.is_normalized = is_normalized
         self.delta_t = delta_t
@@ -137,11 +135,10 @@ class ValidationStats:
                                                    prev_edge_pred: Tensor,
                                                    databatch,
                                                    local_mass_nodes: List[int] = None):
-        assert self.previous_timesteps is not None and self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
-            "previous_timesteps, normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
+        assert self.normalizer is not None and self.is_normalized is not None and self.delta_t is not None, \
+            "normalizer, is_normalized, and delta_t must be set before updating physics-informed stats."
 
         global_mass_loss_func = GlobalMassConservationLoss(mode='test',
-                                                           previous_timesteps=self.previous_timesteps,
                                                            normalizer=self.normalizer,
                                                            is_normalized=self.is_normalized,
                                                            delta_t=self.delta_t)
@@ -150,7 +147,6 @@ class ValidationStats:
         self.global_mass_loss_list.append(global_mass_loss.cpu().item())
 
         local_mass_loss_func = LocalMassConservationLoss(mode='test',
-                                                         previous_timesteps=self.previous_timesteps,
                                                          normalizer=self.normalizer,
                                                          is_normalized=self.is_normalized,
                                                          delta_t=self.delta_t)

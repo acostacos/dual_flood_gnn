@@ -16,7 +16,6 @@ class NodeAutoregressiveTester(BaseTester):
             self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.hec_ras_run_ids)} with Run ID {run_id}')
 
             validation_stats = ValidationStats(logger=self.logger,
-                                                previous_timesteps=self.dataset.previous_timesteps,
                                                 normalizer=self.dataset.normalizer,
                                                 is_normalized=self.dataset.is_normalized,
                                                 delta_t=self.dataset.timestep_interval)

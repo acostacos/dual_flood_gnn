@@ -11,12 +11,12 @@ hyperparameters:
   global_mass_loss_weight:
     path: 'loss_func_parameters.global_mass_loss_weight'
     type: 'float'
-    min: 5.0e-4
-    max: 5.0e-2
+    min: 5.0e-3
+    max: 5.0e-1
     log: True
   local_mass_loss_weight:
     path: 'loss_func_parameters.local_mass_loss_weight'
     type: 'float'
-    min: 5.0e-4
-    max: 5.0e-2
+    min: 5.0e-3
+    max: 5.0e-1
     log: True

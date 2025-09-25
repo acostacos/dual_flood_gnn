@@ -11,6 +11,6 @@ hyperparameters:
   local_mass_loss_weight:
     path: 'loss_func_parameters.local_mass_loss_weight'
     type: 'float'
-    min: 1.0e-4
-    max: 1.0e-2
+    min: 1.0e-3
+    max: 1.0e-1
     log: True

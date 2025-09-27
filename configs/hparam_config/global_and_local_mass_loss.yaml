@@ -1,5 +1,5 @@
 output_dir: 'hp_stats'
-num_trials: 50
+num_trials: 40
 num_folds: 5
 hyperparameters:
   # edge_loss_weight:

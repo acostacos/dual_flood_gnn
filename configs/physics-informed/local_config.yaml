@@ -15,7 +15,7 @@ dataset_parameters:
   #   40: 259200
   #   41: 259200
   #   default: 129600
-  time_from_peak: 7200                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
+  time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes:                                     # List of inflow boundary node IDs for boundary conditions
   - 1248
   outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions

@@ -15,7 +15,7 @@ dataset_parameters:
   #   40: 259200
   #   41: 259200
   #   default: 129600
-  time_from_peak: 7200                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
+  time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes:                                     # List of inflow boundary node IDs for boundary conditions
   - 1248
   outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions
@@ -31,9 +31,9 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'                # Filename for the yaml file containing testing event statistics. Generated when initializing the dataset
 
 training_parameters:
-  log_path             : 'physics_informed/logs/local_0.001_train.log'                                # Path to save training logs
-  model_dir            : 'physics_informed/model'                      # Path to directory to save trained models
-  stats_dir            : 'physics_informed/train'                    # Path to directory to save training statistics
+  log_path             : 'local_weight_search/logs/local_0.001_train.log'                                # Path to save training logs
+  model_dir            : 'local_weight_search/model'                      # Path to directory to save trained models
+  stats_dir            : 'local_weight_search/train'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
   num_epochs           : 600                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
@@ -68,8 +68,8 @@ loss_func_parameters:
     delta: 0.15                                               # Delta parameter for Huber loss function.
 
 testing_parameters:
-  log_path: 'physics_informed/logs/local_0.001_test.log'                                             # Path to save testing logs
-  output_dir: 'physics_informed/test'                                # Directory to save testing results
+  log_path: 'local_weight_search/logs/local_0.001_test.log'                                             # Path to save testing logs
+  output_dir: 'local_weight_search/test'                                # Directory to save testing results
   rollout_start: 0                                           # Start timestep for the test rollout
   rollout_timesteps: null                                    # Number of timesteps for the test rollout. Set to null to roll out until the end of the event
 

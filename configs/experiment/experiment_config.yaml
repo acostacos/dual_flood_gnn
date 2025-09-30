@@ -15,7 +15,7 @@ dataset_parameters:
   #   40: 259200
   #   41: 259200
   #   default: 129600
-  time_from_peak: 7200                                 # Time from peak in seconds; This is used to determine the number of timesteps to consider from the peak
+  time_from_peak: null                                 # Time from peak in seconds; This is used to determine the number of timesteps to consider from the peak
   inflow_boundary_nodes:
   - 1248
   outflow_boundary_nodes:
@@ -35,7 +35,7 @@ training_parameters:
   model_dir            : 'experiment_w_variations/model'                      # Directory to save trained models
   stats_dir            : 'experiment_w_variations/train'                    # Directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If None, no pre-trained model is loaded
-  num_epochs           : 100                                # Number of epochs
+  num_epochs           : 600                                # Number of epochs
   num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
   # num_epochs           : 10                                # Number of epochs
   # num_epochs_dyn_loss  : 10                                  # Number of epochs to determine loss scaling ratios dynamically; Usually 10 epochs is sufficient
@@ -55,7 +55,7 @@ training_parameters:
   autoregressive:
     enabled            : True                                # Use autoregressive training
     init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
-    total_num_timesteps: 1                                   # Total number of timesteps for autoregressive training
+    total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
     max_curriculum_epochs: 100                                # Maximum number of curriculum steps
     learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
 
@@ -63,8 +63,8 @@ loss_func_parameters:
   node_loss: 'mse'                                         # Loss function for node features. Options: 'mse', 'mae', 'huber'
   edge_loss: 'mse'                                         # Loss function for edge features. Options: 'mse', 'mae', 'huber'
   node_loss_weight: 1.0                                      # Importance weight for node prediction loss. Applied after scaling.
-  edge_pred_loss_scale: 1.48                              # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
-  edge_loss_weight: 1.0                                      # Importance weight for edge prediction loss. Applied after scaling.
+  edge_pred_loss_scale: 3.55                              # Value used to scale edge prediction loss; This is used as an initial value when using dynamic loss scaling
+  edge_loss_weight: 0.4                                      # Importance weight for edge prediction loss. Applied after scaling.
   use_global_mass_loss: False                                # Use global mass conservation in loss function
   global_mass_loss_scale: 1.0e-5                             # Value used to scale global mass conservation loss; This is used as an initial value when using dynamic loss scaling
   global_mass_loss_weight: 1.0                               # Importance weight for global mass conservation loss. Applied after scaling.

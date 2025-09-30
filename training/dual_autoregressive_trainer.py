@@ -220,10 +220,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     prev_edge_pred = edge_sliding_window[:, [-1]]
                     edge_pred = prev_edge_pred + edge_pred_diff
 
-                    global_mass_loss = self._get_global_mass_loss(epoch,pred, prev_node_pred, prev_edge_pred, graph)
-                    global_loss_list.append(global_mass_loss)
-                    local_mass_loss = self._get_local_mass_loss(epoch, pred, prev_node_pred, prev_edge_pred, graph)
-                    local_loss_list.append(local_mass_loss)
+                    if self.use_global_loss:
+                        global_mass_loss = self._get_global_mass_loss(epoch,pred, prev_node_pred, prev_edge_pred, graph)
+                        global_loss_list.append(global_mass_loss)
+                    if self.use_local_loss:
+                        local_mass_loss = self._get_local_mass_loss(epoch, pred, prev_node_pred, prev_edge_pred, graph)
+                        local_loss_list.append(local_mass_loss)
 
                     sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
                     edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
@@ -255,20 +257,28 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
 
                 event_node_loss_list.append(torch.stack(node_loss_list).mean())
                 event_edge_loss_list.append(torch.stack(edge_loss_list).mean())
-                event_global_loss_list.append(torch.stack(global_loss_list).mean())
-                event_local_loss_list.append(torch.stack(local_loss_list).mean())
+
+                if self.use_global_loss:
+                    event_global_loss_list.append(torch.stack(global_loss_list).mean())
+                if self.use_local_loss:
+                    event_local_loss_list.append(torch.stack(local_loss_list).mean())
+
                 event_node_rmse_list.append(torch.stack(node_rmse_list).mean())
                 event_edge_rmse_list.append(torch.stack(edge_rmse_list).mean())
 
         # Store training losses for validation
         avg_node_loss = torch.stack(event_node_loss_list).mean().item()
         avg_edge_loss = torch.stack(event_edge_loss_list).mean().item()
-        avg_global_loss = torch.stack(event_global_loss_list).mean().item()
-        avg_local_loss = torch.stack(event_local_loss_list).mean().item()
         self.training_stats.add_val_loss_component('val_node_loss', avg_node_loss)
         self.training_stats.add_val_loss_component('val_edge_loss', avg_edge_loss)
-        self.training_stats.add_val_loss_component('val_global_mass_loss', avg_global_loss)
-        self.training_stats.add_val_loss_component('val_local_mass_loss', avg_local_loss)
+
+        if self.use_global_loss:
+            avg_global_loss = torch.stack(event_global_loss_list).mean().item()
+            self.training_stats.add_val_loss_component('val_global_mass_loss', avg_global_loss)
+
+        if self.use_local_loss:
+            avg_local_loss = torch.stack(event_local_loss_list).mean().item()
+            self.training_stats.add_val_loss_component('val_local_mass_loss', avg_local_loss)
 
         node_rmse = torch.stack(event_node_rmse_list).mean().item()
         edge_rmse = torch.stack(event_edge_rmse_list).mean().item()

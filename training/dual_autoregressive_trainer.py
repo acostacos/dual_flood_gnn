@@ -6,7 +6,7 @@ from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
 from typing import Tuple, Callable
-from utils import EarlyStopping, LossScaler
+from utils import EarlyStopping, LossScaler, train_utils
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
@@ -32,7 +32,8 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         for epoch in range(self.num_epochs):
             train_start_time = time.time()
 
-            epoch_loss, pred_epoch_loss, edge_pred_epoch_loss = self._train_model(epoch, current_num_timesteps)
+            train_losses = self._train_model(epoch, current_num_timesteps)
+            epoch_loss, pred_epoch_loss, edge_pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss = train_losses
 
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
@@ -44,11 +45,10 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
             self.training_stats.add_loss_component('edge_prediction_loss', edge_pred_epoch_loss)
 
-            if epoch < self.num_epochs_dyn_loss:
-                self.edge_loss_scaler.update_scale_from_epoch()
-                self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
             if self.use_physics_loss:
-                self._process_epoch_physics_loss(epoch)
+                self._log_epoch_physics_loss(global_mass_epoch_loss, local_mass_epoch_loss)
+
+            self._update_loss_scaler_for_epoch(epoch)
 
             train_end_time = time.time()
             train_duration = train_end_time - train_start_time
@@ -82,12 +82,13 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         self.training_stats.add_additional_info('edge_scaled_loss_ratios', self.edge_loss_scaler.scaled_loss_ratio_history)
         self._add_scaled_physics_loss_history()
 
-    def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float, float]:
+    def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float, float, float, float]:
         self.model.train()
+
         running_pred_loss = 0.0
         running_edge_pred_loss = 0.0
-        if self.use_physics_loss:
-            self._reset_epoch_physics_running_loss()
+        running_global_mass_loss = 0.0
+        running_local_mass_loss = 0.0
 
         for batch in self.dataloader:
             self.optimizer.zero_grad()
@@ -96,6 +97,11 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             x, edge_attr, edge_index = batch.x[:, :, 0], batch.edge_attr[:, :, 0], batch.edge_index
 
             total_batch_loss = 0.0
+            total_batch_pred_loss = 0.0
+            total_batch_edge_pred_loss = 0.0
+            total_batch_global_mass_loss = 0.0
+            total_batch_local_mass_loss = 0.0
+
             sliding_window = x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
             edge_sliding_window = edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             for i in range(current_num_timesteps):
@@ -110,11 +116,11 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
 
                 pred_loss = self._compute_node_loss(pred_diff, batch, i)
                 pred_loss = self._scale_node_pred_loss(epoch, pred_loss)
-                running_pred_loss += pred_loss.item()
+                total_batch_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch, i)
-                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
-                running_edge_pred_loss += edge_pred_loss.item()
+                edge_pred_loss = self._scale_edge_pred_loss(epoch, edge_pred_loss)
+                total_batch_edge_pred_loss += edge_pred_loss.item()
 
                 step_loss = pred_loss + edge_pred_loss
 
@@ -124,10 +130,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 edge_pred = prev_edge_pred + edge_pred_diff
 
                 if self.use_physics_loss:
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
-                                                                prev_edge_pred, pred_loss, batch,
-                                                                current_timestep=i)
-                    step_loss = step_loss + physics_loss
+                    global_loss, local_loss = self._get_physics_loss(epoch, pred, prev_node_pred,
+                                                                     prev_edge_pred, batch,
+                                                                     current_timestep=i)
+                    total_batch_global_mass_loss += global_loss.item()
+                    total_batch_local_mass_loss += local_loss.item()
+                    step_loss = step_loss + global_loss + local_loss
 
                 total_batch_loss = total_batch_loss + step_loss
 
@@ -143,12 +151,23 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             self._clip_gradients()
             self.optimizer.step()
 
-        running_loss = self._get_epoch_total_running_loss((running_pred_loss + running_edge_pred_loss))
-        epoch_loss = running_loss / len(self.dataloader)
-        pred_epoch_loss = running_pred_loss / len(self.dataloader)
-        edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
+            # Loss Updates
+            total_losses = (total_batch_pred_loss, total_batch_edge_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
+            avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
+            avg_pred_loss, avg_edge_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
+            self._add_epoch_loss_ratio_to_scaler(epoch, avg_pred_loss, avg_edge_pred_loss, avg_global_mass_loss, avg_local_mass_loss)
 
-        return epoch_loss, pred_epoch_loss, edge_pred_epoch_loss
+            running_pred_loss += avg_pred_loss
+            running_edge_pred_loss += avg_edge_pred_loss
+            running_global_mass_loss += avg_global_mass_loss
+            running_local_mass_loss += avg_local_mass_loss
+
+        running_loss = running_pred_loss + running_edge_pred_loss + running_global_mass_loss + running_local_mass_loss
+        running_losses = (running_loss, running_pred_loss, running_edge_pred_loss, running_global_mass_loss, running_local_mass_loss)
+        epoch_losses = train_utils.divide_losses(running_losses, len(self.dataloader))
+        epoch_loss, pred_epoch_loss, edge_pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss = epoch_losses
+
+        return epoch_loss, pred_epoch_loss, edge_pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss
 
     def validate(self):
         val_tester = DualAutoregressiveTester(
@@ -173,10 +192,21 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         edge_pred = EdgeAutoregressiveTrainer._override_pred_bc(self, edge_pred, batch, timestep)
         return pred, edge_pred
 
-    def _scale_edge_pred_loss(self, epoch: int, pred_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
+# ========= Methods for scaling losses =========
+
+    def _scale_edge_pred_loss(self, epoch: int, edge_pred_loss: Tensor) -> Tensor:
+        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+        if epoch < self.num_epochs_dyn_loss:
+            return scaled_edge_pred_loss
+        return scaled_edge_pred_loss * self.edge_loss_weight
+
+    def _add_epoch_loss_ratio_to_scaler(self, epoch: int, pred_loss: float, edge_pred_loss: float, global_mass_loss: float, local_mass_loss: float):
         if epoch < self.num_epochs_dyn_loss:
             self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
-        else:
-            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_loss_weight
-        return scaled_edge_pred_loss
+        NodeAutoregressiveTrainer._add_epoch_loss_ratio_to_scaler(self, epoch, pred_loss, global_mass_loss, local_mass_loss)
+
+    def _update_loss_scaler_for_epoch(self, epoch: int):
+        if epoch < self.num_epochs_dyn_loss:
+            self.edge_loss_scaler.update_scale_from_epoch()
+            self.training_stats.log(f'\tAdjusted Edge Pred Loss Weight to {self.edge_loss_scaler.scale:.4e}')
+        NodeAutoregressiveTrainer._update_loss_scaler_for_epoch(self, epoch)

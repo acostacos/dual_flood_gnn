@@ -82,6 +82,7 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
             edge_attr, edge_index = batch.edge_attr[:, :, 0], batch.edge_index
 
             total_batch_loss = 0.0
+            total_batch_edge_pred_loss = 0.0
             edge_sliding_window = edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             for i in range(current_num_timesteps):
                 x, edge_attr = batch.x[:, :, i], batch.edge_attr[:, :, i]
@@ -93,7 +94,7 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
                 edge_pred_diff = self._override_pred_bc(edge_pred_diff, batch, i)
 
                 loss = self._compute_edge_loss(edge_pred_diff, batch, i)
-                running_edge_pred_loss += loss.item()
+                total_batch_edge_pred_loss += loss.item()
 
                 total_batch_loss = total_batch_loss + loss
 
@@ -107,6 +108,9 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
             avg_batch_loss.backward()
             self._clip_gradients()
             self.optimizer.step()
+
+            # Loss Updates
+            running_edge_pred_loss += total_batch_edge_pred_loss / current_num_timesteps
 
         edge_pred_epoch_loss = running_edge_pred_loss / len(self.dataloader)
 

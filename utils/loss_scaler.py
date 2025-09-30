@@ -16,17 +16,13 @@ class LossScaler:
     def scale_loss(self, loss: Tensor) -> Tensor:
         return loss * self.scale
 
-    def get_ratio(self, basis_loss: Tensor, loss: Tensor) -> float:
-        basis_loss, loss = basis_loss.item(), loss.item()
-        return basis_loss / (loss + 1e-8)
-
-    def add_epoch_loss_ratio(self, basis_loss: Tensor, loss: Tensor):
-        ratio = self.get_ratio(basis_loss, loss)
+    def add_epoch_loss_ratio(self, basis_loss: float, loss: float):
+        ratio = basis_loss / (loss + 1e-8)
         self.epoch_loss_ratios.append(ratio)
 
         scaled_loss = self.scale_loss(loss)
         scaled_loss_ratio = basis_loss / (scaled_loss + 1e-8)
-        self.epoch_scaled_loss_ratios.append(scaled_loss_ratio.item())
+        self.epoch_scaled_loss_ratios.append(scaled_loss_ratio)
 
     def update_scale_from_epoch(self):
         scaled_loss_ratio = np.mean(self.epoch_scaled_loss_ratios)

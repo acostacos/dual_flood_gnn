@@ -5,7 +5,7 @@ from contextlib import redirect_stdout
 from data import FloodEventDataset
 from torch import Tensor
 from testing import NodeAutoregressiveTester
-from utils import physics_utils
+from utils import physics_utils, train_utils
 
 from .physics_informed_trainer import PhysicsInformedTrainer
 
@@ -20,9 +20,10 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
         self.training_stats.start_train()
         for epoch in range(self.num_epochs):
             self.model.train()
+
             running_pred_loss = 0.0
-            if self.use_physics_loss:
-                self._reset_epoch_physics_running_loss()
+            running_global_mass_loss = 0.0
+            running_local_mass_loss = 0.0
 
             for batch in self.dataloader:
                 self.optimizer.zero_grad()
@@ -40,16 +41,20 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                     previous_timesteps = self.dataloader.dataset.previous_timesteps
                     curr_water_volume, curr_face_flow = physics_utils.get_physics_info_node_edge(x, edge_attr, previous_timesteps, batch)
                     pred = curr_water_volume + pred_diff
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, curr_water_volume,
-                                                                curr_face_flow, loss, batch)
-                    loss = loss + physics_loss
+                    global_loss, local_loss = self._get_physics_loss(epoch, pred, curr_water_volume,
+                                                                     curr_face_flow, batch)
+                    running_global_mass_loss += global_loss.item()
+                    running_local_mass_loss += local_loss.item()
+                    loss = loss + global_loss + local_loss
 
                 loss.backward()
                 self.optimizer.step()
 
-            pred_epoch_loss = running_pred_loss / len(self.dataloader)
+            running_loss = running_pred_loss + running_global_mass_loss + running_local_mass_loss
+            running_losses = (running_loss, running_pred_loss, running_global_mass_loss, running_local_mass_loss)
+            epoch_losses = train_utils.divide_losses(running_losses, len(self.dataloader))
+            epoch_loss, pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss = epoch_losses
 
-            epoch_loss = self._get_epoch_total_running_loss(running_pred_loss) / len(self.dataloader)
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tTotal Loss: {epoch_loss:.4e}\n'
             logging_str += f'\tNode Prediction Loss: {pred_epoch_loss:.4e}'
@@ -59,7 +64,9 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
 
             if self.use_physics_loss:
-                self._process_epoch_physics_loss(epoch)
+                self._log_epoch_physics_loss(global_mass_epoch_loss, local_mass_epoch_loss)
+
+            self._update_loss_scaler_for_epoch(epoch)
 
             if hasattr(self, 'early_stopping'):
                 val_node_rmse = self.validate()

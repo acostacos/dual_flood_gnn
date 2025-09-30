@@ -122,3 +122,8 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         })
 
     return trainer_params
+
+def divide_losses(losses: Tuple, divisor: float) -> Tuple:
+    if divisor == 0:
+        raise ValueError("Divisor cannot be zero")
+    return tuple(loss / divisor for loss in losses)

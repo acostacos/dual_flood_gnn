@@ -8,7 +8,7 @@ from torch import Tensor
 from data import AutoregressiveFloodDataset
 from testing import NodeAutoregressiveTester
 from typing import Tuple
-from utils import EarlyStopping, physics_utils
+from utils import EarlyStopping, physics_utils, train_utils
 
 from .base_autoregressive_trainer import BaseAutoregressiveTrainer
 from .physics_informed_trainer import PhysicsInformedTrainer
@@ -36,7 +36,8 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         for epoch in range(self.num_epochs):
             train_start_time = time.time()
 
-            epoch_loss, pred_epoch_loss = self._train_model(epoch, current_num_timesteps)
+            train_losses = self._train_model(epoch, current_num_timesteps)
+            epoch_loss, pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss = train_losses
 
             logging_str = f'Epoch [{epoch + 1}/{self.num_epochs}]\n'
             logging_str += f'\tLoss: {epoch_loss:.4e}\n'
@@ -47,7 +48,9 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             self.training_stats.add_loss_component('prediction_loss', pred_epoch_loss)
 
             if self.use_physics_loss:
-                self._process_epoch_physics_loss(epoch)
+                self._log_epoch_physics_loss(global_mass_epoch_loss, local_mass_epoch_loss)
+
+            self._update_loss_scaler_for_epoch(epoch)
 
             train_end_time = time.time()
             train_duration = train_end_time - train_start_time
@@ -80,9 +83,10 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
 
     def _train_model(self, epoch: int, current_num_timesteps: int) -> Tuple[float, float]:
         self.model.train()
+
         running_pred_loss = 0.0
-        if self.use_physics_loss:
-            self._reset_epoch_physics_running_loss()
+        running_global_mass_loss = 0.0
+        running_local_mass_loss = 0.0
 
         for batch in self.dataloader:
             self.optimizer.zero_grad()
@@ -91,6 +95,10 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             x, edge_index = batch.x[:, :, 0], batch.edge_index
 
             total_batch_loss = 0.0
+            total_batch_pred_loss = 0.0
+            total_batch_global_mass_loss = 0.0
+            total_batch_local_mass_loss = 0.0
+
             sliding_window = x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
             for i in range(current_num_timesteps):
                 x, edge_attr = batch.x[:, :, i], batch.edge_attr[:, :, i]
@@ -103,7 +111,7 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
 
                 pred_loss = self._compute_node_loss(pred_diff, batch, i)
                 pred_loss = self._scale_node_pred_loss(epoch, pred_loss)
-                running_pred_loss += pred_loss.item()
+                total_batch_pred_loss += pred_loss.item()
 
                 step_loss = pred_loss
 
@@ -113,10 +121,12 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
 
                 if self.use_physics_loss:
                     curr_face_flow = physics_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
-                    physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
-                                                                curr_face_flow, pred_loss, batch,
-                                                                current_timestep=i)
-                    step_loss = step_loss + physics_loss
+                    global_loss, local_loss = self._get_physics_loss(epoch, pred, prev_node_pred,
+                                                                     curr_face_flow, batch,
+                                                                     current_timestep=i)
+                    total_batch_global_mass_loss += global_loss.item()
+                    total_batch_local_mass_loss += local_loss.item()
+                    step_loss = step_loss + global_loss + local_loss
 
                 total_batch_loss = total_batch_loss + step_loss
 
@@ -129,12 +139,23 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             avg_batch_loss.backward()
             self._clip_gradients()
             self.optimizer.step()
+        
+        # Loss Updates
+        total_losses = (total_batch_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
+        avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
+        avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
+        self._add_epoch_loss_ratio_to_scaler(epoch, avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss)
+        
+        running_pred_loss += avg_pred_loss
+        running_global_mass_loss += avg_global_mass_loss
+        running_local_mass_loss += avg_local_mass_loss
 
-        running_loss = self._get_epoch_total_running_loss(running_pred_loss)
-        epoch_loss = running_loss / len(self.dataloader)
-        pred_epoch_loss = running_pred_loss / len(self.dataloader)
+        running_loss = running_pred_loss + running_global_mass_loss + running_local_mass_loss
+        running_losses = (running_loss, running_pred_loss, running_global_mass_loss, running_local_mass_loss)
+        epoch_loss = train_utils.divide_losses(running_losses, len(self.dataloader))
+        epoch_loss, pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss = epoch_loss
 
-        return epoch_loss, pred_epoch_loss
+        return epoch_loss, pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss
 
     def validate(self):
         val_tester = NodeAutoregressiveTester(

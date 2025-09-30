@@ -52,10 +52,10 @@ class DualRegressionTester(BaseTester):
 
                 # Override boundary conditions in predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
-                # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
 
                 pred = x[:, [self.end_node_target_idx-1]] + pred_diff
+                edge_pred = edge_attr[:, [self.end_edge_target_idx-1]] + edge_pred_diff
 
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss

@@ -71,6 +71,8 @@ class GlobalMassConservationLoss(Module):
         global_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
         if self.mode == 'train':
             global_volume_error = torch.abs(global_volume_error)
+            global_loss = global_volume_error.mean()
+        else:
+            global_loss = global_volume_error.sum()
 
-        global_loss = global_volume_error.mean()
         return global_loss

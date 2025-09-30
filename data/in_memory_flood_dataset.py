@@ -50,7 +50,6 @@ class InMemoryFloodDataset(FloodEventDataset):
                 # Load physics-informed loss information
                 if self.with_global_mass_loss or self.with_local_mass_loss:
                     node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-                    boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
 
                 curr_event_idx = event_idx
 
@@ -58,20 +57,16 @@ class InMemoryFloodDataset(FloodEventDataset):
             within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
             timestep = event_timesteps[within_event_idx]
             node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-            edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
+            edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, within_event_idx)
             label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
             global_mass_info = None
             if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                           boundary_outflow_per_ts,
-                                                                           within_event_idx)
+                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
 
             local_mass_info = None
             if self.with_local_mass_loss:
-                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                         boundary_outflow_per_ts,
-                                                                         within_event_idx)
+                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
 
             data = Data(x=node_features,
                     edge_index=t_edge_index,

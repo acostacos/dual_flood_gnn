@@ -6,7 +6,7 @@ from contextlib import redirect_stdout
 from torch import Tensor
 from testing import DualAutoregressiveTester
 from typing import Tuple, Callable
-from utils import EarlyStopping, LossScaler, physics_utils
+from utils import EarlyStopping, LossScaler
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
@@ -124,9 +124,6 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 edge_pred = prev_edge_pred + edge_pred_diff
 
                 if self.use_physics_loss:
-                    if i == 0:
-                        # Need to overwrite boundary conditions for first timestep as these are masked
-                        prev_edge_pred = physics_utils.overwrite_outflow_boundary(prev_edge_pred, batch)
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
                                                                 prev_edge_pred, pred_loss, batch,
                                                                 current_timestep=i)

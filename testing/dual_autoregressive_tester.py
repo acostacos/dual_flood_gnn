@@ -4,7 +4,6 @@ import numpy as np
 from constants import TEST_LOCAL_MASS_LOSS_NODES
 from torch_geometric.loader import DataLoader
 from utils.validation_stats import ValidationStats
-from utils import physics_utils
 
 from .base_tester import BaseTester
 
@@ -47,7 +46,7 @@ class DualAutoregressiveTester(BaseTester):
             sliding_window = self.dataset[event_start_idx].x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
             edge_sliding_window = self.dataset[event_start_idx].edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
             sliding_window, edge_sliding_window = sliding_window.to(self.device), edge_sliding_window.to(self.device)
-            for i, graph in enumerate(dataloader):
+            for graph in dataloader:
                 graph = graph.to(self.device)
 
                 x = torch.concat([graph.x[:, :self.start_node_target_idx], sliding_window, graph.x[:, self.end_node_target_idx:]], dim=1)
@@ -58,8 +57,7 @@ class DualAutoregressiveTester(BaseTester):
 
                 # Override boundary conditions in predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
-                # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
 
                 prev_node_pred = sliding_window[:, [-1]]
                 pred = prev_node_pred + pred_diff
@@ -68,9 +66,6 @@ class DualAutoregressiveTester(BaseTester):
 
                 if self.include_physics_loss:
                     # Requires normalized prediction for physics-informed loss
-                    if i == 0:
-                        # Need to overwrite boundary conditions for first timestep as these are masked
-                        prev_edge_pred = physics_utils.overwrite_outflow_boundary(prev_edge_pred, graph)
                     validation_stats.update_physics_informed_stats_for_timestep(pred, prev_node_pred, prev_edge_pred, graph, TEST_LOCAL_MASS_LOSS_NODES)
 
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)

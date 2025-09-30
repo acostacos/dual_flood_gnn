@@ -69,7 +69,11 @@ class LocalMassConservationLoss(Module):
         non_boundary_batch = batch[node_filter_mask]
         total_local_volume_error = scatter(local_volume_error, non_boundary_batch, reduce='sum', dim_size=num_graphs)
 
-        local_loss = total_local_volume_error.mean()
+        if self.mode == 'train':
+            local_loss = total_local_volume_error.mean()
+        else:
+            local_loss = total_local_volume_error.sum()
+
         return local_loss
 
     def get_batch_inflow_outflow(self,

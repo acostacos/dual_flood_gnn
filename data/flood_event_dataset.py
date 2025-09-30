@@ -44,7 +44,6 @@ class FloodEventDataset(Dataset):
                  time_from_peak: Optional[int] = None,
                  inflow_boundary_nodes: List[int] = [],
                  outflow_boundary_nodes: List[int] = [],
-                 mask_boundary_conditions: bool = False,
                  with_global_mass_loss: bool = True,
                  with_local_mass_loss: bool = True,
                  debug: bool = False,
@@ -72,7 +71,6 @@ class FloodEventDataset(Dataset):
         self.time_from_peak = time_from_peak
         self.inflow_boundary_nodes = inflow_boundary_nodes
         self.outflow_boundary_nodes = outflow_boundary_nodes
-        self.mask_boundary_conditions = mask_boundary_conditions
         self.with_global_mass_loss = with_global_mass_loss
         self.with_local_mass_loss = with_local_mass_loss
 
@@ -129,7 +127,7 @@ class FloodEventDataset(Dataset):
         static_edges = self._get_static_edge_features()
         dynamic_edges = self._get_dynamic_edge_features()
 
-        self.boundary_condition.create(edge_index, dynamic_nodes, dynamic_edges)
+        self.boundary_condition.create(edge_index, dynamic_edges)
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.remove(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
@@ -139,7 +137,7 @@ class FloodEventDataset(Dataset):
         )
 
         # Physics-informed Loss Features
-        node_rainfall_per_ts, boundary_outflow_per_ts = self._get_physics_info(dynamic_nodes, dynamic_edges)
+        node_rainfall_per_ts = self._get_physics_info(dynamic_nodes)
 
         if self.is_normalized:
             static_nodes = self.normalizer.normalize_feature_vector(self.STATIC_NODE_FEATURES, static_nodes)
@@ -163,15 +161,13 @@ class FloodEventDataset(Dataset):
 
             # Physics-informed Loss Features
             event_rainfall_per_ts = node_rainfall_per_ts[start_idx:end_idx].copy()
-            event_outflow_per_ts = boundary_outflow_per_ts[start_idx:end_idx].copy()
 
             save_path = self.processed_paths[i + 4]
             np.savez(save_path,
                      event_timesteps=event_timesteps,
                      dynamic_nodes=event_dynamic_nodes,
                      dynamic_edges=event_dynamic_edges,
-                     node_rainfall_per_ts=event_rainfall_per_ts,
-                     boundary_outflow_per_ts=event_outflow_per_ts)
+                     node_rainfall_per_ts=event_rainfall_per_ts)
             self.log_func(f'Saved dynamic values for event {run_id} to {save_path}')
 
             start_idx = end_idx
@@ -215,7 +211,7 @@ class FloodEventDataset(Dataset):
         within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
         timestep = event_timesteps[within_event_idx]
         node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-        edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, edge_index, within_event_idx)
+        edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, within_event_idx)
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
         # Get physics-informed loss information
@@ -223,19 +219,11 @@ class FloodEventDataset(Dataset):
         local_mass_info = None
         if self.with_global_mass_loss or self.with_local_mass_loss:
             node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
             if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                           boundary_outflow_per_ts,
-                                                                           within_event_idx)
+                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
 
             if self.with_local_mass_loss:
-                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts,
-                                                                         boundary_outflow_per_ts,
-                                                                         within_event_idx)
-
-            node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-            boundary_outflow_per_ts: ndarray = dynamic_values['boundary_outflow_per_ts']
+                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
 
         edge_index = torch.from_numpy(edge_index)
         data = Data(x=node_features,
@@ -581,73 +569,21 @@ class FloodEventDataset(Dataset):
 
         return features
 
-    def _get_physics_info(self, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> Tuple[ndarray, ndarray]:
-        # Rainfall
+    def _get_physics_info(self, dynamic_nodes: ndarray) -> ndarray:
+        # Denormalized Rainfall
         rainfall_idx = self.DYNAMIC_NODE_FEATURES.index('rainfall')
         node_rainfall_per_ts = dynamic_nodes[:, :, rainfall_idx]
 
-        # Unmasked Normalized Outflow Values
-        face_flow_idx = self.DYNAMIC_EDGE_FEATURES.index('face_flow')
-        edge_face_flow_per_ts = dynamic_edges[:, :, face_flow_idx]
-        if self.is_normalized:
-            if self.mode == 'test':
-                mean, std = self.normalizer.get_feature_mean_std('face_flow')
-            else:
-                # Manually compute as mean and std has not yet been saved
-                mean = edge_face_flow_per_ts.mean().item()
-                std = edge_face_flow_per_ts.std().item()
-            edge_face_flow_per_ts = self.normalizer.normalize(edge_face_flow_per_ts, mean, std)
-        boundary_outflow_per_ts = edge_face_flow_per_ts[:, self.boundary_condition.outflow_edges_mask]
-
-        return node_rainfall_per_ts, boundary_outflow_per_ts
+        return node_rainfall_per_ts
 
     # =========== get() methods ===========
 
     def _get_node_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
         ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_NODE_FEATURES, timestep_idx)
-
-        if self.mask_boundary_conditions:
-            # Mask node boundary conditions = only keep outflow water volume
-            num_ts, _, _ = ts_dynamic_features.shape
-            outflow_boundary_nodes = self.boundary_condition.new_outflow_boundary_nodes
-            boundary_nodes = self.boundary_condition.get_new_boundary_nodes()
-            target_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
-
-            masked_boundary_dynamic_nodes = self._get_empty_feature_tensor(features=self.DYNAMIC_NODE_FEATURES,
-                                                                        other_dims=(num_ts, len(boundary_nodes)),
-                                                                        dtype=ts_dynamic_features.dtype)
-
-            outflow_dynamic_nodes = ts_dynamic_features[:, outflow_boundary_nodes, :].copy()
-            nodes_overwrite_mask = np.isin(boundary_nodes, outflow_boundary_nodes)
-            masked_boundary_dynamic_nodes[:, nodes_overwrite_mask, target_nodes_idx] = outflow_dynamic_nodes[:, :, target_nodes_idx]
-
-            boundary_nodes_mask = self.boundary_condition.boundary_nodes_mask
-            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_nodes_mask, :], masked_boundary_dynamic_nodes], axis=1)
-
         return self._get_timestep_features(static_features, ts_dynamic_features)
 
-    def _get_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, edge_index: ndarray, timestep_idx: int) -> Tensor:
+    def _get_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
         ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_EDGE_FEATURES, timestep_idx)
-
-        if self.mask_boundary_conditions:
-            # Mask edge boundary conditions = only keep inflow water flow
-            num_ts, _, _ = ts_dynamic_features.shape
-            inflow_edges_mask = self.boundary_condition.inflow_edges_mask
-            inflow_boundary_nodes = self.boundary_condition.new_inflow_boundary_nodes
-            target_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
-
-            boundary_edges_mask = self.boundary_condition.boundary_edges_mask
-            num_boundary_edges = boundary_edges_mask.sum()
-            masked_boundary_dynamic_edges = self._get_empty_feature_tensor(features=self.DYNAMIC_EDGE_FEATURES,
-                                                                        other_dims=(num_ts, num_boundary_edges),
-                                                                        dtype=ts_dynamic_features.dtype)
-
-            inflow_dynamic_edges = ts_dynamic_features[:, inflow_edges_mask, :].copy()
-            edges_overwrite_mask = np.any(np.isin(edge_index[:, boundary_edges_mask], inflow_boundary_nodes), axis=0)
-            masked_boundary_dynamic_edges[:, edges_overwrite_mask, target_edges_idx] = inflow_dynamic_edges[:, :, target_edges_idx]
-
-            ts_dynamic_features = np.concat([ts_dynamic_features[:, ~boundary_edges_mask, :], masked_boundary_dynamic_edges], axis=1)
-
         return self._get_timestep_features(static_features, ts_dynamic_features)
 
     def _get_timestep_dynamic_features(self, dynamic_features: ndarray, dynamic_feature_list: List[str], timestep_idx: int) -> Tensor:
@@ -695,43 +631,29 @@ class FloodEventDataset(Dataset):
 
         return label_nodes, label_edges
     
-    def _get_global_mass_info_for_timestep(self,
-                                           node_rainfall_per_ts: ndarray,
-                                           boundary_outflow_per_ts: ndarray,
-                                           timestep_idx: int) -> Dict[str, Tensor]:
+    def _get_global_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
         non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
-        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
         total_rainfall = node_rainfall_per_ts[timestep_idx, non_boundary_nodes_mask].sum(keepdims=True)
 
         total_rainfall = torch.from_numpy(total_rainfall)
-        boundary_outflow = torch.from_numpy(boundary_outflow)
         inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
         outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
         non_boundary_nodes_mask = torch.from_numpy(non_boundary_nodes_mask)
 
         return {
             'total_rainfall': total_rainfall,
-            'boundary_outflow': boundary_outflow,
             'inflow_edges_mask': inflow_edges_mask,
             'outflow_edges_mask': outflow_edges_mask,
             'non_boundary_nodes_mask': non_boundary_nodes_mask,
         }
 
-    def _get_local_mass_info_for_timestep(self,
-                                          node_rainfall_per_ts: ndarray,
-                                          boundary_outflow_per_ts: ndarray,
-                                          timestep_idx: int) -> Dict[str, Tensor]:
-        boundary_outflow = boundary_outflow_per_ts[timestep_idx][:, None]
+    def _get_local_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
         rainfall = node_rainfall_per_ts[timestep_idx]
 
         rainfall = torch.from_numpy(rainfall)
-        boundary_outflow = torch.from_numpy(boundary_outflow)
-        outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
         non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
 
         return {
             'rainfall': rainfall,
-            'boundary_outflow': boundary_outflow,
-            'outflow_edges_mask': outflow_edges_mask,
             'non_boundary_nodes_mask': non_boundary_nodes_mask,
         }

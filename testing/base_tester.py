@@ -32,8 +32,7 @@ class BaseTester:
         # Get non-boundary nodes/edges and threshold for metric computation
         self.boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
         self.non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
-        self.non_boundary_edges_mask = ~dataset.boundary_condition.boundary_edges_mask
-        self.inflow_edges_mask = dataset.boundary_condition.inflow_edges_mask
+        self.boundary_edges_mask = dataset.boundary_condition.boundary_edges_mask
 
         # Assume using the same area for all events in the dataset
         area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')

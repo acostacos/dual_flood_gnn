@@ -7,15 +7,7 @@ from typing import Optional
 def get_physics_info_node_edge(x: Tensor, edge_attr: Tensor, previous_timesteps: int, batch):
     curr_water_volume = get_curr_volume_from_node_features(x, previous_timesteps)
     curr_face_flow = get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
-    # Need to overwrite boundary conditions as these are masked
-    curr_face_flow = overwrite_outflow_boundary(curr_face_flow, batch)
     return curr_water_volume, curr_face_flow
-
-def get_physics_info_edge(edge_attr: Tensor, previous_timesteps: int, batch):
-    curr_face_flow = get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
-    # Need to overwrite boundary conditions as these are masked
-    curr_face_flow = overwrite_outflow_boundary(curr_face_flow, batch)
-    return curr_face_flow
 
 # =============== Individual Functions ===============
 
@@ -32,14 +24,6 @@ def get_curr_flow_from_edge_features(edge_attr: Tensor, previous_timesteps: int)
     curr_flow_idx = num_static_edge_features + ((previous_timesteps + 1) * flow_dyn_num) - 1
     curr_flow = edge_attr[:, [curr_flow_idx]]
     return curr_flow
-
-def overwrite_outflow_boundary(edge_pred: Tensor, batch) -> Tensor:
-    assert hasattr(batch, 'global_mass_info') or hasattr(batch, 'local_mass_info'), "Physics-informed data must be included in the dataset"
-    physics_obj = batch.global_mass_info if hasattr(batch, 'global_mass_info') else batch.local_mass_info
-    boundary_outflow = physics_obj['boundary_outflow']
-    outflow_edges_mask = physics_obj['outflow_edges_mask']
-    edge_pred[outflow_edges_mask] = boundary_outflow
-    return edge_pred
 
 def get_total_rainfall(batch, current_timestep: Optional[int] = None):
     assert hasattr(batch, 'global_mass_info'), "Global mass conservation data must be included in the dataset"

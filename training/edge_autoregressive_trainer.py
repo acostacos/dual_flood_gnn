@@ -17,8 +17,7 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
 
         ds: AutoregressiveFloodDataset = self.dataloader.dataset
         # Get non-boundary nodes/edges and threshold for metric computation
-        self.inflow_edges_mask = ds.boundary_condition.inflow_edges_mask
-        self.non_boundary_edges_mask = ~ds.boundary_condition.boundary_edges_mask
+        self.boundary_edges_mask = ds.boundary_condition.boundary_edges_mask
 
         # Get sliding window indices
         sliding_window_length = ds.previous_timesteps + 1
@@ -131,7 +130,6 @@ class EdgeAutoregressiveTrainer(BaseAutoregressiveTrainer):
         return self.loss_func(edge_pred, label)
 
     def _override_pred_bc(self, edge_pred: Tensor, batch, timestep: int) -> Tensor:
-        # Only override inflow edges as outflow edges are predicted by the model
-        batch_inflow_edges_mask = np.tile(self.inflow_edges_mask, batch.num_graphs)
-        edge_pred[batch_inflow_edges_mask] = batch.y_edge[batch_inflow_edges_mask, :, timestep]
+        batch_boundary_edges_mask = np.tile(self.boundary_edges_mask, batch.num_graphs)
+        edge_pred[batch_boundary_edges_mask] = batch.y_edge[batch_boundary_edges_mask, :, timestep]
         return edge_pred

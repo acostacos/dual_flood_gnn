@@ -20,7 +20,6 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         ds: AutoregressiveFloodDataset = self.dataloader.dataset
         # Get non-boundary nodes/edges and threshold for metric computation
         self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
-        self.non_boundary_nodes_mask = ~ds.boundary_condition.boundary_nodes_mask
 
         # Get sliding window indices
         sliding_window_length = ds.previous_timesteps + 1
@@ -113,7 +112,7 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 pred = prev_node_pred + pred_diff
 
                 if self.use_physics_loss:
-                    curr_face_flow = physics_utils.get_physics_info_edge(edge_attr, previous_timesteps, batch)
+                    curr_face_flow = physics_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
                     physics_loss = self._get_epoch_physics_loss(epoch, pred, prev_node_pred,
                                                                 curr_face_flow, pred_loss, batch,
                                                                 current_timestep=i)

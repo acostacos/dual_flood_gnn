@@ -22,7 +22,6 @@ class BoundaryCondition:
 
         self._is_called = {'create': False, 'remove': False, 'apply': False}
         self._boundary_edge_index = None
-        self._boundary_dynamic_nodes = None
         self._boundary_dynamic_edges = None
 
     def _init(self) -> None:
@@ -69,7 +68,7 @@ class BoundaryCondition:
                  inflow_edges_mask=self.inflow_edges_mask,
                  outflow_edges_mask=self.outflow_edges_mask)
 
-    def create(self, edge_index: ndarray, dynamic_nodes: ndarray, dynamic_edges: ndarray) -> None:
+    def create(self, edge_index: ndarray, dynamic_edges: ndarray) -> None:
         boundary_nodes = np.concat([np.array(self.init_inflow_boundary_nodes), np.array(self.init_outflow_boundary_nodes)])
 
         boundary_edges_mask = np.any(np.isin(edge_index, boundary_nodes), axis=0)
@@ -80,7 +79,6 @@ class BoundaryCondition:
         for old_value, new_value in self.boundary_nodes_mapping.items():
             new_boundary_edge_index[new_boundary_edge_index == old_value] = new_value
 
-        boundary_dynamic_nodes = dynamic_nodes[:, boundary_nodes, :].copy()
         boundary_dynamic_edges = dynamic_edges[:, boundary_edges, :].copy()
 
         # Ensure inflow boundary edges point away from the boundary node
@@ -102,7 +100,6 @@ class BoundaryCondition:
             boundary_dynamic_edges[:, outflow_from_boundary_mask, :] *= -1
 
         self._boundary_edge_index = new_boundary_edge_index
-        self._boundary_dynamic_nodes = boundary_dynamic_nodes
         self._boundary_dynamic_edges = boundary_dynamic_edges
 
         self._is_called['create'] = True
@@ -142,13 +139,16 @@ class BoundaryCondition:
         boundary_static_nodes = np.zeros((num_boundary_nodes, num_static_node_feat),
                                         dtype=static_nodes.dtype)
         static_nodes = np.concat([static_nodes, boundary_static_nodes], axis=0)
+        num_timesteps, _, num_dynamic_node_feat = dynamic_nodes.shape
+        # Currently don't use any dynamic features for boundary nodes
+        boundary_dynamic_nodes = np.zeros((num_timesteps, num_boundary_nodes, num_dynamic_node_feat),
+                                          dtype=dynamic_nodes.dtype)
+        dynamic_nodes = np.concat([dynamic_nodes, boundary_dynamic_nodes], axis=1)
 
         _, num_static_edge_feat = static_edges.shape
         boundary_static_edges = np.zeros((self._boundary_edge_index.shape[1], num_static_edge_feat),
                                          dtype=static_edges.dtype)
         static_edges = np.concat([static_edges, boundary_static_edges], axis=0)
-
-        dynamic_nodes = np.concat([dynamic_nodes, self._boundary_dynamic_nodes], axis=1)
         dynamic_edges = np.concat([dynamic_edges, self._boundary_dynamic_edges], axis=1)
 
         edge_index = np.concat([edge_index, self._boundary_edge_index], axis=1)
@@ -158,7 +158,6 @@ class BoundaryCondition:
 
         # Clear boundary condition attributes to save memory
         self._boundary_dynamic_edges = None
-        self._boundary_dynamic_nodes = None
         self._boundary_edge_index = None
 
         self._is_called['apply'] = True

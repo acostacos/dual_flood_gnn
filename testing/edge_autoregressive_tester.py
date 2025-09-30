@@ -47,8 +47,7 @@ class EdgeAutoregressiveTester(BaseTester):
                 edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                # Only override inflow edges as outflow edges are predicted by the model
-                edge_pred_diff[self.inflow_edges_mask] = graph.y_edge[self.inflow_edges_mask]
+                edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
 
                 edge_pred = edge_sliding_window[:, [-1]] + edge_pred_diff
 

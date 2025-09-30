@@ -4,9 +4,10 @@ import torch
 
 from contextlib import redirect_stdout
 from torch import Tensor
+from torch_geometric.loader import DataLoader
 from testing import DualAutoregressiveTester
 from typing import Tuple, Callable
-from utils import EarlyStopping, LossScaler, train_utils
+from utils import EarlyStopping, LossScaler, train_utils, metric_utils
 
 from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .edge_autoregressive_trainer import EdgeAutoregressiveTrainer
@@ -170,18 +171,123 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         return epoch_loss, pred_epoch_loss, edge_pred_epoch_loss, global_mass_epoch_loss, local_mass_epoch_loss
 
     def validate(self):
-        val_tester = DualAutoregressiveTester(
-            model=self.model,
-            dataset=self.val_dataset,
-            include_physics_loss=False,
-            device=self.device
-        )
-        with open(os.devnull, "w") as f, redirect_stdout(f):
-            val_tester.test()
+        self.model.eval()
 
-        node_rmse = val_tester.get_avg_node_rmse()
-        edge_rmse = val_tester.get_avg_edge_rmse()
+        event_node_loss_list, event_edge_loss_list, event_global_loss_list, event_local_loss_list = [], [], [], []
+        event_node_rmse_list, event_edge_rmse_list = [], []
+
+        epoch = self.num_epochs_dyn_loss + 1
+        non_boundary_nodes_mask = ~self.boundary_nodes_mask
+        ds = self.val_dataset
+        for event_idx in range(len(ds.hec_ras_run_ids)):
+            with torch.no_grad():
+                event_start_idx = ds.event_start_idx[event_idx]
+                event_end_idx = ds.event_start_idx[event_idx + 1] if event_idx + 1 < len(ds.event_start_idx) else ds.total_rollout_timesteps
+                event_dataset = ds[event_start_idx:event_end_idx]
+                dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
+
+                node_loss_list, edge_loss_list, global_loss_list, local_loss_list = [], [], [], []
+                node_rmse_list, edge_rmse_list = [], []
+
+                sliding_window = event_dataset[0].x[:, self.start_node_target_idx:self.end_node_target_idx].clone()
+                edge_sliding_window = event_dataset[0].edge_attr[:, self.start_edge_target_idx:self.end_edge_target_idx].clone()
+                sliding_window, edge_sliding_window = sliding_window.to(self.device), edge_sliding_window.to(self.device)
+                for graph in dataloader:
+                    # ========== Inference ==========
+                    graph = graph.to(self.device)
+
+                    x = torch.concat([graph.x[:, :self.start_node_target_idx], sliding_window, graph.x[:, self.end_node_target_idx:]], dim=1)
+                    edge_attr = torch.concat([graph.edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, graph.edge_attr[:, self.end_edge_target_idx:]], dim=1)
+                    edge_index = graph.edge_index
+
+                    pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+
+                    # Override boundary conditions in predictions
+                    pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+                    edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
+
+                    # ========== Training Losses ==========
+                    pred_loss = self.loss_func(pred_diff, graph.y)
+                    pred_loss = self._scale_node_pred_loss(epoch, pred_loss)
+                    node_loss_list.append(pred_loss)
+
+                    edge_pred_loss = self.edge_loss_func(edge_pred_diff, graph.y_edge)
+                    edge_pred_loss = self._scale_edge_pred_loss(epoch, edge_pred_loss)
+                    edge_loss_list.append(edge_pred_loss)
+
+                    prev_node_pred = sliding_window[:, [-1]]
+                    pred = prev_node_pred + pred_diff
+                    prev_edge_pred = edge_sliding_window[:, [-1]]
+                    edge_pred = prev_edge_pred + edge_pred_diff
+
+                    global_mass_loss = self._get_global_mass_loss(epoch,pred, prev_node_pred, prev_edge_pred, graph)
+                    global_loss_list.append(global_mass_loss)
+                    local_mass_loss = self._get_local_mass_loss(epoch, pred, prev_node_pred, prev_edge_pred, graph)
+                    local_loss_list.append(local_mass_loss)
+
+                    sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
+                    edge_sliding_window = torch.concat((edge_sliding_window[:, 1:], edge_pred), dim=1)
+
+                    # ========== Validation Metrics ==========
+                    label = graph.x[:, [self.end_node_target_idx-1]] + graph.y
+                    if ds.is_normalized:
+                        pred = ds.normalizer.denormalize(ds.NODE_TARGET_FEATURE, pred)
+                        label = ds.normalizer.denormalize(ds.NODE_TARGET_FEATURE, label)
+
+                    # Ensure water volume is non-negative
+                    pred = torch.clip(pred, min=0)
+                    label = torch.clip(label, min=0)
+
+                    # Filter boundary conditions for metric computation
+                    pred = pred[non_boundary_nodes_mask]
+                    label = label[non_boundary_nodes_mask]
+
+                    node_rmse = metric_utils.RMSE(pred.cpu(), label.cpu())
+                    node_rmse_list.append(node_rmse)
+
+                    label_edge = graph.edge_attr[:, [self.end_edge_target_idx-1]] + graph.y_edge
+                    if ds.is_normalized:
+                        edge_pred = ds.normalizer.denormalize(ds.EDGE_TARGET_FEATURE, edge_pred)
+                        label_edge = ds.normalizer.denormalize(ds.EDGE_TARGET_FEATURE, label_edge)
+
+                    edge_rmse = metric_utils.RMSE(edge_pred.cpu(), label_edge.cpu())
+                    edge_rmse_list.append(edge_rmse)
+
+                event_node_loss_list.append(torch.stack(node_loss_list).mean())
+                event_edge_loss_list.append(torch.stack(edge_loss_list).mean())
+                event_global_loss_list.append(torch.stack(global_loss_list).mean())
+                event_local_loss_list.append(torch.stack(local_loss_list).mean())
+                event_node_rmse_list.append(torch.stack(node_rmse_list).mean())
+                event_edge_rmse_list.append(torch.stack(edge_rmse_list).mean())
+
+        # Store training losses for validation
+        avg_node_loss = torch.stack(event_node_loss_list).mean().item()
+        avg_edge_loss = torch.stack(event_edge_loss_list).mean().item()
+        avg_global_loss = torch.stack(event_global_loss_list).mean().item()
+        avg_local_loss = torch.stack(event_local_loss_list).mean().item()
+        self.training_stats.add_val_loss_component('val_node_loss', avg_node_loss)
+        self.training_stats.add_val_loss_component('val_edge_loss', avg_edge_loss)
+        self.training_stats.add_val_loss_component('val_global_mass_loss', avg_global_loss)
+        self.training_stats.add_val_loss_component('val_local_mass_loss', avg_local_loss)
+
+        node_rmse = torch.stack(event_node_rmse_list).mean().item()
+        edge_rmse = torch.stack(event_edge_rmse_list).mean().item()
+
         return node_rmse, edge_rmse
+
+    # def validate(self):
+    #     val_tester = DualAutoregressiveTester(
+    #         model=self.model,
+    #         dataset=self.val_dataset,
+    #         include_physics_loss=False,
+    #         device=self.device
+    #     )
+    #     with open(os.devnull, "w") as f, redirect_stdout(f):
+    #         val_tester.test()
+
+    #     node_rmse = val_tester.get_avg_node_rmse()
+    #     edge_rmse = val_tester.get_avg_edge_rmse()
+    #     return node_rmse, edge_rmse
 
     def _compute_edge_loss(self, edge_pred: Tensor, batch, timestep: int) -> Tensor:
         label = batch.y_edge[:, :, timestep]

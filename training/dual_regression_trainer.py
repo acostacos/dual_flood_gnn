@@ -44,7 +44,7 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                 running_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch)
-                edge_pred_loss = self._scale_edge_pred_loss(epoch, edge_pred_loss)
+                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 running_edge_pred_loss += edge_pred_loss.item()
 
                 loss = pred_loss + edge_pred_loss

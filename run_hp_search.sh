@@ -9,6 +9,7 @@
 . venv/bin/activate
 
 # Base NodeEdge GNN hyperparameter search
+srun python hp_search.py --config 'configs/no_physics_config.yaml' --hparam_config 'configs/hparam_config/overall_model_config.yaml' --model 'NodeEdgeGNN'
 srun python hp_search.py --config 'configs/no_physics_config.yaml' --hparam_config 'configs/hparam_config/edge_pred_loss.yaml' --model 'NodeEdgeGNN'
 
 # Global Mass Conservation Loss hyperparameter search

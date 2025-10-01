@@ -120,7 +120,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 total_batch_pred_loss += pred_loss.item()
 
                 edge_pred_loss = self._compute_edge_loss(edge_pred_diff, batch, i)
-                edge_pred_loss = self._scale_edge_pred_loss(epoch, edge_pred_loss)
+                edge_pred_loss = self._scale_edge_pred_loss(epoch, pred_loss, edge_pred_loss)
                 total_batch_edge_pred_loss += edge_pred_loss.item()
 
                 step_loss = pred_loss + edge_pred_loss
@@ -132,7 +132,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
 
                 if self.use_physics_loss:
                     global_loss, local_loss = self._get_physics_loss(epoch, pred, prev_node_pred,
-                                                                     prev_edge_pred, batch,
+                                                                     prev_edge_pred, pred_loss, batch,
                                                                      current_timestep=i)
                     total_batch_global_mass_loss += global_loss.item()
                     total_batch_local_mass_loss += local_loss.item()
@@ -152,12 +152,9 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
             self._clip_gradients()
             self.optimizer.step()
 
-            # Loss Updates
             total_losses = (total_batch_pred_loss, total_batch_edge_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
             avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
             avg_pred_loss, avg_edge_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
-            self._add_epoch_loss_ratio_to_scaler(epoch, avg_pred_loss, avg_edge_pred_loss, avg_global_mass_loss, avg_local_mass_loss)
-
             running_pred_loss += avg_pred_loss
             running_edge_pred_loss += avg_edge_pred_loss
             running_global_mass_loss += avg_global_mass_loss
@@ -212,7 +209,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     node_loss_list.append(pred_loss)
 
                     edge_pred_loss = self.edge_loss_func(edge_pred_diff, graph.y_edge)
-                    edge_pred_loss = self._scale_edge_pred_loss(epoch, edge_pred_loss)
+                    edge_pred_loss = self._scale_edge_pred_loss(epoch, None, edge_pred_loss)
                     edge_loss_list.append(edge_pred_loss)
 
                     prev_node_pred = sliding_window[:, [-1]]
@@ -221,10 +218,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     edge_pred = prev_edge_pred + edge_pred_diff
 
                     if self.use_global_loss:
-                        global_mass_loss = self._get_global_mass_loss(epoch,pred, prev_node_pred, prev_edge_pred, graph)
+                        global_mass_loss = self._get_global_mass_loss(epoch,pred, prev_node_pred,
+                                                                      prev_edge_pred, None, graph)
                         global_loss_list.append(global_mass_loss)
                     if self.use_local_loss:
-                        local_mass_loss = self._get_local_mass_loss(epoch, pred, prev_node_pred, prev_edge_pred, graph)
+                        local_mass_loss = self._get_local_mass_loss(epoch, pred, prev_node_pred,
+                                                                    prev_edge_pred, None, graph)
                         local_loss_list.append(local_mass_loss)
 
                     sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
@@ -310,16 +309,13 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
 
 # ========= Methods for scaling losses =========
 
-    def _scale_edge_pred_loss(self, epoch: int, edge_pred_loss: Tensor) -> Tensor:
-        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+    def _scale_edge_pred_loss(self, epoch: int, basis_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            return scaled_edge_pred_loss
-        return scaled_edge_pred_loss * self.edge_loss_weight
-
-    def _add_epoch_loss_ratio_to_scaler(self, epoch: int, pred_loss: float, edge_pred_loss: float, global_mass_loss: float, local_mass_loss: float):
-        if epoch < self.num_epochs_dyn_loss:
-            self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-        NodeAutoregressiveTrainer._add_epoch_loss_ratio_to_scaler(self, epoch, pred_loss, global_mass_loss, local_mass_loss)
+            self.edge_loss_scaler.add_epoch_loss_ratio(basis_loss, edge_pred_loss)
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+        else:
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_loss_weight
+        return scaled_edge_pred_loss
 
     def _update_loss_scaler_for_epoch(self, epoch: int):
         if epoch < self.num_epochs_dyn_loss:

@@ -42,7 +42,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
                     curr_water_volume, curr_face_flow = physics_utils.get_physics_info_node_edge(x, edge_attr, previous_timesteps, batch)
                     pred = curr_water_volume + pred_diff
                     global_loss, local_loss = self._get_physics_loss(epoch, pred, curr_water_volume,
-                                                                     curr_face_flow, batch)
+                                                                     curr_face_flow, loss, batch)
                     running_global_mass_loss += global_loss.item()
                     running_local_mass_loss += local_loss.item()
                     loss = loss + global_loss + local_loss

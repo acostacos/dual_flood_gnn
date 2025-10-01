@@ -54,7 +54,7 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
                     curr_water_volume, curr_face_flow = physics_utils.get_physics_info_node_edge(x, edge_attr, previous_timesteps, batch)
                     pred = curr_water_volume + pred_diff
                     global_loss, local_loss = self._get_physics_loss(epoch, pred, curr_water_volume,
-                                                                     curr_face_flow, batch)
+                                                                     curr_face_flow, pred_loss, batch)
                     running_global_mass_loss += global_loss.item()
                     running_local_mass_loss += local_loss.item()
                     loss = loss + global_loss + local_loss
@@ -118,16 +118,13 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
 
 # ========= Methods for scaling losses =========
 
-    def _scale_edge_pred_loss(self, epoch: int, edge_pred_loss: Tensor) -> Tensor:
-        scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+    def _scale_edge_pred_loss(self, epoch: int, basis_loss: Tensor, edge_pred_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            return scaled_edge_pred_loss
-        return scaled_edge_pred_loss * self.edge_loss_weight
-
-    def _add_epoch_loss_ratio_to_scaler(self, epoch: int, pred_loss: float, edge_pred_loss: float, global_mass_loss: float, local_mass_loss: float):
-        if epoch < self.num_epochs_dyn_loss:
-            self.edge_loss_scaler.add_epoch_loss_ratio(pred_loss, edge_pred_loss)
-        NodeRegressionTrainer._add_epoch_loss_ratio_to_scaler(self, epoch, pred_loss, global_mass_loss, local_mass_loss)
+            self.edge_loss_scaler.add_epoch_loss_ratio(basis_loss, edge_pred_loss)
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss)
+        else:
+            scaled_edge_pred_loss = self.edge_loss_scaler.scale_loss(edge_pred_loss) * self.edge_loss_weight
+        return scaled_edge_pred_loss
 
     def _update_loss_scaler_for_epoch(self, epoch: int):
         if epoch < self.num_epochs_dyn_loss:

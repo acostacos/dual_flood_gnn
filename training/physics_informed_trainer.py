@@ -54,6 +54,7 @@ class PhysicsInformedTrainer(BaseTrainer):
             pred (Tensor): Predicted node values at current timestep.
             prev_node_pred (Tensor): Predicted node values at previous timestep.
             prev_edge_pred (Tensor): Predicted edge values at previous timestep.
+            basis_loss (Tensor): The basis loss (e.g., prediction loss) to scale against.
             batch: The current data batch.
             current_timestep (Optional[int]): Current timestep index if training in autoregressive setting.
         '''
@@ -75,11 +76,12 @@ class PhysicsInformedTrainer(BaseTrainer):
                               pred: Tensor,
                               prev_node_pred: Tensor,
                               prev_edge_pred: Tensor,
+                              basis_loss: Tensor,
                               batch,
                               current_timestep: Optional[int] = None) -> Tensor:
         total_rainfall = physics_utils.get_total_rainfall(batch, current_timestep)
         global_physics_loss = self.global_loss_func(pred, prev_node_pred, prev_edge_pred, total_rainfall, batch)
-        global_physics_loss = self._scale_global_mass_loss(epoch, global_physics_loss)
+        global_physics_loss = self._scale_global_mass_loss(epoch, basis_loss, global_physics_loss)
         return global_physics_loss
 
     def _get_local_mass_loss(self,
@@ -87,11 +89,12 @@ class PhysicsInformedTrainer(BaseTrainer):
                              pred: Tensor,
                              prev_node_pred: Tensor,
                              prev_edge_pred: Tensor,
+                             basis_loss: Tensor,
                              batch,
                              current_timestep: Optional[int] = None) -> Tensor:
         rainfall = physics_utils.get_rainfall(batch, current_timestep)
         local_physics_loss = self.local_loss_func(pred, prev_node_pred, prev_edge_pred, rainfall, batch)
-        local_physics_loss = self._scale_local_mass_loss(epoch, local_physics_loss)
+        local_physics_loss = self._scale_local_mass_loss(epoch, basis_loss, local_physics_loss)
         return local_physics_loss
 
     def _log_epoch_physics_loss(self, global_mass_epoch_loss: float, local_mass_epoch_loss: float):
@@ -105,24 +108,21 @@ class PhysicsInformedTrainer(BaseTrainer):
 
 # ========= Methods for scaling losses =========
 
-    def _scale_global_mass_loss(self, epoch: int, global_mass_loss: Tensor) -> Tensor:
-        scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
+    def _scale_global_mass_loss(self, epoch: int, basis_loss: Tensor, global_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            return scaled_global_physics_loss
-        return scaled_global_physics_loss * self.global_mass_loss_weight
+            self.global_loss_scaler.add_epoch_loss_ratio(basis_loss, global_mass_loss)
+            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss)
+        else:
+            scaled_global_physics_loss = self.global_loss_scaler.scale_loss(global_mass_loss) * self.global_mass_loss_weight
+        return scaled_global_physics_loss
 
-    def _scale_local_mass_loss(self, epoch: int, local_mass_loss: Tensor) -> Tensor:
-        scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
+    def _scale_local_mass_loss(self, epoch: int, basis_loss: Tensor, local_mass_loss: Tensor) -> Tensor:
         if epoch < self.num_epochs_dyn_loss:
-            return scaled_local_physics_loss
-        return scaled_local_physics_loss * self.local_mass_loss_weight
-
-    def _add_epoch_loss_ratio_to_scaler(self, epoch: int, pred_loss: float, global_mass_loss: float, local_mass_loss: float):
-        if epoch < self.num_epochs_dyn_loss:
-            if self.use_global_loss:
-                self.global_loss_scaler.add_epoch_loss_ratio(pred_loss, global_mass_loss)
-            if self.use_local_loss:
-                self.local_loss_scaler.add_epoch_loss_ratio(pred_loss, local_mass_loss)
+            self.local_loss_scaler.add_epoch_loss_ratio(basis_loss, local_mass_loss)
+            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss)
+        else:
+            scaled_local_physics_loss = self.local_loss_scaler.scale_loss(local_mass_loss) * self.local_mass_loss_weight
+        return scaled_local_physics_loss
 
     def _update_loss_scaler_for_epoch(self, epoch: int):
         if epoch < self.num_epochs_dyn_loss:

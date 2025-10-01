@@ -122,7 +122,7 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
                 if self.use_physics_loss:
                     curr_face_flow = physics_utils.get_curr_flow_from_edge_features(edge_attr, previous_timesteps)
                     global_loss, local_loss = self._get_physics_loss(epoch, pred, prev_node_pred,
-                                                                     curr_face_flow, batch,
+                                                                     curr_face_flow, pred_loss, batch,
                                                                      current_timestep=i)
                     total_batch_global_mass_loss += global_loss.item()
                     total_batch_local_mass_loss += local_loss.item()
@@ -144,7 +144,6 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         total_losses = (total_batch_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
         avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
         avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
-        self._add_epoch_loss_ratio_to_scaler(epoch, avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss)
         
         running_pred_loss += avg_pred_loss
         running_global_mass_loss += avg_global_mass_loss

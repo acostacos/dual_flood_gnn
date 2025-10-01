@@ -1,0 +1,20 @@
+output_dir: 'hp_stats'
+num_trials: 20
+num_folds: 5
+hyperparameters:
+  hidden_features:
+    path: 'model_parameters.NodeEdgeGNN.hidden_features'
+    type: 'categorical'
+    choices: [32, 64, 128]
+  num_layers:
+    path: 'model_parameters.NodeEdgeGNN.num_layers'
+    type: 'categorical'
+    choices: [2, 3, 4]
+  mlp_layers:
+    path: 'model_parameters.NodeEdgeGNN.mlp_layers'
+    type: 'categorical'
+    choices: [2, 3]
+  encoder_layers:
+    path: 'model_parameters.NodeEdgeGNN.encoder_layers'
+    type: 'categorical'
+    choices: [2, 3]

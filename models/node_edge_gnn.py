@@ -30,7 +30,7 @@ class NodeEdgeGNN(BaseModel):
                  **base_model_kwargs):
         super().__init__(**base_model_kwargs)
         self.with_encoder = encoder_layers > 0
-        self.with_decoder = encoder_layers > 0
+        self.with_decoder = decoder_layers > 0
 
         if input_features is None:
             input_features = self.input_node_features
@@ -64,10 +64,10 @@ class NodeEdgeGNN(BaseModel):
         # Decoder
         if self.with_decoder:
             self.node_decoder = make_mlp(input_size=hidden_features, output_size=output_features,
-                                        hidden_size=encoder_decoder_hidden, num_layers=encoder_layers,
+                                        hidden_size=encoder_decoder_hidden, num_layers=decoder_layers,
                                         activation=decoder_activation, bias=False, device=self.device)
             self.edge_decoder = make_mlp(input_size=hidden_features, output_size=output_edge_features,
-                                        hidden_size=encoder_decoder_hidden, num_layers=encoder_layers,
+                                        hidden_size=encoder_decoder_hidden, num_layers=decoder_layers,
                                         activation=decoder_activation, bias=False, device=self.device)
 
     def _make_gnn(self, input_node_size: int, output_node_size: int, input_edge_size: int, output_edge_size: int,

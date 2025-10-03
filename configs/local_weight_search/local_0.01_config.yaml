@@ -75,17 +75,17 @@ testing_parameters:
 
 model_parameters:                                            # Model-specific parameters
   GCN:
-    hidden_features: 32
+    hidden_features: 64
     num_layers: 2
     activation: 'relu'
     residual: False
-    encoder_layers: 2
+    encoder_layers: 3
     encoder_activation: 'relu'
-    decoder_layers: 2
+    decoder_layers: 3
     decoder_activation: 'relu'
 
   GAT:
-    hidden_features: 32
+    hidden_features: 64
     use_edge_features: False
     num_layers: 2
     activation: 'relu'
@@ -96,9 +96,9 @@ model_parameters:                                            # Model-specific pa
     negative_slope: 0.2
     attn_bias: True
     attn_residual: True
-    encoder_layers: 2
+    encoder_layers: 3
     encoder_activation: 'relu'
-    decoder_layers: 2
+    decoder_layers: 3
     decoder_activation: 'relu'
 
   NodeEdgeGNN:

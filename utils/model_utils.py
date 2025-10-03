@@ -38,7 +38,7 @@ def make_gnn(input_size: int, output_size: int, hidden_size: int = None,
             (GNNLayer(hidden_size, hidden_size, conv, activation, device, **conv_kwargs), 'x, edge_index -> x')
         ) # Hidden Layers
     layers.append(
-        (GNNLayer(hidden_size, output_size, conv, activation, device, **conv_kwargs), 'x, edge_index -> x')
+        (GNNLayer(hidden_size, output_size, conv, None, device, **conv_kwargs), 'x, edge_index -> x')
     ) # Output Layer
     return PygSequential('x, edge_index', layers)
 

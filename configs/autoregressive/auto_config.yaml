@@ -68,7 +68,7 @@ loss_func_parameters:
     delta: 0.15                                               # Delta parameter for Huber loss function.
 
 testing_parameters:
-  log_path: 'autoregressive/logs/base_test.log'                                             # Path to save testing logs
+  log_path: 'autoregressive/logs/auto1_test.log'                                             # Path to save testing logs
   output_dir: 'autoregressive/test'                                # Directory to save testing results
   rollout_start: 0                                           # Start timestep for the test rollout
   rollout_timesteps: null                                    # Number of timesteps for the test rollout. Set to null to roll out until the end of the event

@@ -11,12 +11,14 @@ class BaseAutoregressiveTrainer(BaseTrainer):
                  total_num_timesteps: int = 1,
                  learning_rate_decay: float = 0.7,
                  max_curriculum_epochs: Optional[int] = None,
+                 timestep_increment: int = 1,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.init_num_timesteps = init_num_timesteps
         self.total_num_timesteps = total_num_timesteps
         self.max_curriculum_epochs = max_curriculum_epochs
+        self.timestep_increment = timestep_increment
         self.lr_scheduler = StepLR(self.optimizer, step_size=1, gamma=learning_rate_decay)
 
         assert isinstance(self.dataloader.dataset, AutoregressiveFloodDataset), 'dataset (for training) must be an instance of AutoregressiveFloodEventDataset.'

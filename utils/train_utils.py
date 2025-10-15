@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 
+from constants import EDGE_MODELS
 from typing import Tuple
 
 from .logger import Logger
@@ -39,7 +40,6 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         if logger:
             logger.log(msg)
 
-    EDGE_MODELS = ['EdgeGNN']
     trainer_params = {}
 
     train_config = config['training_parameters']

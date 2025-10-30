@@ -5,7 +5,6 @@ from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
 from .gat import GAT
 from .gcn import GCN
-from .hydrographnet import HydroGraphNet
 from .node_edge_gnn import NodeEdgeGNN
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
@@ -22,8 +21,6 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
         return GCN(*args, **kwargs)
     if model_name == 'GAT':
         return GAT(*args, **kwargs)
-    if model_name == 'HydroGraphNet':
-        return HydroGraphNet(*args, **kwargs)
     if model_name == 'NodeEdgeGNN':
         return NodeEdgeGNN(*args, **kwargs)
     if model_name == 'NodeEdgeGNNAttn':
@@ -40,7 +37,6 @@ __all__ = [
     'EdgeGNN',
     'GAT',
     'GCN',
-    'HydroGraphNet',
     'NodeEdgeGNN',
     'NodeEdgeGNNAttn',
     'NodeEdgeGNNTransformer',

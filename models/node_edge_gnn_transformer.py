@@ -231,7 +231,7 @@ class NodeEdgeConv(MessagePassing):
 
         input_size = (node_in_channels * 2 + edge_in_channels)
         output_size = edge_out_channels
-        self.edge_mlp = make_mlp(input_size=input_size, output_size=output_size, hidden_size=hidden_size,
+        self.msg_mlp = make_mlp(input_size=input_size, output_size=output_size, hidden_size=hidden_size,
                                  num_layers=num_layers, activation=activation, bias=bias, device=device)
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tuple[Tensor, Tensor]:
@@ -254,7 +254,7 @@ class NodeEdgeConv(MessagePassing):
 
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr: Tensor) -> Tensor:
         cat_feats = torch.cat([x_i, edge_attr, x_j], dim=-1)
-        msg = self.edge_mlp(cat_feats)
+        msg = self.msg_mlp(cat_feats)
         if self.residual:
             msg = msg + edge_attr
         return msg

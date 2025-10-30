@@ -174,13 +174,3 @@ model_parameters:                                            # Model-specific pa
     encoder_activation: 'relu'
     decoder_layers: 3
     decoder_activation: 'relu'
-
-  HydroGraphNet:
-    hidden_features: 128
-    num_layers: 15
-    mlp_layers: 3
-    activation: 'relu'
-    encoder_layers: 3
-    encoder_activation: 'relu'
-    decoder_layers: 3
-    decoder_activation: 'relu'

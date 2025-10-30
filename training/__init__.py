@@ -1,4 +1,4 @@
-from constants import EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS
 from .base_trainer import BaseTrainer
 from .dual_autoregressive_trainer import DualAutoregressiveTrainer
 from .dual_regression_trainer import DualRegressionTrainer
@@ -8,7 +8,7 @@ from .node_autoregressive_trainer import NodeAutoregressiveTrainer
 from .node_regression_trainer import NodeRegressionTrainer
 
 def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> BaseTrainer:
-    if 'NodeEdgeGNN' in model_name:
+    if model_name in NODE_EDGE_MODELS:
         if autoregressive:
             return DualAutoregressiveTrainer(*args, **kwargs)
         return DualRegressionTrainer(*args, **kwargs)

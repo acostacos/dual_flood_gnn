@@ -3,18 +3,18 @@ num_trials: 20
 num_folds: 5
 hyperparameters:
   hidden_features:
-    path: 'model_parameters.NodeEdgeGNN.hidden_features'
+    path: 'model_parameters.DUALFloodGNN.hidden_features'
     type: 'categorical'
     choices: [32, 64, 128]
   num_layers:
-    path: 'model_parameters.NodeEdgeGNN.num_layers'
+    path: 'model_parameters.DUALFloodGNN.num_layers'
     type: 'categorical'
     choices: [2, 3, 4]
   mlp_layers:
-    path: 'model_parameters.NodeEdgeGNN.mlp_layers'
+    path: 'model_parameters.DUALFloodGNN.mlp_layers'
     type: 'categorical'
     choices: [2, 3]
   encoder_layers:
-    path: 'model_parameters.NodeEdgeGNN.encoder_layers'
+    path: 'model_parameters.DUALFloodGNN.encoder_layers'
     type: 'categorical'
     choices: [2, 3]

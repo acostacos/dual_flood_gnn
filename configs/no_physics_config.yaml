@@ -129,7 +129,7 @@ model_parameters:                                            # Model-specific pa
     decoder_layers: 3
     decoder_activation: 'relu'
 
-  NodeEdgeGNN:
+  DUALFloodGNN:
     hidden_features: 64
     num_layers: 3
     activation: 'relu'

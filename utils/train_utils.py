@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-from constants import EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS
 from typing import Tuple
 
 from .logger import Logger
@@ -113,7 +113,7 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         })
 
     # Node/Edge prediction parameters
-    if 'NodeEdgeGNN' in model_name:
+    if model_name in NODE_EDGE_MODELS:
         edge_pred_loss_scale = loss_func_parameters['edge_pred_loss_scale']
         edge_pred_loss_weight = loss_func_parameters['edge_loss_weight']
         log(f'Using edge prediction loss with scale {edge_pred_loss_scale} with importance weight {edge_pred_loss_weight}')

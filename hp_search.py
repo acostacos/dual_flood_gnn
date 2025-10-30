@@ -6,7 +6,7 @@ import optuna
 import random
 
 from argparse import ArgumentParser, Namespace
-from constants import EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS
 from contextlib import redirect_stdout
 from optuna.visualization import plot_optimization_history, plot_slice, plot_pareto_front
 from pprint import pformat
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     logger.log(f'Configuration: {pformat(config)}')
     logger.log(f'Hyperparameter Search Configuration: {pformat(hparam_config)}')
 
-    is_dual_model = 'NodeEdgeGNN' in args.model
+    is_dual_model = args.model in NODE_EDGE_MODELS
 
     main()
 

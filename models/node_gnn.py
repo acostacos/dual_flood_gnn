@@ -1,8 +1,8 @@
 from torch import Tensor
 
-from .node_edge_gnn import NodeEdgeGNN
+from .dual_flood_gnn import DUALFloodGNN
 
-class NodeGNN(NodeEdgeGNN):
+class NodeGNN(DUALFloodGNN):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

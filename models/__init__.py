@@ -5,12 +5,14 @@ from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
 from .gat import GAT
 from .gcn import GCN
-from .node_edge_gnn import NodeEdgeGNN
+from .dual_flood_gnn import DUALFloodGNN
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
 from .node_gnn import NodeGNN
 
 def model_factory(model_name: str, *args, **kwargs) -> Module:
+    if model_name == 'DUALFloodGNN':
+        return DUALFloodGNN(*args, **kwargs)
     if model_name == 'EdgeGAT':
         return EdgeGAT(*args, **kwargs)
     if model_name == 'EdgeGCN':
@@ -21,8 +23,6 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
         return GCN(*args, **kwargs)
     if model_name == 'GAT':
         return GAT(*args, **kwargs)
-    if model_name == 'NodeEdgeGNN':
-        return NodeEdgeGNN(*args, **kwargs)
     if model_name == 'NodeEdgeGNNAttn':
         return NodeEdgeGNNAttn(*args, **kwargs)
     if model_name == 'NodeEdgeGNNTransformer':
@@ -32,12 +32,12 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
     raise ValueError(f'Invalid model name: {model_name}')
 
 __all__ = [
+    'DUALFloodGNN',
     'EdgeGAT',
     'EdgeGCN',
     'EdgeGNN',
     'GAT',
     'GCN',
-    'NodeEdgeGNN',
     'NodeEdgeGNNAttn',
     'NodeEdgeGNNTransformer',
     'NodeGNN',

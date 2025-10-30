@@ -6,7 +6,7 @@ from utils.model_utils import make_mlp
 
 from .base_model import BaseModel
 
-class NodeEdgeGNN(BaseModel):
+class DUALFloodGNN(BaseModel):
     '''
     Model that uses message passing to update both node and edge features. Can predict for both simultaneously.
     '''
@@ -106,7 +106,8 @@ class NodeEdgeConv(MessagePassing):
     '''
     Message = MLP(node_i, edge_attr, node_j)
     Aggregate = sum
-    Update = MLP(aggregated_message)
+    Node Update = MLP(aggregated_message)
+    Edge Update = Message
     '''
     def __init__(self, node_in_channels: int, edge_in_channels: int,
                  node_out_channels: int, edge_out_channels: int,

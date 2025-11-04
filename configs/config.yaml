@@ -3,6 +3,7 @@ dataset_parameters:
   root_dir: 'data/datasets'                                  # Path to root directory for the dataset files
   nodes_shp_file: 'New_Geometry/cell_centers_with_ele.shp'   # Filename of shapefile containing node information
   edges_shp_file: 'New_Geometry/links_with_slope.shp'        # Filename of shapefile containing edge information
+  dem_file: 'Geometry/DEM.tif'                               # Filename of DEM file
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features

@@ -111,6 +111,7 @@ def load_datasets(group_id: str, config: Dict, logger: Logger) -> Tuple[FloodEve
         'root_dir': dataset_parameters['root_dir'],
         'nodes_shp_file': dataset_parameters['nodes_shp_file'],
         'edges_shp_file': dataset_parameters['edges_shp_file'],
+        'dem_file': dataset_parameters['dem_file'],
         'features_stats_file': features_stats_file,
         'previous_timesteps': dataset_parameters['previous_timesteps'],
         'normalize': dataset_parameters['normalize'],

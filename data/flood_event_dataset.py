@@ -35,6 +35,7 @@ class FloodEventDataset(Dataset):
                  dataset_summary_file: str,
                  nodes_shp_file: str,
                  edges_shp_file: str,
+                 dem_file: str,
                  event_stats_file: str = 'event_stats.yaml',
                  features_stats_file: str = 'features_stats.yaml',
                  previous_timesteps: int = 2,
@@ -59,6 +60,7 @@ class FloodEventDataset(Dataset):
         self.hec_ras_files, self.hec_ras_run_ids = self._get_hecras_files_from_summary(root_dir, dataset_summary_file)
         self.nodes_shp_file = nodes_shp_file
         self.edges_shp_file = edges_shp_file
+        self.dem_file = dem_file
         self.event_stats_file = event_stats_file
         self.features_stats_file = features_stats_file
 
@@ -99,7 +101,7 @@ class FloodEventDataset(Dataset):
 
     @property
     def raw_file_names(self):
-        return [self.nodes_shp_file, self.edges_shp_file, *self.hec_ras_files]
+        return [self.nodes_shp_file, self.edges_shp_file, self.dem_file, *self.hec_ras_files]
 
     @property
     def processed_file_names(self):
@@ -328,7 +330,7 @@ class FloodEventDataset(Dataset):
 
         current_total_ts = 0
         all_event_timesteps = []
-        for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
+        for event_idx, hec_ras_path in enumerate(self.raw_paths[3:]):
             timesteps = get_event_timesteps(hec_ras_path)
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
             assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
@@ -367,43 +369,36 @@ class FloodEventDataset(Dataset):
         return edge_index
 
     def _get_static_node_features(self) -> ndarray:
-        DEM_PATH = 'data/datasets/raw/Geometry/DEM.tif'
-        dem_folder = os.path.dirname(DEM_PATH)
+        def _get_dem_based_feature(node_shp_path: str,
+                                   dem_path: str,
+                                   feature_func: Callable,
+                                   *output_filenames: Tuple[str]) -> ndarray:
+            pos = get_cell_position(node_shp_path)
+            dem_folder = os.path.dirname(dem_path)
+            filled_dem_path = os.path.join(dem_folder, 'filled_dem.tif')
+            filled_dem = get_filled_dem(dem_path, filled_dem_path)
 
-        def _get_filled_dem():
-            return get_filled_dem(DEM_PATH, os.path.join(dem_folder, 'filled_dem.tif'))
-        
-        def _get_aspect(nodes_shp_path: str):
-            pos = get_cell_position(nodes_shp_path)
-            filled_dem = _get_filled_dem()
-            aspect_path = os.path.join(dem_folder, 'aspect_dem.tif')
-            aspect = get_aspect(filled_dem, aspect_path, pos)
-            return aspect
-        
-        def _get_curvature(nodes_shp_path: str):
-            pos = get_cell_position(nodes_shp_path)
-            filled_dem = _get_filled_dem()
-            curvature_path = os.path.join(dem_folder, 'curvature_dem.tif')
-            curvature = get_curvature(filled_dem, curvature_path, pos)
-            return curvature
-        
-        def _get_flow_accumulation(nodes_shp_path: str):
-            pos = get_cell_position(nodes_shp_path)
-            filled_dem = _get_filled_dem()
-            flow_dir_path = os.path.join(dem_folder, 'flow_dir_dem.tif')
-            flow_accum_path = os.path.join(dem_folder, 'flow_acc_dem.tif')
-            flow_accum = get_flow_accumulation(filled_dem, flow_dir_path, flow_accum_path, pos)
-            return flow_accum
+            output_paths = [os.path.join(dem_folder, fn) for fn in output_filenames]
+            return feature_func(filled_dem, *output_paths, pos)
+
+        def _get_aspect(nodes_shp_path: str, dem_path: str):
+            return _get_dem_based_feature(nodes_shp_path, dem_path, get_aspect, 'aspect_dem.tif')
+
+        def _get_curvature(nodes_shp_path: str, dem_path: str):
+            return _get_dem_based_feature(nodes_shp_path, dem_path, get_curvature, 'curvature_dem.tif')
+
+        def _get_flow_accumulation(nodes_shp_path: str, dem_path: str):
+            return _get_dem_based_feature(nodes_shp_path, dem_path, get_flow_accumulation, 'flow_dir_dem.tif', 'flow_acc_dem.tif')
 
         STATIC_NODE_RETRIEVAL_MAP = {
-            "area": lambda: get_cell_area(self.raw_paths[2]),
-            "roughness": lambda: get_roughness(self.raw_paths[2]),
+            "area": lambda: get_cell_area(self.raw_paths[3]),
+            "roughness": lambda: get_roughness(self.raw_paths[3]),
             "elevation": lambda: get_cell_elevation(self.raw_paths[0]),
             "position_x": lambda: get_cell_position_x(self.raw_paths[0]),
             "position_y": lambda: get_cell_position_y(self.raw_paths[0]),
-            "aspect": lambda: _get_aspect(self.raw_paths[0]),
-            "curvature": lambda: _get_curvature(self.raw_paths[0]),
-            "flow_accumulation": lambda: _get_flow_accumulation(self.raw_paths[0]),
+            "aspect": lambda: _get_aspect(self.raw_paths[0], self.raw_paths[2]),
+            "curvature": lambda: _get_curvature(self.raw_paths[0], self.raw_paths[2]),
+            "flow_accumulation": lambda: _get_flow_accumulation(self.raw_paths[0], self.raw_paths[2]),
         }
 
         static_features = self._get_features(feature_list=self.STATIC_NODE_FEATURES,
@@ -421,9 +416,9 @@ class FloodEventDataset(Dataset):
             return relative_pos
 
         STATIC_EDGE_RETRIEVAL_MAP = {
-            "direction_x": lambda: get_edge_direction_x(self.raw_paths[2]),
-            "direction_y": lambda: get_edge_direction_y(self.raw_paths[2]),
-            "face_length": lambda: get_face_length(self.raw_paths[2]),
+            "direction_x": lambda: get_edge_direction_x(self.raw_paths[3]),
+            "direction_y": lambda: get_edge_direction_y(self.raw_paths[3]),
+            "face_length": lambda: get_face_length(self.raw_paths[3]),
             "length": lambda: get_edge_length(self.raw_paths[1]),
             "slope": lambda: get_edge_slope(self.raw_paths[1]),
             "relative_position_x": lambda: get_relative_position('x', self.raw_paths[0], self.raw_paths[1]),
@@ -497,7 +492,7 @@ class FloodEventDataset(Dataset):
 
     def _get_dynamic_from_all_events(self, retrieval_func: Callable, aggr: str = 'first') -> ndarray:
         all_event_data = []
-        for i, hec_ras_path in enumerate(self.raw_paths[2:]):
+        for i, hec_ras_path in enumerate(self.raw_paths[3:]):
             event_data = retrieval_func(hec_ras_path)
             event_data = self._get_trimmed_dynamic_data(event_data, i, aggr)
             all_event_data.append(event_data)

@@ -29,7 +29,7 @@ class AutoregressiveFloodDataset(FloodEventDataset):
         event_rollout_trim_end = self.num_label_timesteps # Trim the last timesteps depending on the number of label timesteps
         current_total_ts = 0
         all_event_timesteps = []
-        for event_idx, hec_ras_path in enumerate(self.raw_paths[2:]):
+        for event_idx, hec_ras_path in enumerate(self.raw_paths[3:]):
             timesteps = get_event_timesteps(hec_ras_path)
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
             assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'

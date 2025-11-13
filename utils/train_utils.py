@@ -22,18 +22,26 @@ def split_dataset_events(root_dir: str, dataset_summary_file: str, percent_valid
     num_val_events = max(int(len(summary_df) * percent_validation), 1)
     split_idx = len(summary_df) - num_val_events
 
-    TEMP_DIR_NAME = 'train_val_split'
-    create_temp_dirs(raw_dir_path, folder_name=TEMP_DIR_NAME)
+    dataset_summary_dir = os.path.dirname(dataset_summary_path)
+    dataset_summary_basename = os.path.splitext(os.path.basename(dataset_summary_file))[0]
+    split_folder = os.path.join(dataset_summary_dir, f'{dataset_summary_basename}_split')
+
+    if not os.path.exists(split_folder):
+        os.makedirs(split_folder)
 
     train_rows = summary_df[:split_idx]
-    train_df_file = os.path.join(TEMP_DIR_NAME, f'train_split_{dataset_summary_file}')
-    train_rows.to_csv(os.path.join(raw_dir_path, train_df_file), index=False)
+    train_df_file = os.path.join(split_folder, 'train_split.csv')
+    train_rows.to_csv(train_df_file, index=False)
 
     val_rows = summary_df[split_idx:]
-    val_df_file = os.path.join(TEMP_DIR_NAME, f'val_split_{dataset_summary_file}')
-    val_rows.to_csv(os.path.join(raw_dir_path, val_df_file), index=False)
+    val_df_file = os.path.join(split_folder, 'val_split.csv')
+    val_rows.to_csv(val_df_file, index=False)
 
-    return train_df_file, val_df_file
+    # Return only relative paths
+    train_df_relative = os.path.relpath(train_df_file, raw_dir_path)
+    val_df_relative = os.path.relpath(val_df_file, raw_dir_path)
+
+    return train_df_relative, val_df_relative
 
 def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> dict:
     def log(msg):

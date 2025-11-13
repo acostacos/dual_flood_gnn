@@ -35,8 +35,8 @@ class DualAutoregressiveTester(BaseTester):
 
         if self.include_physics_loss:
             self.log('PHYSICS-BASED METRICS across events:')
-            self.log(f'\t:Average Absolute Global Mass Conservation Loss: {self.get_avg_abs_global_mass_loss():.4e}')
-            self.log(f'\t:Average Absolute Local Mass Conservation Loss: {self.get_avg_abs_local_mass_loss():.4e}')
+            self.log(f'\tAverage Absolute Global Mass Conservation Loss: {self.get_avg_abs_global_mass_loss():.4e}')
+            self.log(f'\tAverage Absolute Local Mass Conservation Loss: {self.get_avg_abs_local_mass_loss():.4e}')
 
     def run_test_for_event(self, event_idx: int, validation_stats: ValidationStats):
         validation_stats.start_validate()

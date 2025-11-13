@@ -25,8 +25,8 @@ class NodeAutoregressiveTester(BaseTester):
 
         self.log(f'Average Node RMSE across events: {self.get_avg_node_rmse():.4e}')
         if self.include_physics_loss:
-            self.log(f'Average Global Mass Conservation Loss across events: {self.get_avg_global_mass_loss():.4e}')
-            self.log(f'Average Local Mass Conservation Loss across events: {self.get_avg_local_mass_loss():.4e}')
+            self.log(f'Average Absolute Global Mass Conservation Loss across events: {self.get_avg_abs_global_mass_loss():.4e}')
+            self.log(f'Average Absolute Local Mass Conservation Loss across events: {self.get_avg_abs_local_mass_loss():.4e}')
 
     def run_test_for_event(self, event_idx: int, validation_stats: ValidationStats):
         validation_stats.start_validate()

@@ -76,8 +76,20 @@ class ValidationStats:
     def get_avg_rmse(self) -> float:
         return float(np.mean(self.rmse_list))
 
+    def get_avg_mae(self) -> float:
+        return float(np.mean(self.mae_list))
+
+    def get_avg_nse(self) -> float:
+        return float(np.mean(self.nse_list))
+
     def get_avg_edge_rmse(self) -> float:
         return float(np.mean(self.edge_rmse_list))
+
+    def get_avg_edge_mae(self) -> float:
+        return float(np.mean(self.edge_mae_list))
+
+    def get_avg_edge_nse(self) -> float:
+        return float(np.mean(self.edge_nse_list))
 
     def get_total_global_mass_loss(self) -> float:
         return float(np.sum(self.global_mass_loss_list))
@@ -166,11 +178,11 @@ class ValidationStats:
         if len(self.rmse_flooded_list) > 0:
             self.log(f'Average RMSE (flooded): {np.mean(self.rmse_flooded_list):.4e}')
         if len(self.mae_list) > 0:
-            self.log(f'Average MAE: {np.mean(self.mae_list):.4e}')
+            self.log(f'Average MAE: {self.get_avg_mae():.4e}')
         if len(self.mae_flooded_list) > 0:
             self.log(f'Average MAE (flooded): {np.mean(self.mae_flooded_list):.4e}')
         if len(self.nse_list) > 0:
-            self.log(f'Average NSE: {np.mean(self.nse_list):.4e}')
+            self.log(f'Average NSE: {self.get_avg_nse():.4e}')
         if len(self.nse_flooded_list) > 0:
             self.log(f'Average NSE (flooded): {np.mean(self.nse_flooded_list):.4e}')
         if len(self.csi_list) > 0:
@@ -181,11 +193,11 @@ class ValidationStats:
         if len(self.edge_rmse_flooded_list) > 0:
             self.log(f'Average Edge RMSE (flooded): {np.mean(self.edge_rmse_flooded_list):.4e}')
         if len(self.edge_mae_list) > 0:
-            self.log(f'Average Edge MAE: {np.mean(self.edge_mae_list):.4e}')
+            self.log(f'Average Edge MAE: {self.get_avg_edge_mae():.4e}')
         if len(self.edge_mae_flooded_list) > 0:
             self.log(f'Average Edge MAE (flooded): {np.mean(self.edge_mae_flooded_list):.4e}')
         if len(self.edge_nse_list) > 0:
-            self.log(f'Average Edge NSE: {np.mean(self.edge_nse_list):.4e}')
+            self.log(f'Average Edge NSE: {self.get_avg_edge_nse():.4e}')
         if len(self.edge_nse_flooded_list) > 0:
             self.log(f'Average Edge NSE (flooded): {np.mean(self.edge_nse_flooded_list):.4e}')
 

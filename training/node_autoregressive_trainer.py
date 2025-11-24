@@ -139,12 +139,12 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
             avg_batch_loss.backward()
             self._clip_gradients()
             self.optimizer.step()
-        
-        # Loss Updates
-        total_losses = (total_batch_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
-        avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
-        avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
-        
+
+            # Loss Updates
+            total_losses = (total_batch_pred_loss, total_batch_global_mass_loss, total_batch_local_mass_loss)
+            avg_losses = train_utils.divide_losses(total_losses, current_num_timesteps)
+            avg_pred_loss, avg_global_mass_loss, avg_local_mass_loss = avg_losses
+
         running_pred_loss += avg_pred_loss
         running_global_mass_loss += avg_global_mass_loss
         running_local_mass_loss += avg_local_mass_loss

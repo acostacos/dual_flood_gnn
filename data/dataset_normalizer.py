@@ -11,6 +11,8 @@ class DatasetNormalizer:
     def __init__(self, mode: Literal['train', 'test'], root_dir: str, features_stats_file: str):
         self.mode = mode
         self.feature_stats_path = os.path.join(root_dir, 'processed', features_stats_file)
+        if mode == 'test' and not os.path.exists(self.feature_stats_path):
+            raise FileNotFoundError(f'Feature stats file not found at {self.feature_stats_path} for test mode. Training dataset must be processed first.')
         self.feature_stats = self.load_feature_stats()
  
     def load_feature_stats(self) -> Dict:

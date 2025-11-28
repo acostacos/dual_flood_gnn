@@ -26,7 +26,7 @@ class ValidationStats:
         self.val_end_time = None
         self.timestamps = []
 
-        # ======== Water depth stats ========
+        # ======== Water volume stats ========
         self.pred_list = []
         self.target_list = []
 

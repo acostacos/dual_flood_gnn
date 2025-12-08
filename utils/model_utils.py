@@ -1,7 +1,7 @@
 from torch import Tensor
 from torch.nn import Module, Sequential, Linear, PReLU, ReLU, \
     MSELoss, L1Loss, HuberLoss, LayerNorm
-from torch_geometric.nn import GCNConv, Sequential as PygSequential
+from torch_geometric.nn import GCNConv, SAGEConv, GINConv, Sequential as PygSequential
 
 def make_mlp(input_size: int, output_size: int, hidden_size: int = None,
              num_layers: int = 1, activation: str = None, norm: str = None,
@@ -71,6 +71,7 @@ class LinearLayer(Module):
                  bias: bool = True,
                  device: str = 'cpu'):
         super().__init__()
+        self.in_features = in_features # For GINE compatibility
         self.linear = Linear(in_features=in_features, out_features=out_features, bias=bias, device=device)
         if activation is not None:
             self.activation = get_activation_func(activation, device=device)
@@ -102,6 +103,8 @@ class GNNLayer(Module):
     def _get_conv(self, conv: str, in_features: int, out_features: int, **conv_kwargs) -> Module:
         if conv == 'gcn':
             return GCNConv(in_channels=in_features, out_channels=out_features, **conv_kwargs)
+        if conv == 'sage':
+            return SAGEConv(in_channels=in_features, out_channels=out_features, **conv_kwargs)
         raise Exception(f'GNN Convolution {conv} is not implemented.')
 
     def forward(self, x: Tensor, edge_index: Tensor) -> Tensor:

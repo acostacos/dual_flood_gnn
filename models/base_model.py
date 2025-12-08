@@ -16,12 +16,12 @@ class BaseModel(Module):
         self.static_node_features = static_node_features
         self.dynamic_node_features = dynamic_node_features
         self.input_node_features = self.static_node_features + (self.dynamic_node_features * (self.previous_timesteps+1))
-        self.output_node_features = 1 # Water Level
+        self.output_node_features = 1 # Water Volume
 
         self.static_edge_features = static_edge_features
         self.dynamic_edge_features = dynamic_edge_features
         self.input_edge_features = self.static_edge_features + (self.dynamic_edge_features * (self.previous_timesteps+1))
-        self.output_edge_features = 1 # Velocity
+        self.output_edge_features = 1 # Water Flow
 
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
         raise NotImplementedError("Forward method not implemented!")

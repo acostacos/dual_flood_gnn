@@ -1,22 +1,23 @@
 from torch import Tensor
-from torch.nn import Identity
 from typing import Optional
 from utils.model_utils import make_mlp, make_gnn 
 
 from .base_model import BaseModel
 
-class GCN(BaseModel):
-    '''
-    GCN
-    Most Basic Graph Neural Network w/ Encoder-Decoder
-    '''
+class GraphSAGE(BaseModel):
     def __init__(self,
                  input_features: int = None,
                  output_features: int = None,
                  hidden_features: int = None,
                  num_layers: int = 1,
                  activation: str = 'relu',
-                 residual: bool = True,
+
+                 # Convolution Parameters
+                 aggr: str = 'mean',
+                 normalize: bool = False,
+                 root_weight: bool = True,
+                 project: bool = False,
+                 bias: bool = True,
 
                  # Encoder Decoder Parameters
                  encoder_layers: int = 0,
@@ -45,7 +46,9 @@ class GCN(BaseModel):
 
         self.convs = make_gnn(input_size=input_size, output_size=output_size,
                               hidden_size=hidden_features, num_layers=num_layers,
-                              conv='gcn', activation=activation, device=self.device)
+                              conv='sage', activation=activation, device=self.device,
+                              aggr=aggr, normalize=normalize, root_weight=root_weight,
+                              project=project, bias=bias)
 
         # Decoder
         if self.with_decoder:
@@ -53,12 +56,7 @@ class GCN(BaseModel):
                                         hidden_size=hidden_features, num_layers=encoder_layers,
                                         activation=decoder_activation, bias=False, device=self.device)
 
-        if residual:
-            self.residual = Identity()
-
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Optional[Tensor] = None) -> Tensor:
-        x0 = x.clone()
-
         if self.with_encoder:
             x = self.node_encoder(x)
 
@@ -67,8 +65,4 @@ class GCN(BaseModel):
         if self.with_decoder:
             x = self.node_decoder(x)
 
-        if hasattr(self, 'residual'):
-            x = x + self.residual(x0[:, -self.output_node_features:])
-
         return x
-

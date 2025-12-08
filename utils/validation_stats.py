@@ -215,6 +215,7 @@ class ValidationStats:
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
+        inference_time = self.get_inference_time() if self.val_start_time is not None and self.val_end_time is not None else None
         stats = {
             'timestamps': self.timestamps,
             'pred': np.array(self.pred_list),
@@ -236,7 +237,7 @@ class ValidationStats:
             'edge_nse_flooded': np.array(self.edge_nse_flooded_list),
             'global_mass_loss': np.array(self.global_mass_loss_list),
             'local_mass_loss': np.array(self.local_mass_loss_list),
-            'inference_time': self.get_inference_time(),
+            'inference_time': inference_time,
         }
         np.savez(filepath, **stats)
 

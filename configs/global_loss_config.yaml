@@ -130,6 +130,44 @@ model_parameters:                                            # Model-specific pa
     decoder_layers: 3
     decoder_activation: 'relu'
 
+  GIN:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
+  GINE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
+  GraphSAGE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    aggr: 'mean'
+    normalize: False
+    root_weight: True
+    project: False
+    bias: True
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
   DUALFloodGNN:
     hidden_features: 64
     num_layers: 3

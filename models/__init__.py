@@ -5,6 +5,9 @@ from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
 from .gat import GAT
 from .gcn import GCN
+from .gin import GIN
+from .gine import GINE
+from .graphsage import GraphSAGE
 from .dual_flood_gnn import DUALFloodGNN
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
@@ -23,6 +26,12 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
         return GCN(*args, **kwargs)
     if model_name == 'GAT':
         return GAT(*args, **kwargs)
+    if model_name == 'GIN':
+        return GIN(*args, **kwargs)
+    if model_name == 'GINE':
+        return GINE(*args, **kwargs)
+    if model_name == 'GraphSAGE':
+        return GraphSAGE(*args, **kwargs)
     if model_name == 'NodeEdgeGNNAttn':
         return NodeEdgeGNNAttn(*args, **kwargs)
     if model_name == 'NodeEdgeGNNTransformer':
@@ -38,6 +47,9 @@ __all__ = [
     'EdgeGNN',
     'GAT',
     'GCN',
+    'GIN',
+    'GINE',
+    'GraphSAGE',
     'NodeEdgeGNNAttn',
     'NodeEdgeGNNTransformer',
     'NodeGNN',

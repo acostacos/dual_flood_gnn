@@ -18,7 +18,7 @@ class GAT(BaseModel):
                  use_edge_features: bool = False,
                  input_edge_features: int = None,
                  num_layers: int = 1,
-                 activation: str = 'prelu',
+                 activation: str = 'relu',
                  residual: bool = True,
 
                  # Attention Parameters

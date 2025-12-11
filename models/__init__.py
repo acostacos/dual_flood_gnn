@@ -3,6 +3,9 @@ from torch.nn import Module
 from .edge_gat import EdgeGAT
 from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
+from .edge_gin import EdgeGIN
+from .edge_gine import EdgeGINE
+from .edge_graphsage import EdgeGraphSAGE
 from .gat import GAT
 from .gcn import GCN
 from .gin import GIN
@@ -20,6 +23,12 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
         return EdgeGAT(*args, **kwargs)
     if model_name == 'EdgeGCN':
         return EdgeGCN(*args, **kwargs)
+    if model_name == 'EdgeGIN':
+        return EdgeGIN(*args, **kwargs)
+    if model_name == 'EdgeGINE':
+        return EdgeGINE(*args, **kwargs)
+    if model_name == 'EdgeGraphSAGE':
+        return EdgeGraphSAGE(*args, **kwargs)
     if model_name == 'EdgeGNN':
         return EdgeGNN(*args, **kwargs)
     if model_name == 'GCN':
@@ -44,6 +53,9 @@ __all__ = [
     'DUALFloodGNN',
     'EdgeGAT',
     'EdgeGCN',
+    'EdgeGIN',
+    'EdgeGINE',
+    'EdgeGraphSAGE',
     'EdgeGNN',
     'GAT',
     'GCN',

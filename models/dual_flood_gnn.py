@@ -142,13 +142,13 @@ class NodeEdgeConv(MessagePassing):
         update_kwargs = self.inspector.collect_param_data('update', coll_dict)
         out = self.update(aggr, **update_kwargs)
 
-        return out, msg
+        edge_out = self.edge_update(msg, kwargs['edge_attr'])
+
+        return out, edge_out
 
     def message(self, x_j: Tensor, x_i: Tensor, edge_attr: Tensor) -> Tensor:
         cat_feats = torch.cat([x_i, edge_attr, x_j], dim=-1)
         msg = self.msg_mlp(cat_feats)
-        if self.residual:
-            msg = msg + edge_attr
         return msg
 
     def update(self, aggr: Tensor, x: Tensor) -> Tensor:
@@ -156,3 +156,8 @@ class NodeEdgeConv(MessagePassing):
         if self.residual:
             out = out + x
         return out
+
+    def edge_update(self, msg: Tensor, edge_attr: Tensor) -> Tensor:
+        if self.residual:
+            msg = msg + edge_attr
+        return msg

@@ -3,17 +3,12 @@ from torch.nn import Module
 from .base_model import BaseModel
 from .base_node_model import BaseNodeModel
 from .base_edge_model import BaseEdgeModel
-from .edge_gat import EdgeGAT
-from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
-from .edge_gin import EdgeGIN
-from .edge_gine import EdgeGINE
-from .edge_graphsage import EdgeGraphSAGE
-from .gat import GAT
-from .gcn import GCN
-from .gin import GIN
-from .gine import GINE
-from .graphsage import GraphSAGE
+from .gat import GAT, EdgeGAT
+from .gcn import GCN, EdgeGCN
+from .gin import GIN, EdgeGIN
+from .gine import GINE, EdgeGINE
+from .graphsage import GraphSAGE, EdgeGraphSAGE
 from .dual_flood_gnn import DUALFloodGNN
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn

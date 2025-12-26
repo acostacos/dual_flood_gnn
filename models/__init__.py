@@ -1,5 +1,8 @@
 from torch.nn import Module
 
+from .base_model import BaseModel
+from .base_node_model import BaseNodeModel
+from .base_edge_model import BaseEdgeModel
 from .edge_gat import EdgeGAT
 from .edge_gcn import EdgeGCN
 from .edge_gnn import EdgeGNN
@@ -50,6 +53,9 @@ def model_factory(model_name: str, *args, **kwargs) -> Module:
     raise ValueError(f'Invalid model name: {model_name}')
 
 __all__ = [
+    'BaseModel',
+    'BaseNodeModel',
+    'BaseEdgeModel',
     'DUALFloodGNN',
     'EdgeGAT',
     'EdgeGCN',

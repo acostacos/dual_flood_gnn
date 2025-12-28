@@ -4,6 +4,8 @@ import rasterio
 import whitebox
 import logging
 
+from rasterio import transform
+
 def _get_whitebox_tools() -> whitebox.WhiteboxTools:
     wbt = whitebox.WhiteboxTools()
     wbt.set_verbose_mode(False)
@@ -13,18 +15,18 @@ def extract_values_from_dem(dem_path: str, xy_coords: np.ndarray) -> np.ndarray:
     log = logging.getLogger()
     log.setLevel(logging.WARN)  # Suppress rasterio debug info
 
-    value_arr = []
     with rasterio.open(dem_path) as src:
-        for x, y in xy_coords:
-            row, col = src.index(x, y)
+        band = src.read(1)
 
-            if row < 0 or row >= src.height or col < 0 or col >= src.width:
-                raise ValueError(f"Coordinates ({x}, {y}) are out of bounds for the DEM file {dem_path}.")
+        rows, cols = transform.rowcol(src.transform, xy_coords[:, 0], xy_coords[:, 1])
 
-            band = src.read(1)
-            value = band[row, col]
-            value_arr.append(value)
-    value_arr = np.array(value_arr)
+        out_of_bounds = (rows < 0) | (rows >= src.height) | (cols < 0) | (cols >= src.width)
+        if np.any(out_of_bounds):
+            idx = np.where(out_of_bounds)[0][0]
+            x, y = xy_coords[idx]
+            raise ValueError(f"Coordinates ({x}, {y}) are out of bounds for the DEM file {dem_path}.")
+
+        value_arr = band[rows, cols]
 
     log.setLevel(logging.DEBUG)  # Restore logging level
 

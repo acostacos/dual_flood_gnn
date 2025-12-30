@@ -36,9 +36,9 @@ class GlobalMassConservationLoss(Module):
         global_mass_info: Dict[str, Tensor] = databatch.global_mass_info
 
         # Get predefined information
+        non_boundary_nodes_mask = ~databatch.boundary_nodes_mask
         inflow_edges_mask = global_mass_info['inflow_edges_mask']
         outflow_edges_mask = global_mass_info['outflow_edges_mask']
-        non_boundary_nodes_mask = global_mass_info['non_boundary_nodes_mask']
 
         # Get current total water volume (t)
         curr_water_volume = get_orig_water_volume(batch_node_input, self.normalizer, self.is_normalized, non_boundary_nodes_mask)

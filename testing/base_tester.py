@@ -29,19 +29,6 @@ class BaseTester:
         if logger is not None and hasattr(logger, 'log'):
             self.log = logger.log
 
-        # Get non-boundary nodes/edges and threshold for metric computation
-        self.boundary_nodes_mask = dataset.boundary_condition.boundary_nodes_mask
-        self.non_boundary_nodes_mask = ~dataset.boundary_condition.boundary_nodes_mask
-        self.boundary_edges_mask = dataset.boundary_condition.boundary_edges_mask
-
-        # Assume using the same area for all events in the dataset
-        area_nodes_idx = dataset.STATIC_NODE_FEATURES.index('area')
-        area = dataset[0].x.clone()[:, area_nodes_idx]
-        if dataset.is_normalized:
-            area = dataset.normalizer.denormalize('area', area)
-        area = area[self.non_boundary_nodes_mask, None]
-        self.threshold_per_cell = area * 0.05 # 5% of cell area
-
         # Get sliding window indices
         previous_timesteps = dataset.previous_timesteps
         sliding_window_length = previous_timesteps + 1
@@ -56,6 +43,16 @@ class BaseTester:
 
     def test(self):
         raise NotImplementedError("Subclasses should implement this method.")
+
+    def _get_cell_thresholds(self, graph) -> np.ndarray:
+        area_nodes_idx = self.dataset.STATIC_NODE_FEATURES.index('area')
+        area = graph.x[:, area_nodes_idx].clone()
+        if self.dataset.is_normalized:
+            area = self.dataset.normalizer.denormalize('area', area)
+        non_boundary_nodes_mask = ~graph.boundary_nodes_mask
+        area = area[non_boundary_nodes_mask, None]
+        threshold_per_cell = area * 0.05 # 5% of cell area
+        return threshold_per_cell
 
     def get_avg_node_rmse(self) -> float:
         rmses = [stat.get_avg_rmse() for stat in self.events_validation_stats]
@@ -90,7 +87,7 @@ class BaseTester:
         return np.mean(losses) if losses else 0.0
 
     def save_stats(self, output_dir: str, stats_filename_prefix: Optional[str] = None):
-        for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
+        for event_idx, run_id in enumerate(self.dataset.event_run_ids):
             validation_stats = self.events_validation_stats[event_idx]
             saved_metrics_path = os.path.join(output_dir, f'{stats_filename_prefix}_runid_{run_id}_test_metrics.npz')
             validation_stats.save_stats(saved_metrics_path)

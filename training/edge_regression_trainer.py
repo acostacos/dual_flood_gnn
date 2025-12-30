@@ -1,8 +1,6 @@
 import os
-import numpy as np
 
 from contextlib import redirect_stdout
-from data import FloodEventDataset
 from testing import EdgeAutoregressiveTester
 from torch import Tensor
 
@@ -11,9 +9,6 @@ from .base_trainer import BaseTrainer
 class EdgeRegressionTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        ds: FloodEventDataset = self.dataloader.dataset
-        self.boundary_edges_mask = ds.boundary_condition.boundary_edges_mask
 
     def train(self):
         self.training_stats.start_train()
@@ -73,6 +68,5 @@ class EdgeRegressionTrainer(BaseTrainer):
         return self.loss_func(edge_pred, label)
 
     def _override_pred_bc(self, edge_pred: Tensor, batch) -> Tensor:
-        batch_boundary_edges_mask = np.tile(self.boundary_edges_mask, batch.num_graphs)
-        edge_pred[batch_boundary_edges_mask] = batch.y_edge[batch_boundary_edges_mask]
+        edge_pred[batch.boundary_edges_mask] = batch.y_edge[batch.boundary_edges_mask]
         return edge_pred

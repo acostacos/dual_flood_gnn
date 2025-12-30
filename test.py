@@ -94,9 +94,6 @@ def main():
         dataset_parameters = config['dataset_parameters']
         base_datset_config = {
             'root_dir': dataset_parameters['root_dir'],
-            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-            'edges_shp_file': dataset_parameters['edges_shp_file'],
-            'dem_file': dataset_parameters['dem_file'],
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],

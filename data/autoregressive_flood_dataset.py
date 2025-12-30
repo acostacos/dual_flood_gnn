@@ -19,23 +19,23 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
     # =========== process() methods ===========
 
-    def _set_event_properties(self) -> ndarray:
+    def _set_event_properties(self):
         self._event_peak_idx = []
-        self._event_num_timesteps = []
         self._event_base_timestep_interval = []
         self.event_start_idx = []
 
         event_rollout_trim_start = self.previous_timesteps  # First timestep starts at self.previous_timesteps
         event_rollout_trim_end = self.num_label_timesteps # Trim the last timesteps depending on the number of label timesteps
         current_total_ts = 0
-        all_event_timesteps = []
-        for event_idx, hec_ras_path in enumerate(self.raw_paths[3:]):
-            timesteps = get_event_timesteps(hec_ras_path)
+        for event_idx in range(len(self.event_run_ids)):
+            paths = self._get_event_file_paths(event_idx)
+
+            timesteps = get_event_timesteps(paths[self.EVENT_FILE_KEYS[0]])
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
-            assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
+            assert self.timestep_interval % event_ts_interval == 0, f'Event {self.event_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
             self._event_base_timestep_interval.append(event_ts_interval)
 
-            water_volume = get_water_volume(hec_ras_path)
+            water_volume = get_water_volume(paths[self.EVENT_FILE_KEYS[0]])
             total_water_volume = water_volume.sum(axis=1)
             peak_idx = np.argmax(total_water_volume).item()
             num_timesteps_after_peak = self.time_from_peak // event_ts_interval if self.time_from_peak is not None else 0
@@ -43,12 +43,9 @@ class AutoregressiveFloodDataset(FloodEventDataset):
             self._event_peak_idx.append(peak_idx)
 
             timesteps = self._get_trimmed_dynamic_data(timesteps, event_idx, aggr='first')
-            all_event_timesteps.append(timesteps)
+            trim_num_timesteps = len(timesteps)
 
-            num_timesteps = len(timesteps)
-            self._event_num_timesteps.append(num_timesteps)
-
-            event_total_rollout_ts = num_timesteps - event_rollout_trim_start - event_rollout_trim_end
+            event_total_rollout_ts = trim_num_timesteps - event_rollout_trim_start - event_rollout_trim_end
             assert event_total_rollout_ts > 0, f'Event {event_idx} has too few timesteps.'
             self.event_start_idx.append(current_total_ts)
 
@@ -56,12 +53,8 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
         self.total_rollout_timesteps = current_total_ts
 
-        assert len(self._event_peak_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and peak indices.'
-        assert len(self._event_num_timesteps) == len(self.hec_ras_run_ids), 'Mismatch in number of events and number of timesteps.'
-        assert len(self.event_start_idx) == len(self.hec_ras_run_ids), 'Mismatch in number of events and start indices.'
-
-        all_event_timesteps = np.concatenate(all_event_timesteps, axis=0)
-        return all_event_timesteps
+        assert len(self._event_peak_idx) == len(self.event_run_ids), 'Mismatch in number of events and peak indices.'
+        assert len(self.event_start_idx) == len(self.event_run_ids), 'Mismatch in number of events and start indices.'
 
     # =========== get() methods ===========
 
@@ -117,31 +110,28 @@ class AutoregressiveFloodDataset(FloodEventDataset):
 
         return label_nodes, label_edges
 
-    def _get_global_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
+    def _get_global_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, event_idx: int, timestep_idx: int) -> Dict[str, Tensor]:
         end_idx = timestep_idx + self.num_label_timesteps
-        non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
+        event_bc = self.boundary_conditions[event_idx]
+        non_boundary_nodes_mask = ~event_bc.boundary_nodes_mask
         total_rainfall = node_rainfall_per_ts[timestep_idx:end_idx, non_boundary_nodes_mask].sum(axis=1)[None, :]
 
         total_rainfall = torch.from_numpy(total_rainfall)
-        inflow_edges_mask = torch.from_numpy(self.boundary_condition.inflow_edges_mask)
-        outflow_edges_mask = torch.from_numpy(self.boundary_condition.outflow_edges_mask)
-        non_boundary_nodes_mask = torch.from_numpy(non_boundary_nodes_mask)
+        inflow_edges_mask = torch.from_numpy(event_bc.inflow_edges_mask)
+        outflow_edges_mask = torch.from_numpy(event_bc.outflow_edges_mask)
 
         return {
             'total_rainfall': total_rainfall,
             'inflow_edges_mask': inflow_edges_mask,
             'outflow_edges_mask': outflow_edges_mask,
-            'non_boundary_nodes_mask': non_boundary_nodes_mask,
         }
 
-    def _get_local_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
+    def _get_local_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, event_idx: int, timestep_idx: int) -> Dict[str, Tensor]:
         end_ts = timestep_idx + self.num_label_timesteps
         rainfall = node_rainfall_per_ts[timestep_idx:end_ts].T
 
         rainfall = torch.from_numpy(rainfall)
-        non_boundary_nodes_mask = torch.from_numpy(~self.boundary_condition.boundary_nodes_mask)
 
         return {
             'rainfall': rainfall,
-            'non_boundary_nodes_mask': non_boundary_nodes_mask,
         }

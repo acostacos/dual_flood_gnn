@@ -1,8 +1,6 @@
 import os
-import numpy as np
 
 from contextlib import redirect_stdout
-from data import FloodEventDataset
 from torch import Tensor
 from testing import NodeAutoregressiveTester
 from utils import physics_utils, train_utils
@@ -12,9 +10,6 @@ from .physics_informed_trainer import PhysicsInformedTrainer
 class NodeRegressionTrainer(PhysicsInformedTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        ds: FloodEventDataset = self.dataloader.dataset
-        self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
 
     def train(self):
         self.training_stats.start_train()
@@ -98,6 +93,5 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
         return self.loss_func(pred, label)
 
     def _override_pred_bc(self, pred: Tensor, batch) -> Tensor:
-        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
-        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask]
+        pred[batch.boundary_nodes_mask] = batch.y[batch.boundary_nodes_mask]
         return pred

@@ -9,11 +9,11 @@ from .hecras_data_retrieval import get_min_cell_elevation
 class BoundaryCondition:
     def __init__(self,
                  root_dir: str,
-                 hec_ras_file: str,
+                 simulation_file: str,
                  inflow_boundary_nodes: List[int],
                  outflow_boundary_nodes: List[int],
                  saved_npz_file: str):
-        self.hec_ras_path = os.path.join(root_dir, 'raw', hec_ras_file)
+        self.simulation_path = os.path.join(root_dir, 'raw', simulation_file)
         self.saved_npz_path = os.path.join(root_dir, 'processed', saved_npz_file)
         self.init_inflow_boundary_nodes = inflow_boundary_nodes
         self.init_outflow_boundary_nodes = outflow_boundary_nodes
@@ -25,7 +25,7 @@ class BoundaryCondition:
         self._boundary_dynamic_edges = None
 
     def _init(self) -> None:
-        min_elevation = get_min_cell_elevation(self.hec_ras_path)
+        min_elevation = get_min_cell_elevation(self.simulation_path)
         ghost_nodes = np.where(np.isnan(min_elevation))[0]
 
         boundary_nodes = np.concat([np.array(self.init_inflow_boundary_nodes), np.array(self.init_outflow_boundary_nodes)])

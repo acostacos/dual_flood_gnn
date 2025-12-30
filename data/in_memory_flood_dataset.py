@@ -17,14 +17,6 @@ class InMemoryFloodDataset(FloodEventDataset):
         self.data_list = self.load_to_memory()
 
     def load_to_memory(self) -> List[Data]:
-        # Load constant data
-        constant_values = np.load(self.processed_paths[3])
-        edge_index: ndarray = constant_values['edge_index']
-        static_nodes: ndarray = constant_values['static_nodes']
-        static_edges: ndarray = constant_values['static_edges']
-
-        t_edge_index = torch.from_numpy(edge_index.copy())
-
         curr_event_idx = -1
         data_list = []
         progress_bar = tqdm(range(self.total_rollout_timesteps), desc='Processing timesteps')
@@ -40,9 +32,24 @@ class InMemoryFloodDataset(FloodEventDataset):
             event_idx = self.event_start_idx.index(start_idx)
 
             if event_idx != curr_event_idx:
+                # Load static data
+                paths_start_idx = 2 + event_idx * self.num_processed_files_per_event
+                paths_end_idx = paths_start_idx + self.num_processed_files_per_event
+                static_npz_path, dynamic_npz_path, _ = self.processed_paths[paths_start_idx:paths_end_idx]
+
+                # Load static data
+                static_values = np.load(static_npz_path)
+                edge_index: ndarray = static_values['edge_index']
+                static_nodes: ndarray = static_values['static_nodes']
+                static_edges: ndarray = static_values['static_edges']
+
+                edge_index = torch.from_numpy(edge_index)
+                event_bc = self.boundary_conditions[event_idx]
+                boundary_nodes_mask = torch.from_numpy(event_bc.boundary_nodes_mask)
+                boundary_edges_mask = torch.from_numpy(event_bc.boundary_edges_mask)
+
                 # Load dynamic data
-                dynamic_values_path = self.processed_paths[event_idx + 4]
-                dynamic_values = np.load(dynamic_values_path, allow_pickle=True)
+                dynamic_values = np.load(dynamic_npz_path, allow_pickle=True)
                 event_timesteps: ndarray = dynamic_values['event_timesteps']
                 dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
                 dynamic_edges: ndarray = dynamic_values['dynamic_edges']
@@ -62,18 +69,20 @@ class InMemoryFloodDataset(FloodEventDataset):
 
             global_mass_info = None
             if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, event_idx, within_event_idx)
 
             local_mass_info = None
             if self.with_local_mass_loss:
-                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, event_idx, within_event_idx)
 
             data = Data(x=node_features,
-                    edge_index=t_edge_index,
+                    edge_index=edge_index,
                     edge_attr=edge_features,
                     y=label_nodes,
                     y_edge=label_edges,
                     timestep=timestep,
+                    boundary_nodes_mask=boundary_nodes_mask,
+                    boundary_edges_mask=boundary_edges_mask,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)
 

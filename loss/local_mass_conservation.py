@@ -37,11 +37,10 @@ class LocalMassConservationLoss(Module):
         edge_index = databatch.edge_index
         num_nodes = databatch.num_nodes
         num_graphs = databatch.num_graphs
-        local_mass_info: Dict[str, Tensor] = databatch.local_mass_info
 
         if node_filter_mask is None:
             # Default to using all non-boundary nodes
-            node_filter_mask = local_mass_info['non_boundary_nodes_mask']
+            node_filter_mask = ~databatch.boundary_nodes_mask
 
         # Get current total water volume (t)
         curr_water_volume = get_orig_water_volume(batch_node_input, self.normalizer, self.is_normalized, node_filter_mask)

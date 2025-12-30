@@ -12,8 +12,8 @@ class NodeAutoregressiveTester(BaseTester):
         super().__init__(*args, **kwargs)
 
     def test(self):
-        for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
-            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.hec_ras_run_ids)} with Run ID {run_id}')
+        for event_idx, run_id in enumerate(self.dataset.event_run_ids):
+            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.event_run_ids)} with Run ID {run_id}')
 
             validation_stats = ValidationStats(logger=self.logger,
                                                 normalizer=self.dataset.normalizer,
@@ -52,7 +52,7 @@ class NodeAutoregressiveTester(BaseTester):
                 pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
+                pred_diff[graph.boundary_nodes_mask] = graph.y[graph.boundary_nodes_mask]
 
                 prev_node_pred = sliding_window[:, [-1]]
                 pred = prev_node_pred + pred_diff
@@ -75,11 +75,13 @@ class NodeAutoregressiveTester(BaseTester):
                 label = torch.clip(label, min=0)
 
                 # Filter boundary conditions for metric computation
-                pred = pred[self.non_boundary_nodes_mask]
-                label = label[self.non_boundary_nodes_mask]
+                non_boundary_nodes_mask = ~graph.boundary_nodes_mask
+                pred = pred[non_boundary_nodes_mask]
+                label = label[non_boundary_nodes_mask]
 
+                threshold_per_cell = self._get_cell_thresholds(graph)
                 validation_stats.update_stats_for_timestep(pred.cpu(),
                                                            label.cpu(),
-                                                           water_threshold=self.threshold_per_cell,
+                                                           water_threshold=threshold_per_cell.cpu(),
                                                            timestamp=graph.timestep if hasattr(graph, 'timestep') else None)
         validation_stats.end_validate()

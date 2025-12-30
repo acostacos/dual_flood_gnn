@@ -31,9 +31,6 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
     loss_func_parameters = config['loss_func_parameters']
     base_datset_config = {
         'root_dir': root_dir,
-        'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-        'edges_shp_file': dataset_parameters['edges_shp_file'],
-        'dem_file': dataset_parameters['dem_file'],
         'features_stats_file': dataset_parameters['features_stats_file'],
         'previous_timesteps': dataset_parameters['previous_timesteps'],
         'normalize': dataset_parameters['normalize'],
@@ -229,9 +226,6 @@ def main():
         dataset_parameters = config['dataset_parameters']
         base_datset_config = {
             'root_dir': dataset_parameters['root_dir'],
-            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-            'edges_shp_file': dataset_parameters['edges_shp_file'],
-            'dem_file': dataset_parameters['dem_file'],
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],

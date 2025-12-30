@@ -1,6 +1,5 @@
 import os
 import time
-import numpy as np
 import torch
 
 from contextlib import redirect_stdout
@@ -17,11 +16,8 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        ds: AutoregressiveFloodDataset = self.dataloader.dataset
-        # Get non-boundary nodes/edges and threshold for metric computation
-        self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
-
         # Get sliding window indices
+        ds: AutoregressiveFloodDataset = self.dataloader.dataset
         sliding_window_length = ds.previous_timesteps + 1
         target_nodes_idx = ds.DYNAMIC_NODE_FEATURES.index(ds.NODE_TARGET_FEATURE)
         self.start_node_target_idx = ds.num_static_node_features + (target_nodes_idx * sliding_window_length)
@@ -174,6 +170,5 @@ class NodeAutoregressiveTrainer(BaseAutoregressiveTrainer, PhysicsInformedTraine
         return self.loss_func(pred, label)
 
     def _override_pred_bc(self, pred: Tensor, batch, timestep: int) -> Tensor:
-        batch_boundary_nodes_mask = np.tile(self.boundary_nodes_mask, batch.num_graphs)
-        pred[batch_boundary_nodes_mask] = batch.y[batch_boundary_nodes_mask, :, timestep]
+        pred[batch.boundary_nodes_mask] = batch.y[batch.boundary_nodes_mask, :, timestep]
         return pred

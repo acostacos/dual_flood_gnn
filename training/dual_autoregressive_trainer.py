@@ -174,9 +174,8 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
         event_node_rmse_list, event_edge_rmse_list = [], []
 
         epoch = self.num_epochs_dyn_loss + 1
-        non_boundary_nodes_mask = ~self.boundary_nodes_mask
         ds = self.val_dataset
-        for event_idx in range(len(ds.hec_ras_run_ids)):
+        for event_idx in range(len(ds.event_run_ids)):
             with torch.no_grad():
                 event_start_idx = ds.event_start_idx[event_idx]
                 event_end_idx = ds.event_start_idx[event_idx + 1] if event_idx + 1 < len(ds.event_start_idx) else ds.total_rollout_timesteps
@@ -200,8 +199,8 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                     # Override boundary conditions in predictions
-                    pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
-                    edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
+                    pred_diff[graph.boundary_nodes_mask] = graph.y[graph.boundary_nodes_mask]
+                    edge_pred_diff[graph.boundary_edges_mask] = graph.y_edge[graph.boundary_edges_mask]
 
                     # ========== Training Losses ==========
                     pred_loss = self.loss_func(pred_diff, graph.y)
@@ -240,6 +239,7 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     label = torch.clip(label, min=0)
 
                     # Filter boundary conditions for metric computation
+                    non_boundary_nodes_mask = ~graph.boundary_nodes_mask
                     pred = pred[non_boundary_nodes_mask]
                     label = label[non_boundary_nodes_mask]
 

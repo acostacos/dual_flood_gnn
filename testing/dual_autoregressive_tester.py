@@ -12,8 +12,8 @@ class DualAutoregressiveTester(BaseTester):
         super().__init__(*args, **kwargs)
 
     def test(self):
-        for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
-            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.hec_ras_run_ids)} with Run ID {run_id}')
+        for event_idx, run_id in enumerate(self.dataset.event_run_ids):
+            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.event_run_ids)} with Run ID {run_id}')
 
             validation_stats = ValidationStats(logger=self.logger,
                                                 normalizer=self.dataset.normalizer,
@@ -48,7 +48,7 @@ class DualAutoregressiveTester(BaseTester):
                 event_end_idx = event_start_idx + self.rollout_timesteps
                 dataset_event_length = self.dataset.event_start_idx[event_idx + 1] if event_idx + 1 < len(self.dataset.event_start_idx) else self.dataset.total_rollout_timesteps
                 assert event_end_idx <= dataset_event_length, \
-                    f'Rollout length {event_end_idx} exceeds event length {dataset_event_length} for event {self.dataset.hec_ras_run_ids[event_idx]}.'
+                    f'Rollout length {event_end_idx} exceeds event length {dataset_event_length} for event {self.dataset.event_run_ids[event_idx]}.'
             event_dataset = self.dataset[event_start_idx:event_end_idx]
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False) # Enforce batch size = 1 for autoregressive testing
 
@@ -65,8 +65,8 @@ class DualAutoregressiveTester(BaseTester):
                 pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
-                edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
+                pred_diff[graph.boundary_nodes_mask] = graph.y[graph.boundary_nodes_mask]
+                edge_pred_diff[graph.boundary_edges_mask] = graph.y_edge[graph.boundary_edges_mask]
 
                 prev_node_pred = sliding_window[:, [-1]]
                 pred = prev_node_pred + pred_diff
@@ -90,12 +90,14 @@ class DualAutoregressiveTester(BaseTester):
                 label = torch.clip(label, min=0)
 
                 # Filter boundary conditions for metric computation
-                pred = pred[self.non_boundary_nodes_mask]
-                label = label[self.non_boundary_nodes_mask]
+                non_boundary_nodes_mask = ~graph.boundary_nodes_mask
+                pred = pred[non_boundary_nodes_mask]
+                label = label[non_boundary_nodes_mask]
 
+                threshold_per_cell = self._get_cell_thresholds(graph)
                 validation_stats.update_stats_for_timestep(pred.cpu(),
                                                            label.cpu(),
-                                                           water_threshold=self.threshold_per_cell,
+                                                           water_threshold=threshold_per_cell.cpu(),
                                                            timestamp=graph.timestep if hasattr(graph, 'timestep') else None)
 
                 label_edge = graph.edge_attr[:, [self.end_edge_target_idx-1]] + graph.y_edge

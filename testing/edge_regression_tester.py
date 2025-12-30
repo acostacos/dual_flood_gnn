@@ -10,8 +10,8 @@ class EdgeRegressionTester(BaseTester):
         super().__init__(*args, **kwargs)
 
     def test(self):
-        for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
-            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.hec_ras_run_ids)} with Run ID {run_id}')
+        for event_idx, run_id in enumerate(self.dataset.event_run_ids):
+            self.log(f'Validating on run {event_idx + 1}/{len(self.dataset.event_run_ids)} with Run ID {run_id}')
 
             validation_stats = ValidationStats(logger=self.logger,
                                                 normalizer=self.dataset.normalizer,
@@ -43,7 +43,7 @@ class EdgeRegressionTester(BaseTester):
                 edge_pred_diff = self.model(x, edge_index, edge_attr)
 
                 # Override boundary conditions in predictions
-                edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[self.boundary_edges_mask]
+                edge_pred_diff[graph.boundary_edges_mask] = graph.y_edge[graph.boundary_edges_mask]
 
                 edge_pred = edge_attr[:, [self.end_edge_target_idx-1]] + edge_pred_diff
 

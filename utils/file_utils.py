@@ -5,6 +5,7 @@ import os
 import pickle
 import yaml
 import shutil
+import xarray as xr
 
 from typing import Any, List, Union
 
@@ -29,6 +30,11 @@ def read_hdf_file_as_numpy(filepath: str, property_path: str, separator: str = '
     with h5py.File(filepath, 'r') as hec:
         data = get_property_from_path(hec, property_path, separator)
         np_data = np.array(data)
+    return np_data
+
+def read_nc_file_as_numpy(filepath: str, property_name: str) -> np.ndarray:
+    with xr.open_dataset(filepath) as ds:
+        np_data = ds[property_name].values
     return np_data
 
 def get_property_from_path(dict: dict, dict_path: str, separator: str = '.') -> Any:

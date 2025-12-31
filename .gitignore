@@ -178,6 +178,7 @@ cython_debug/
 
 # Data
 data/datasets/
+data_mswegnn/datasets/
 logs/
 training_stats/
 saved_models/

@@ -3,6 +3,7 @@ import os
 import rasterio
 import whitebox
 import logging
+import laspy
 
 from rasterio import transform
 
@@ -24,7 +25,12 @@ def extract_values_from_dem(dem_path: str, xy_coords: np.ndarray) -> np.ndarray:
         if np.any(out_of_bounds):
             idx = np.where(out_of_bounds)[0][0]
             x, y = xy_coords[idx]
-            raise ValueError(f"Coordinates ({x}, {y}) are out of bounds for the DEM file {dem_path}.")
+            # raise ValueError(f"Coordinates ({x}, {y}) are out of bounds for the DEM file {dem_path}.")
+
+            # Extrapolate to nearest valid cell
+            print(f"Warning: Coordinates ({x}, {y}) are out of bounds for the DEM file {dem_path}. Extrapolating to nearest valid cell.")
+            rows = np.clip(rows, 0, src.height - 1)
+            cols = np.clip(cols, 0, src.width - 1)
 
         value_arr = band[rows, cols]
 
@@ -32,8 +38,45 @@ def extract_values_from_dem(dem_path: str, xy_coords: np.ndarray) -> np.ndarray:
 
     return value_arr
 
+def convert_xyz_to_tif(xyz_path: str, output_path: str) -> str:
+    assert '.tif' in output_path, "Output file extention must be a .tif file"
+    xyz_path = os.path.abspath(xyz_path)
+    output_path = os.path.abspath(output_path)
+    if os.path.exists(output_path):
+        return output_path
+
+    print(f'Converting .xyz to .tif file at: {output_path}')
+
+    # Convert .xyz to .las
+    las_path = xyz_path.replace('.xyz', '.las')
+    xyz_data = np.loadtxt(xyz_path)
+    x, y, z = xyz_data[:, 0], xyz_data[:, 1], xyz_data[:, 2]
+
+    header = laspy.LasHeader(point_format=0, version="1.4") # point_format=0 -> for x,y,z only
+    header.offsets = [np.min(x), np.min(y), np.min(z)]
+    header.scales = [0.01, 0.01, 0.01]
+
+    las = laspy.LasData(header)
+    las.x, las.y, las.z = x, y, z
+    las.write(las_path)
+
+    # Convert .las to .tif
+    wbt = _get_whitebox_tools()
+    wbt.lidar_tin_gridding(
+        i=las_path,
+        output=output_path,
+        parameter="elevation",
+        returns="all",
+        resolution=1.0, # adjust cell size as needed (in map units)
+    )
+
+    return output_path
+
 def get_filled_dem(dem_path: str, output_path: str) -> str:
     assert '.tif' in output_path, "Output file extention must be a .tif file"
+    if dem_path.endswith('.xyz'):
+        dem_path = convert_xyz_to_tif(dem_path, dem_path.replace('.xyz', '.tif'))
+
     dem_path = os.path.abspath(dem_path)
     output_path = os.path.abspath(output_path)
     if os.path.exists(output_path):

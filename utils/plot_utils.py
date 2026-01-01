@@ -56,7 +56,7 @@ def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
         outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
 
         bc = BoundaryCondition(root_dir=root_dir,
-                               hec_ras_file=hec_ras_file,
+                               simulation_file=hec_ras_file,
                                inflow_boundary_nodes=inflow_boundary_nodes,
                                outflow_boundary_nodes=outflow_boundary_nodes,
                                saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
@@ -84,7 +84,7 @@ def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
         outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
 
         bc = BoundaryCondition(root_dir=root_dir,
-                               hec_ras_file=hec_ras_file,
+                               simulation_file=hec_ras_file,
                                inflow_boundary_nodes=inflow_boundary_nodes,
                                outflow_boundary_nodes=outflow_boundary_nodes,
                                saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)

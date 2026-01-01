@@ -57,10 +57,13 @@ class GlobalMassConservationLoss(Module):
         total_inflow = scatter(curr_inflow, inflow_batch, reduce='sum')
 
         # Get current water outflow (t)
-        curr_outflow = water_flow[outflow_edges_mask]
-        outflow_node_idxs = edge_index[1, outflow_edges_mask]
-        outflow_batch = batch[outflow_node_idxs]
-        total_outflow = scatter(curr_outflow, outflow_batch, reduce='sum')
+        if outflow_edges_mask.sum() == 0:
+            total_outflow = torch.zeros_like(total_inflow)
+        else:
+            curr_outflow = water_flow[outflow_edges_mask]
+            outflow_node_idxs = edge_index[1, outflow_edges_mask]
+            outflow_batch = batch[outflow_node_idxs]
+            total_outflow = scatter(curr_outflow, outflow_batch, reduce='sum')
 
         # Compute Global Mass Conservation
         delta_v = total_next_water_volume - total_water_volume

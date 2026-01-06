@@ -2,6 +2,7 @@ import torch
 import numpy as np
 
 from data.hecras_data_retrieval import get_wl_vol_interp_points_for_cell, get_cell_area
+from data_mswegnn.shp_data_retrieval import get_node_types, get_cell_area as get_cell_area_from_shp
 from torch import Tensor
 from torch.nn.functional import mse_loss, l1_loss
 
@@ -56,3 +57,19 @@ def interpolate_wl_from_vol(water_volume: np.ndarray, hec_ras_file_path: str, nu
             print(f'Completed interpolation for timestep {t}/{num_timesteps}')
 
     return water_level
+
+def mswegnn_interpolate_wd_from_vol(water_volume: np.ndarray, node_shp_path: str, cells_shp_path: str):
+    cell_area = get_cell_area_from_shp(cells_shp_path)
+
+    node_types = get_node_types(node_shp_path)
+    non_boundary_nodes = node_types == 1
+    cell_area = cell_area[non_boundary_nodes]
+    cell_area = cell_area[None, :, None]
+
+    num_timesteps = water_volume.shape[0]
+    water_depth = []
+    for ts in range(num_timesteps):
+        ts_water_depth = water_volume[[ts]] / cell_area
+        water_depth.append(ts_water_depth)
+    water_depth = np.concatenate(water_depth, axis=0)
+    return water_depth

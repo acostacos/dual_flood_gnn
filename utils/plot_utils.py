@@ -7,7 +7,8 @@ import geopandas as gpd
 import pandas as pd
 
 from data import FloodEventDataset
-from data.boundary_condition import BoundaryCondition
+# from data.boundary_condition import BoundaryCondition
+from data_mswegnn.mswegnn_boundary_condition import mSWEGNNBoundaryCondition as BoundaryCondition
 from typing import Literal, List, Tuple
 
 def get_trimmed_cmap(cmap_name, start=0.0, end=1.0, n_colors=256):
@@ -40,27 +41,27 @@ def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
     '''Get the node GeoDataFrame, optionally removing ghost nodes based on boundary conditions.'''
     dataset_parameters = config['dataset_parameters']
     root_dir = dataset_parameters['root_dir']
-    nodes_shp_file = dataset_parameters['nodes_shp_file']
+    summary_file_key = 'training' if mode == 'train' else 'testing'
+    dataset_summary_file = dataset_parameters[summary_file_key]['dataset_summary_file']
+    dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
+    summary_df = pd.read_csv(dataset_summary_path)
+    summary_df = summary_df[summary_df['Run_ID'] == run_id]
+
+    nodes_shp_file = summary_df['Nodes_Shp_Filepath'].values[0]
     nodes_shp_path = os.path.join(root_dir, 'raw', nodes_shp_file)
     node_df = gpd.read_file(nodes_shp_path)
 
     if no_ghost:
-        summary_file_key = 'training' if mode == 'train' else 'testing'
-        dataset_summary_file = dataset_parameters[summary_file_key]['dataset_summary_file']
-        dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
-        summary_df = pd.read_csv(dataset_summary_path)
-        summary_df = summary_df[summary_df['Run_ID'] == run_id]
-        hec_ras_file = summary_df['HECRAS_Filepath'].values[0]
-
-        inflow_boundary_nodes = dataset_parameters['inflow_boundary_nodes']
-        outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
+        simulation_file = summary_df['Simulation_Filepath'].values[0]
+        npz_filename = f'boundary_condition_event_{run_id}.npz'
 
         bc = BoundaryCondition(root_dir=root_dir,
-                               simulation_file=hec_ras_file,
-                               inflow_boundary_nodes=inflow_boundary_nodes,
-                               outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
-        node_df = node_df[~node_df['CC_index'].isin(bc.ghost_nodes)]
+                               nodes_shp_file=nodes_shp_file,
+                               simulation_file=simulation_file,
+                               inflow_boundary_nodes=[],
+                               outflow_boundary_nodes=[],
+                               saved_npz_file=npz_filename)
+        node_df = node_df[~node_df['node_id'].isin(bc.ghost_nodes)]
 
     return node_df
 
@@ -68,26 +69,32 @@ def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
     '''Get the edge GeoDataFrame, optionally removing ghost edges based on boundary conditions.'''
     dataset_parameters = config['dataset_parameters']
     root_dir = dataset_parameters['root_dir']
-    edges_shp_file = dataset_parameters['edges_shp_file']
+    root_dir = dataset_parameters['root_dir']
+    summary_file_key = 'training' if mode == 'train' else 'testing'
+    dataset_summary_file = dataset_parameters[summary_file_key]['dataset_summary_file']
+    dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
+    summary_df = pd.read_csv(dataset_summary_path)
+    summary_df = summary_df[summary_df['Run_ID'] == run_id]
+
+    edges_shp_file = summary_df['Edges_Shp_Filepath'].values[0]
     edges_shp_path = os.path.join(root_dir, 'raw', edges_shp_file)
     link_df = gpd.read_file(edges_shp_path)
 
     if no_ghost:
         summary_file_key = 'training' if mode == 'train' else 'testing'
-        dataset_summary_file = dataset_parameters[summary_file_key]['dataset_summary_file']
-        dataset_summary_path = os.path.join(root_dir, 'raw', dataset_summary_file)
-        summary_df = pd.read_csv(dataset_summary_path)
-        summary_df = summary_df[summary_df['Run_ID'] == run_id]
-        hec_ras_file = summary_df['HECRAS_Filepath'].values[0]
-
-        inflow_boundary_nodes = dataset_parameters['inflow_boundary_nodes']
-        outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
+        nodes_shp_file = summary_df['Nodes_Shp_Filepath'].values[0]
+        simulation_file = summary_df['Simulation_Filepath'].values[0]
+        npz_filename = f'boundary_condition_event_{run_id}.npz'
 
         bc = BoundaryCondition(root_dir=root_dir,
-                               simulation_file=hec_ras_file,
-                               inflow_boundary_nodes=inflow_boundary_nodes,
-                               outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
+                               nodes_shp_file=nodes_shp_file,
+                               simulation_file=simulation_file,
+                               inflow_boundary_nodes=[],
+                               outflow_boundary_nodes=[],
+                               saved_npz_file=npz_filename)
+
+        inflow_boundary_nodes = bc.init_inflow_boundary_nodes
+        outflow_boundary_nodes = bc.init_outflow_boundary_nodes
         is_ghost_edge = link_df['from_node'].isin(bc.ghost_nodes) | link_df['to_node'].isin(bc.ghost_nodes)
         boundary_nodes = np.concat([np.array(inflow_boundary_nodes), np.array(outflow_boundary_nodes)])
         is_boundary_edge = link_df['from_node'].isin(boundary_nodes) | link_df['to_node'].isin(boundary_nodes)
@@ -231,7 +238,7 @@ def get_x_ticks_from_timestamps(metric_paths: list[str]) -> Tuple[list[str], str
 
     TIME_INTERVAL_IN_HOURS = 12
     delta_t = delta_t.item()
-    delta_t_in_hours = delta_t.total_seconds() / 3600
+    delta_t_in_hours = delta_t / 3600
     step = TIME_INTERVAL_IN_HOURS / delta_t_in_hours
     x_ticks = np.concat([np.arange(0, len(timestamps), step=step), np.array([len(timestamps)-1])], axis=0)
     x_tick_labels = x_ticks * delta_t_in_hours

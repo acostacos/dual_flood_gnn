@@ -1,4 +1,4 @@
-from constants import EDGE_MODELS, NODE_EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS, REQUIRES_DUAL_LINE_GRAPH
 from .base_trainer import BaseTrainer
 from .dual_autoregressive_trainer import DualAutoregressiveTrainer
 from .dual_regression_trainer import DualRegressionTrainer
@@ -9,6 +9,8 @@ from .node_regression_trainer import NodeRegressionTrainer
 
 def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> BaseTrainer:
     if model_name in NODE_EDGE_MODELS:
+        if model_name in REQUIRES_DUAL_LINE_GRAPH:
+            kwargs['with_dual_line_graph'] = True
         if autoregressive:
             return DualAutoregressiveTrainer(*args, **kwargs)
         return DualRegressionTrainer(*args, **kwargs)

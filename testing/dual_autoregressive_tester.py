@@ -61,8 +61,12 @@ class DualAutoregressiveTester(BaseTester):
                 x = torch.concat([graph.x[:, :self.start_node_target_idx], sliding_window, graph.x[:, self.end_node_target_idx:]], dim=1)
                 edge_attr = torch.concat([graph.edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, graph.edge_attr[:, self.end_edge_target_idx:]], dim=1)
                 edge_index = graph.edge_index
+                forward_kwargs = {'x': x, 'edge_index': edge_index, 'edge_attr': edge_attr}
+                if self.with_dual_line_graph:
+                    forward_kwargs['dual_edge_index'] = graph.dual_edge_index
+                    forward_kwargs['dual_edge_attr'] = graph.dual_edge_attr
 
-                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                pred_diff, edge_pred_diff = self.model(**forward_kwargs)
 
                 # Override boundary conditions in predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]

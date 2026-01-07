@@ -57,7 +57,12 @@ class DualRegressionTester(BaseTester):
                 graph = graph.to(self.device)
 
                 x, edge_index, edge_attr = graph.x, graph.edge_index, graph.edge_attr
-                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                forward_kwargs = {'x': x, 'edge_index': edge_index, 'edge_attr': edge_attr}
+                if self.with_dual_line_graph:
+                    forward_kwargs['dual_edge_index'] = graph.dual_edge_index
+                    forward_kwargs['dual_edge_attr'] = graph.dual_edge_attr
+
+                pred_diff, edge_pred_diff = self.model(**forward_kwargs)
 
                 # Override boundary conditions in predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]

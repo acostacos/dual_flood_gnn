@@ -2,6 +2,8 @@ import os
 import torch
 import numpy as np
 import pandas as pd
+import itertools
+from collections import defaultdict
 
 from numpy import ndarray
 from torch import Tensor
@@ -18,6 +20,7 @@ from .shp_data_retrieval import get_edge_index, get_cell_elevation, get_edge_len
     get_edge_slope, get_cell_position_x, get_cell_position_y, get_cell_position
 from .boundary_condition import BoundaryCondition
 from .dataset_normalizer import DatasetNormalizer
+from .line_graph_data import LineGraphData
 
 class FloodEventDataset(Dataset):
     STATIC_NODE_FEATURES = ['position_x', 'position_y', 'area', 'roughness', 'elevation', 'aspect', 'curvature', 'flow_accumulation']
@@ -47,6 +50,7 @@ class FloodEventDataset(Dataset):
                  outflow_boundary_nodes: List[int] = [],
                  with_global_mass_loss: bool = True,
                  with_local_mass_loss: bool = True,
+                 with_dual_line_graph: bool = False,
                  debug: bool = False,
                  logger: Optional[Logger] = None,
                  force_reload: bool = False):
@@ -75,6 +79,7 @@ class FloodEventDataset(Dataset):
         self.outflow_boundary_nodes = outflow_boundary_nodes
         self.with_global_mass_loss = with_global_mass_loss
         self.with_local_mass_loss = with_local_mass_loss
+        self.with_dual_line_graph = with_dual_line_graph
 
         # Dataset variables
         self.num_static_node_features = len(self.STATIC_NODE_FEATURES)
@@ -133,10 +138,13 @@ class FloodEventDataset(Dataset):
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.remove(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
-
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.apply(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
+
+        dual_edge_index, dual_edge_attr = None, None
+        if self.with_dual_line_graph:
+            dual_edge_index, dual_edge_attr = self._get_dual_edge_index(edge_index)
 
         # Physics-informed Loss Features
         node_rainfall_per_ts = self._get_physics_info(dynamic_nodes)
@@ -149,6 +157,8 @@ class FloodEventDataset(Dataset):
 
         np.savez(self.processed_paths[3],
                  edge_index=edge_index,
+                 dual_edge_index=dual_edge_index,
+                 dual_edge_attr=dual_edge_attr,
                  static_nodes=static_nodes,
                  static_edges=static_edges)
         self.log_func(f'Saved constant values to {self.processed_paths[3]}')
@@ -187,10 +197,18 @@ class FloodEventDataset(Dataset):
 
     def get(self, idx):
         # Load constant data
-        constant_values = np.load(self.processed_paths[3])
+        constant_values = np.load(self.processed_paths[3], allow_pickle=True)
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
+        if self.with_dual_line_graph:
+            dual_edge_index: ndarray = constant_values['dual_edge_index']
+            dual_edge_attr: ndarray = constant_values['dual_edge_attr']
+            assert dual_edge_index is not None and dual_edge_attr is not None
+
+            dual_edge_index = torch.from_numpy(dual_edge_index)
+            dual_edge_attr = torch.from_numpy(dual_edge_attr)
+        edge_index = torch.from_numpy(edge_index)
 
         # Find the event this index belongs to using the start indices
         if idx < 0 or idx >= self.total_rollout_timesteps:
@@ -208,6 +226,8 @@ class FloodEventDataset(Dataset):
         event_timesteps: ndarray = dynamic_values['event_timesteps']
         dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
         dynamic_edges: ndarray = dynamic_values['dynamic_edges']
+        if self.with_global_mass_loss or self.with_local_mass_loss:
+            node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
 
         # Create Data object for timestep
         within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
@@ -216,27 +236,31 @@ class FloodEventDataset(Dataset):
         edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, within_event_idx)
         label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
 
+        data_cls = Data
+        data_cls_kwargs = {
+            'x': node_features,
+            'edge_index': edge_index,
+            'edge_attr': edge_features,
+            'y': label_nodes,
+            'y_edge': label_edges,
+            'timestep': timestep,
+        }
+
         # Get physics-informed loss information
-        global_mass_info = None
-        local_mass_info = None
-        if self.with_global_mass_loss or self.with_local_mass_loss:
-            node_rainfall_per_ts: ndarray = dynamic_values['node_rainfall_per_ts']
-            if self.with_global_mass_loss:
-                global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+        if self.with_global_mass_loss:
+            global_mass_info = self._get_global_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+            data_cls_kwargs['global_mass_info'] = global_mass_info
 
-            if self.with_local_mass_loss:
-                local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+        if self.with_local_mass_loss:
+            local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
+            data_cls_kwargs['local_mass_info'] = local_mass_info
 
-        edge_index = torch.from_numpy(edge_index)
-        data = Data(x=node_features,
-                    edge_index=edge_index,
-                    edge_attr=edge_features,
-                    y=label_nodes,
-                    y_edge=label_edges,
-                    timestep=timestep,
-                    global_mass_info=global_mass_info,
-                    local_mass_info=local_mass_info)
+        if self.with_dual_line_graph:
+            data_cls = LineGraphData # Special Data object for line graph batching
+            data_cls_kwargs['dual_edge_index'] = torch.from_numpy(dual_edge_index)
+            data_cls_kwargs['dual_edge_attr'] = torch.from_numpy(dual_edge_attr)
 
+        data = data_cls(**data_cls_kwargs)
         return data
 
     def _load_event_stats(self, root_dir: str, event_stats_file: str) -> Tuple[List[int], int, Dict]:
@@ -367,6 +391,29 @@ class FloodEventDataset(Dataset):
     def _get_edge_index(self) -> ndarray:
         edge_index = get_edge_index(self.raw_paths[1])
         return edge_index
+
+    def _get_dual_edge_index(self, edge_index: ndarray) -> Tuple[ndarray, ndarray]:
+        '''edge_index is assumed be a directed graph (no bidirectional edges)'''
+        num_nodes = edge_index.max().item() + 1
+
+        incident_edges = defaultdict(list)
+        for edge_idx in range(edge_index.shape[1]):
+            s, t = edge_index[:, edge_idx].tolist()
+            incident_edges[s].append(edge_idx)
+            incident_edges[t].append(edge_idx)
+
+        dual_edge_index = []
+        dual_edge_attr = []
+        for node_idx in range(num_nodes):
+            edges_at_node = incident_edges[node_idx]
+            edge_pairs = list(itertools.permutations(edges_at_node, r=2))
+            dual_edge_index.extend(edge_pairs)
+            dual_edge_attr.extend([node_idx] * len(edge_pairs))
+
+        dual_edge_index = np.array(dual_edge_index, dtype=np.int64).transpose()
+        dual_edge_attr = np.array(dual_edge_attr, dtype=np.int64)
+
+        return dual_edge_index, dual_edge_attr
 
     def _get_static_node_features(self) -> ndarray:
         def _get_dem_based_feature(node_shp_path: str,

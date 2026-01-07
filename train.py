@@ -6,6 +6,7 @@ import gc
 import random
 
 from argparse import ArgumentParser, Namespace
+from constants import REQUIRES_DUAL_LINE_GRAPH
 from datetime import datetime
 from data import dataset_factory, FloodEventDataset
 from models import model_factory
@@ -44,6 +45,7 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
         'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
         'with_global_mass_loss': loss_func_parameters['use_global_mass_loss'],
         'with_local_mass_loss': loss_func_parameters['use_local_mass_loss'],
+        'with_dual_line_graph': (args.model in REQUIRES_DUAL_LINE_GRAPH),
         'debug': args.debug,
         'logger': logger,
         'force_reload': True,

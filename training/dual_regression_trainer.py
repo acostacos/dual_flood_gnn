@@ -36,7 +36,15 @@ class DualRegressionTrainer(NodeRegressionTrainer, EdgeRegressionTrainer):
 
                 batch = batch.to(self.device)
                 x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
-                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                if self.with_dual_line_graph:
+                    dual_edge_index, dual_edge_attr = batch.dual_edge_index, batch.dual_edge_attr
+
+                forward_kwargs = {'x': x, 'edge_index': edge_index, 'edge_attr': edge_attr}
+                if self.with_dual_line_graph:
+                    forward_kwargs['dual_edge_index'] = dual_edge_index
+                    forward_kwargs['dual_edge_attr'] = dual_edge_attr
+
+                pred_diff, edge_pred_diff = self.model(**forward_kwargs)
                 pred_diff, edge_pred_diff = self._override_pred_bc(pred_diff, edge_pred_diff, batch)
 
                 pred_loss = self._compute_node_loss(pred_diff, batch)

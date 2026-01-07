@@ -3,6 +3,7 @@ from torch.nn import Module
 from .base_model import BaseModel
 from .base_node_model import BaseNodeModel
 from .base_edge_model import BaseEdgeModel
+from .censnet import CensNet
 from .edge_gnn import EdgeGNN
 from .gat import GAT, EdgeGAT
 from .gcn import GCN, EdgeGCN
@@ -17,6 +18,8 @@ from .node_gnn import NodeGNN
 def model_factory(model_name: str, *args, **kwargs) -> Module:
     if model_name == 'DUALFloodGNN':
         return DUALFloodGNN(*args, **kwargs)
+    if model_name == 'CensNet':
+        return CensNet(*args, **kwargs)
     if model_name == 'EdgeGAT':
         return EdgeGAT(*args, **kwargs)
     if model_name == 'EdgeGCN':

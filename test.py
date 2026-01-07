@@ -5,7 +5,7 @@ import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from constants import EDGE_MODELS, NODE_EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS, REQUIRES_DUAL_LINE_GRAPH
 from data import dataset_factory, FloodEventDataset
 from models import model_factory
 from testing import DualAutoregressiveTester, EdgeAutoregressiveTester, NodeAutoregressiveTester
@@ -105,6 +105,7 @@ def main():
             'time_from_peak': dataset_parameters['time_from_peak'],
             'inflow_boundary_nodes': dataset_parameters['inflow_boundary_nodes'],
             'outflow_boundary_nodes': dataset_parameters['outflow_boundary_nodes'],
+            'with_dual_line_graph': (args.model in REQUIRES_DUAL_LINE_GRAPH),
         }
         base_datset_config = get_test_dataset_config(base_datset_config, config)
         logger.log(f'Using dataset configuration: {base_datset_config}')

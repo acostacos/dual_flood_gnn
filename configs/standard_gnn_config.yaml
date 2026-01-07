@@ -206,6 +206,12 @@ model_parameters:                                            # Model-specific pa
     decoder_layers: 3
     decoder_activation: 'relu'
 
+  CensNet:
+    hidden_features: 64
+    num_layers: 3
+    dropout: 0.5
+    bias: True
+
   DUALFloodGNN:
     hidden_features: 64
     num_layers: 3

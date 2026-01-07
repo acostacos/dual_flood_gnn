@@ -17,12 +17,14 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                  edge_loss_func: Callable,
                  edge_pred_loss_scale: float = 1.0,
                  edge_loss_weight: float = 1.0,
+                 with_dual_line_graph: bool = False,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.edge_loss_func = edge_loss_func
         self.edge_loss_weight = edge_loss_weight
         self.edge_loss_scaler = LossScaler(initial_scale=edge_pred_loss_scale)
+        self.with_dual_line_graph = with_dual_line_graph
 
     def train(self):
         '''Multi-step-ahead loss with curriculum learning.'''
@@ -96,6 +98,8 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
 
             batch = batch.to(self.device)
             x, edge_attr, edge_index = batch.x[:, :, 0], batch.edge_attr[:, :, 0], batch.edge_index
+            if self.with_dual_line_graph:
+                dual_edge_index, dual_edge_attr = batch.dual_edge_index, batch.dual_edge_attr
 
             total_batch_loss = 0.0
             total_batch_pred_loss = 0.0
@@ -112,7 +116,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                 x = torch.concat([x[:, :self.start_node_target_idx], sliding_window, x[:, self.end_node_target_idx:]], dim=1)
                 edge_attr = torch.concat([edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, edge_attr[:, self.end_edge_target_idx:]], dim=1)
 
-                pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                forward_kwargs = {'x': x, 'edge_index': edge_index, 'edge_attr': edge_attr}
+                if self.with_dual_line_graph:
+                    forward_kwargs['dual_edge_index'] = dual_edge_index
+                    forward_kwargs['dual_edge_attr'] = dual_edge_attr
+
+                pred_diff, edge_pred_diff = self.model(**forward_kwargs)
                 pred_diff, edge_pred_diff = self._override_pred_bc(pred_diff, edge_pred_diff, batch, i)
 
                 pred_loss = self._compute_node_loss(pred_diff, batch, i)
@@ -197,7 +206,12 @@ class DualAutoregressiveTrainer(NodeAutoregressiveTrainer, EdgeAutoregressiveTra
                     edge_attr = torch.concat([graph.edge_attr[:, :self.start_edge_target_idx], edge_sliding_window, graph.edge_attr[:, self.end_edge_target_idx:]], dim=1)
                     edge_index = graph.edge_index
 
-                    pred_diff, edge_pred_diff = self.model(x, edge_index, edge_attr)
+                    forward_kwargs = {'x': x, 'edge_index': edge_index, 'edge_attr': edge_attr}
+                    if self.with_dual_line_graph:
+                        forward_kwargs['dual_edge_index'] = graph.dual_edge_index
+                        forward_kwargs['dual_edge_attr'] = graph.dual_edge_attr
+
+                    pred_diff, edge_pred_diff = self.model(**forward_kwargs)
 
                     # Override boundary conditions in predictions
                     pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]

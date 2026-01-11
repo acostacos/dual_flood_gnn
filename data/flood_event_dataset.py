@@ -606,14 +606,15 @@ class FloodEventDataset(Dataset):
         if step == 1:
             return dynamic_data
 
+        if aggr == 'first':
+            # Do not trim array to preserve number of timesteps
+            return dynamic_data[::step]
+
         # Trim array to be divisible by step
         trimmed_length = (dynamic_data.shape[0] // step) * step
         trimmed_array = dynamic_data[:trimmed_length]
 
-        if aggr == 'first':
-            return trimmed_array[::step]
-
-        elif aggr in ['mean', 'sum']:
+        if aggr in ['mean', 'sum']:
             # Reshape to group consecutive elements
             if dynamic_data.ndim == 1:
                 reshaped = trimmed_array.reshape(-1, step) # (timesteps, step)

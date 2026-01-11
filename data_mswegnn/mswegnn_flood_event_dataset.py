@@ -183,13 +183,13 @@ class mSWEGNNFloodEventDataset(FloodEventDataset):
 
         paths = self._get_event_file_paths(event_idx)
         DYNAMIC_NODE_RETRIEVAL_MAP = {
-            "inflow": lambda: self._get_event_dynamic(event_idx, _get_inflow_hydrograph, aggr='mean',
+            "inflow": lambda: self._get_event_dynamic(event_idx, _get_inflow_hydrograph, aggr='first',
                                                       hydrograph_path=paths[self.EVENT_FILE_KEYS[5]],
                                                       node_shp_path=paths[self.EVENT_FILE_KEYS[1]]),
-            "rainfall": lambda: self._get_event_dynamic(event_idx, _get_rainfall, aggr='sum',
+            "rainfall": lambda: self._get_event_dynamic(event_idx, _get_rainfall, aggr='first',
                                                         simulation_path=paths[self.EVENT_FILE_KEYS[0]],
                                                         node_shp_path=paths[self.EVENT_FILE_KEYS[1]]),
-            "water_volume": lambda: self._get_event_dynamic(event_idx, _get_water_volume, aggr='mean',
+            "water_volume": lambda: self._get_event_dynamic(event_idx, _get_water_volume, aggr='first',
                                                             simulation_path=paths[self.EVENT_FILE_KEYS[0]],
                                                             node_shp_path=paths[self.EVENT_FILE_KEYS[1]],
                                                             cells_shp_path=paths[self.EVENT_FILE_KEYS[4]]),
@@ -215,7 +215,7 @@ class mSWEGNNFloodEventDataset(FloodEventDataset):
 
         paths = self._get_event_file_paths(event_idx)
         DYNAMIC_EDGE_RETRIEVAL_MAP = {
-            "face_flow": lambda: self._get_event_dynamic(event_idx, _get_face_flow, aggr='mean',
+            "face_flow": lambda: self._get_event_dynamic(event_idx, _get_face_flow, aggr='first',
                                                          simulation_path=paths[self.EVENT_FILE_KEYS[0]],
                                                          hydrograph_path=paths[self.EVENT_FILE_KEYS[5]],
                                                          edges_shp_path=paths[self.EVENT_FILE_KEYS[2]]),

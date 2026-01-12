@@ -26,7 +26,7 @@ training_parameters:
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
   num_epochs           : 300                                 # Number of epochs
   num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
-  batch_size           : 32                                  # Batch size
+  batch_size           : 8                                   # Batch size
   learning_rate        : 9.0e-05                             # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
@@ -35,11 +35,11 @@ training_parameters:
 
   autoregressive:
     enabled            : True                                # Enable autoregressive training
-    init_num_timesteps : 2                                   # Initial number of timesteps for autoregressive training
+    init_num_timesteps : 3                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
-    timestep_increment : 2                                   # Number of timesteps to increase after each curriculum step
+    timestep_increment : 3                                   # Number of timesteps to increase after each curriculum step
     max_curriculum_epochs: 100                               # Maximum number of curriculum steps
-    learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
+    learning_rate_decay  : 0.5                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
   node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'

@@ -168,13 +168,17 @@ class mSWEGNNFloodEventDataset(FloodEventDataset):
             inflow = np.repeat(inflow, repeats=num_nodes, axis=-1)
             return inflow
 
-        def _get_water_volume(simulation_path: str, node_shp_path: str, cells_shp_path: str):
+        def _get_water_depth(simulation_path: str, node_shp_path: str):
             water_depth = get_water_depth(simulation_path)
             # Create water_depth for ghost nodes as zero
             node_types = get_node_types(node_shp_path)
             num_ghost_nodes = (node_types != 1).sum()
             ghost_nodes_depth = np.zeros((water_depth.shape[0], num_ghost_nodes), dtype=water_depth.dtype)
             water_depth = np.concatenate([water_depth, ghost_nodes_depth], axis=1)
+            return water_depth
+
+        def _get_water_volume(simulation_path: str, node_shp_path: str, cells_shp_path: str):
+            water_depth = _get_water_depth(simulation_path, node_shp_path)
 
             cell_area = get_cell_area(cells_shp_path)[None, :]
             cell_area = np.repeat(cell_area, repeats=water_depth.shape[0], axis=0)
@@ -193,6 +197,9 @@ class mSWEGNNFloodEventDataset(FloodEventDataset):
                                                             simulation_path=paths[self.EVENT_FILE_KEYS[0]],
                                                             node_shp_path=paths[self.EVENT_FILE_KEYS[1]],
                                                             cells_shp_path=paths[self.EVENT_FILE_KEYS[4]]),
+            "water_depth": lambda: self._get_event_dynamic(event_idx, _get_water_depth, aggr='first',
+                                                           simulation_path=paths[self.EVENT_FILE_KEYS[0]],
+                                                           node_shp_path=paths[self.EVENT_FILE_KEYS[1]]),
         }
 
         dynamic_features = self._get_features(feature_list=self.DYNAMIC_NODE_FEATURES,

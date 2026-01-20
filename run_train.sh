@@ -9,5 +9,5 @@
 . venv/bin/activate
 
 # DUALFloodGNN
-srun python train.py --config 'configs/mswegnn_config.yaml' --model 'DUALFloodGNN' --seed 666
-srun python train.py --config 'configs/mswegnn_no_physics_config.yaml' --model 'DUALFloodGNN' --seed 666
+srun python train.py --config 'configs/mswegnn_config.yaml' --model 'DUALFloodGNN'
+srun python train.py --config 'configs/mswegnn_no_physics_config.yaml' --model 'DUALFloodGNN'

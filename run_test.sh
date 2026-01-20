@@ -8,5 +8,5 @@
 . venv/bin/activate
 
 # DUALFloodGNN
-srun python test.py --config 'configs/mswegnn_config.yaml' --model 'DUALFloodGNN' --seed 666 --model_path ''
-srun python test.py --config 'configs/mswegnn_no_physics_config.yaml' --model 'DUALFloodGNN' --seed 666 --model_path ''
+srun python test.py --config 'configs/mswegnn_config.yaml' --model 'DUALFloodGNN' --model_path ''
+srun python test.py --config 'configs/mswegnn_no_physics_config.yaml' --model 'DUALFloodGNN' --model_path ''

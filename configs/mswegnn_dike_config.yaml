@@ -32,6 +32,7 @@ training_parameters:
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 15                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.25                                  # Percentage of validation split for autoregressive training
+  use_same_train_val_split: True                             # Whether to use the same train/val split (to handle for Dike Ring 15 finetuning)
 
   autoregressive:
     enabled            : True                                # Enable autoregressive training

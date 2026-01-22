@@ -66,12 +66,19 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
         logger.log(f'Loaded train dataset with {len(dataset)} samples')
         return dataset, None
 
-    percent_validation = train_config['val_split_percent']
-    assert percent_validation is not None, 'Validation split percentage must be specified if early stopping is used.'
+    if train_config.get('use_same_train_val_split', False):
+        # Use pre-defined train/val split
+        train_summary_file = dataset_summary_file
+        val_summary_file = dataset_summary_file
+        logger.log('Using the same dataset summary file for training and validation splits as specified in the config')
+    else:
+        # Normal case: need to split dataset into training and validation sets
+        percent_validation = train_config['val_split_percent']
+        assert percent_validation is not None, 'Validation split percentage must be specified if early stopping is used.'
 
-    # Split dataset into training and validation sets for autoregressive training
-    logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
-    train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
+        # Split dataset into training and validation sets for autoregressive training
+        logger.log(f'Splitting dataset into training and validation sets with {percent_validation * 100}% for validation')
+        train_summary_file, val_summary_file = train_utils.split_dataset_events(root_dir, dataset_summary_file, percent_validation)
 
     autoregressive_train_params = train_config['autoregressive']
     autoregressive_enabled = autoregressive_train_params.get('enabled', False)

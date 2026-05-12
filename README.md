@@ -1,6 +1,6 @@
 # DUALFloodGNN
 
-This repository contains the code for "DUALFloodGNN: Physics-informed Graph Neural Networks for Operational Flood Modeling." DUALFloodGNN is a physics-informed flood GNN architecture comprised of three main components: (1) a model that performs shared message passing to predict both node and edge features, (2) a physics-informed loss function that enforces global and local mass conservation between consecutive predictions, and (3) an autoregressive training strategy utilizing dynamic curriculum learning.
+This repository contains the code for "DUALFloodGNN: Physics-informed Graph Neural Networks for Operational Flood Modeling." DUALFloodGNN is a physics-informed flood GNN architecture comprised of three main components: (1) a model that performs shared message passing to predict both node and edge features, (2) a physics-informed loss function that enforces global and local mass conservation between consecutive predictions, and (3) an autoregressive training strategy utilizing dynamic curriculum learning. This paper was accepted at the IJCAI-ECAI 2026 AI4Tech track.
 
 ## Setup
 
@@ -35,27 +35,58 @@ pip install -r requirements.txt
 
 ### Data
 
-1. Request for access to the data.
-2. Place all of necessary files in the `data/datasets/raw` folder. This is the default location but you may use other paths which must be defined in your `config.yaml` file.
-3. Important files to have for dataset:
+1. Download the dataset from [DOI: 10.25910/9xav-0s86](https://doi.org/10.25910/9xav-0s86). There are 4 necessary files for the dataset: train.csv, test.csv, GEOMETRY.zip and HDF_FILES.zip. The important files for the dataset are as follows:
   - Node shape file (.shp)
   - Links shape file (.shp)
   - DEM file (.tif)
   - HEC-RAS simulation files (.hdf)
   - Summary file for training events (.csv)
   - Summary file for testing events (.csv)
+2. Create a `raw` folder in the `data/datasets` directory.
+3. Unzip the GEOMETRY.zip and HDF_FILES.zip files and place the unzipped files in the raw data folder created in step 2. Transfer the train.csv and test.csv files to the raw data folder as well. The folder structure should look like this:
+```
+data/
+├── datasets/
+│   ├── raw/
+│   │   ├── train.csv
+│   │   └── test.csv
+│   ├── GEOMETRY/
+│   │   ├── updated_cell_centers.shp
+│   │   ├── links.shp
+│   │   ├── DEM.tif
+│   │   ...
+│   └── HDF_FILES/
+│       ├── Model_01.p22.hdf
+│       ├── Model_01.p23.hdf
+│       ...
+```
 
-For more information, see the dataset documentation.
+For more information, refer to the `README.pdf` documentation file.
 
-## Files Overview
+## Running the Code
 
-Below are the list of entry points for the application that you may run.
+### Quick Start
+
+To run the training code, use the following command:
+```bash
+python train.py --config 'configs/config.yaml' --model 'DUALFloodGNN'
+```
+
+Similarly, to run the testing code, use the following command:
+```bash
+python test.py --config 'configs/config.yaml' --model 'DUALFloodGNN' --model_path 'path/to/model_checkpoint.pt'
+```
+**IMPORANT**: Make sure train before running tests, as the testing code requires a trained model checkpoint and a processed dataset to perform inference.
+
+### Entry Points
+
+Below is the exhaustive list of entry points for the application.
 
 | File | Description | Arguments |
 |---|---|---|
 | `train.py` | Train the model with the parameters specified in the config file. | `--config`, `--model`, `--with_test` `--seed` `--device` `--debug` |
 | `test.py` | Perform inference using the specified model checkpoint with test data. | `--config`, `--model`, `--model_path`, `--seed`, `--device`, `--debug` |
-| `hp_search.py` | Perform a Bayesian hyperparameter search with the specified hyperparameters and events. (Warning: not fully tested.) | `--config`, `--hparam_config`, `--model`, `--seed`, `--device` |
+| `hp_search.py` | Perform a Bayesian hyperparameter search with the specified hyperparameters and events. (WARNING: not fully tested.) | `--config`, `--hparam_config`, `--model`, `--seed`, `--device` |
 | `eda.ipynb` | Jupyter notebook that gives an overview and analysis of the data. | N/A |
 | `view_results.ipynb` | Jupyter notebook where you may view the results of model training and testing. | N/A |
 
@@ -79,12 +110,12 @@ The code is categorized in different folder based on their specific purpose. Bel
 
 ## Citation
 
-If you use this code for your research, please cite [our paper](https://arxiv.org/abs/2512.23964) (preprint):
+If you use this code for your research, please cite [our paper](https://arxiv.org/abs/2512.23964):
 ```
-@misc{acosta2025dualfloodgnn,
-      title={Physics-informed Graph Neural Networks for Operational Flood Modeling}, 
+@misc{acosta2026,
+      title={DUALFloodGNN: Physics-informed Graph Neural Network for Operational Flood Modeling}, 
       author={Carlo Malapad Acosta and Herath Mudiyanselage Viraj Vidura Herath and Jia Yu Lim and Abhishek Saha and Sanka Rasnayaka and Lucy Marshall},
-      year={2025},
+      year={2026},
       eprint={2512.23964},
       archivePrefix={arXiv},
       primaryClass={cs.LG},

@@ -33,17 +33,40 @@ pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -
 pip install -r requirements.txt
 ```
 
-### Data
+### Dataset
 
-1. Download the dataset from [DOI: 10.25910/9xav-0s86](https://doi.org/10.25910/9xav-0s86). There are 4 necessary files for the dataset: train.csv, test.csv, GEOMETRY.zip and HDF_FILES.zip. The important files for the dataset are as follows:
-  - Node shape file (.shp)
-  - Links shape file (.shp)
-  - DEM file (.tif)
-  - HEC-RAS simulation files (.hdf)
-  - Summary file for training events (.csv)
-  - Summary file for testing events (.csv)
-2. Create a `raw` folder in the `data/datasets` directory.
-3. Unzip the GEOMETRY.zip and HDF_FILES.zip files and place the unzipped files in the raw data folder created in step 2. Transfer the train.csv and test.csv files to the raw data folder as well. The folder structure should look like this:
+The following are the instructions to setup the dataset needed for the repository.
+
+#### HEC-RAS simulation files, Summary files
+
+1. Download the following files from [DOI: 10.25910/9xav-0s86](https://doi.org/10.25910/9xav-0s86).
+- HEC-RAS Flood Simulation Files in HDF Format (`HDF_FILES.zip`)
+- Dummy train dataset summary file (`train.csv`)
+- Dummy test dataset summary file (`test.csv`)
+
+**Note**: DO NOT download the Geometry files from here as they are not updated.
+
+2. Extract the files from `HDF_FILES.zip`. Rename the extracted folder to `HEC-RAS Results`.
+
+#### Updated Geometry files
+
+1. Download the updated geometry files from [this Google Drive](https://drive.google.com/drive/folders/1JrIhOoCzYDMZQVtuuKDYvo3wASihmpTt?usp=sharing).
+2. Extract the downloaded files. Rename the extracted folder to `GEOMETRY`
+
+#### File Structure
+
+You should now have all all the important files needed for the dataset. These should include the following:
+| File | Extension | Source |
+|------|-----------|--------|
+| Node shape file | .shp | Updated Geometry Files |
+| Links shape file | .shp | Updated Geometry Files |
+| DEM file | .tif | Updated Geometry Files |
+| HEC-RAS simulation files | .hdf | HEC-RAS Simulation Files |
+| Summary file for training events | .csv | Summary Files |
+| Summary file for testing events | .csv | Summary Files |
+
+1. Create a `raw` folder in the `data/datasets` directory.
+2. Place the `HEC-RAS Results` and `GEOMETRY` in the raw data folder created in step 1. Transfer the train.csv and test.csv files to the raw data folder as well. The folder structure should look like this:
 ```
 data/
 ├── datasets/
@@ -51,17 +74,39 @@ data/
 │   │   ├── train.csv
 │   │   └── test.csv
 │   ├── GEOMETRY/
-│   │   ├── updated_cell_centers.shp
-│   │   ├── links.shp
+│   │   ├── cell_centers_with_ele.shp
+│   │   ├── links_with_slope.shp
 │   │   ├── DEM.tif
 │   │   ...
-│   └── HDF_FILES/
+│   └── HEC-RAS Results/
 │       ├── Model_01.p22.hdf
 │       ├── Model_01.p23.hdf
 │       ...
 ```
 
-For more information, refer to the `README.pdf` documentation file.
+For more information, refer to the `README.pdf` documentation file [here](https://doi.org/10.25910/9xav-0s86).
+
+#### Dataset Features
+
+The following table provides an overview of the features used in the dataset.
+
+| Feature Class | Feature Type | Name | Description | Source |
+|-------|------|------|-------------|--------|
+| Graph | Static | Edge index | Describe which nodes are connected to each other in the format [from_node, to_node] | Node Shape |
+| Node | Static | Position | X and Y coordinates of a node | Node Shape |
+| Node | Static | Area | Area of the mesh cell | HEC-RAS |
+| Node | Static | Roughness | Manning's coefficient in mesh cell | HEC-RAS |
+| Node | Static | Elevation | Elevation from sea level | Node Shape |
+| Node | Static | Aspect | Slope orientation in degrees clockwise from north | DEM |
+| Node | Static | Curvature | Total curvature of topographic surface | DEM |
+| Node | Static | Flow Accumulation | Upslope areas that drain into location. Computed using the D8 Algorithm. | DEM |
+| Node | Dynamic | Rainfall | Rainfall at the cell for a specific time step. Note: HEC-RAS specifies this as cumulative rainfall but we convert it to interval rainfall for our use case. | HEC-RAS |
+| Node | Dynamic | Water Volume | Volume at the cell for a specific time step. Note: We clip water volume values to 100,000 at a maximum. | HEC-RAS |
+| Edge | Static | Relative Position | X and Y coordinates of a node relative to its neighbors | Edge Shape |
+| Edge | Static | Face Length | Length of the border of a mesh cell | HEC-RAS |
+| Edge | Static | Length | Length of a cell | Edge Shape |
+| Edge | Static | Slope | Slope of the cell in a mesh | Edge Shape |
+| Edge | Dynamic | Face Flow | Water flow / flux at an edge for a time step | HEC-RAS |
 
 ## Running the Code
 

@@ -1,6 +1,9 @@
 # DUALFloodGNN
 
-This repository contains the code for "DUALFloodGNN: Physics-informed Graph Neural Networks for Operational Flood Modeling." DUALFloodGNN is a physics-informed flood GNN architecture comprised of three main components: (1) a model that performs shared message passing to predict both node and edge features, (2) a physics-informed loss function that enforces global and local mass conservation between consecutive predictions, and (3) an autoregressive training strategy utilizing dynamic curriculum learning. This paper was accepted at the IJCAI-ECAI 2026 AI4Tech track.
+This repository contains the code for "DUALFloodGNN: Physics-informed Graph Neural Networks for Operational Flood Modeling." DUALFloodGNN is a physics-informed flood GNN architecture comprised of three main components: (1) a model that performs shared message passing to predict both node and edge features, (2) a physics-informed loss function that enforces global and local mass conservation between consecutive predictions, and (3) an autoregressive training strategy utilizing dynamic curriculum learning. This paper was accepted at the IJCAI-ECAI 2026 AI4Tech track. Read more about the paper [here](https://arxiv.org/abs/2512.23964).
+
+
+![DUALFloodGNN Overview](/docs/overview.png)
 
 ## Setup
 
